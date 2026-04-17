@@ -1,0 +1,9 @@
+services:
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: ../docker/frontend.Dockerfile
+    container_name: kubok-frontend
+    ports:
+      - "3000:80"
+    restart: unless-stopped
