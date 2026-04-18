@@ -4,7 +4,10 @@ export
 all: databases wait migrate serve
 
 serve:
-	go run services/api/main.go
+	@trap 'kill 0' SIGINT; \
+	go run services/api/main.go & \
+	go run services/bot_manager/main.go & \
+	wait
 
 api-test:
 	API_TEST=true go run services/api/main.go
