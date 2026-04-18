@@ -128,3 +128,139 @@
     @apply font-sans;
     }
 }
+
+@keyframes auth-float {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(0, -22px, 0) scale(1.03);
+  }
+}
+
+@keyframes aurora-drift {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(28px, -24px, 0) scale(1.08);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes aurora-hue {
+  0% {
+    filter: hue-rotate(0deg) saturate(110%);
+  }
+  50% {
+    filter: hue-rotate(30deg) saturate(130%);
+  }
+  100% {
+    filter: hue-rotate(0deg) saturate(110%);
+  }
+}
+
+@keyframes auth-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-4px);
+  }
+  40% {
+    transform: translateX(4px);
+  }
+  60% {
+    transform: translateX(-3px);
+  }
+  80% {
+    transform: translateX(3px);
+  }
+}
+
+.auth-shake {
+  animation: auth-shake 280ms ease-in-out;
+}
+
+.auth-aurora {
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: 9999px;
+  mix-blend-mode: multiply;
+  animation:
+    aurora-drift 12s ease-in-out infinite,
+    aurora-hue 14s ease-in-out infinite;
+  will-change: transform, filter;
+}
+
+.auth-aurora--one {
+  width: 32rem;
+  height: 32rem;
+  top: -8rem;
+  left: -6rem;
+  background: radial-gradient(circle at 35% 35%, rgba(255, 209, 0, 0.55), rgba(255, 209, 0, 0));
+}
+
+.auth-aurora--two {
+  width: 28rem;
+  height: 28rem;
+  right: -5rem;
+  top: 22%;
+  animation-delay: 0.8s;
+  background: radial-gradient(circle at 40% 40%, rgba(56, 189, 248, 0.38), rgba(56, 189, 248, 0));
+}
+
+.auth-aurora--three {
+  width: 30rem;
+  height: 30rem;
+  bottom: -10rem;
+  left: 26%;
+  animation-delay: 1.6s;
+  background: radial-gradient(circle at 44% 44%, rgba(217, 70, 239, 0.28), rgba(217, 70, 239, 0));
+}
+
+.auth-orb {
+  position: absolute;
+  z-index: 0;
+  border-radius: 9999px;
+  pointer-events: none;
+  filter: blur(8px);
+  animation: auth-float 10s ease-in-out infinite;
+}
+
+.auth-orb--gold {
+  width: 34rem;
+  height: 34rem;
+  top: -13rem;
+  right: -9rem;
+  background:
+    radial-gradient(circle at 36% 32%, rgba(251, 191, 36, 0.55), transparent 70%),
+    radial-gradient(circle at 65% 64%, rgba(249, 115, 22, 0.45), transparent 66%);
+}
+
+.auth-orb--blue {
+  width: 30rem;
+  height: 30rem;
+  bottom: -11rem;
+  left: -9rem;
+  animation-delay: 1.4s;
+  background:
+    radial-gradient(circle at 35% 35%, rgba(56, 189, 248, 0.42), transparent 66%),
+    radial-gradient(circle at 70% 66%, rgba(59, 130, 246, 0.35), transparent 64%);
+}
+
+.auth-orb--violet {
+  width: 28rem;
+  height: 28rem;
+  top: 35%;
+  left: 36%;
+  animation-delay: 0.8s;
+  background:
+    radial-gradient(circle at 35% 35%, rgba(168, 85, 247, 0.3), transparent 68%),
+    radial-gradient(circle at 68% 64%, rgba(99, 102, 241, 0.25), transparent 64%);
+}
