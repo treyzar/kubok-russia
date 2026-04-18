@@ -138,6 +138,49 @@ func (q *Queries) DeleteRoom(ctx context.Context, arg DeleteRoomParams) error {
 	return err
 }
 
+const getAvailableBotsForRoom = `-- name: GetAvailableBotsForRoom :many
+SELECT u.id, u.name, u.balance FROM users u
+WHERE u.bot = true 
+  AND u.balance >= $1
+  AND NOT EXISTS (
+    SELECT 1 FROM room_players rp WHERE rp.user_id = u.id AND rp.room_id = $2
+  )
+ORDER BY RANDOM()
+LIMIT $3
+`
+
+type GetAvailableBotsForRoomParams struct {
+	Balance pgtype.Numeric `json:"balance"`
+	RoomID  int32          `json:"room_id"`
+	Limit   int32          `json:"limit"`
+}
+
+type GetAvailableBotsForRoomRow struct {
+	ID      int32          `json:"id"`
+	Name    string         `json:"name"`
+	Balance pgtype.Numeric `json:"balance"`
+}
+
+func (q *Queries) GetAvailableBotsForRoom(ctx context.Context, arg GetAvailableBotsForRoomParams) ([]GetAvailableBotsForRoomRow, error) {
+	rows, err := q.db.Query(ctx, getAvailableBotsForRoom, arg.Balance, arg.RoomID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetAvailableBotsForRoomRow{}
+	for rows.Next() {
+		var i GetAvailableBotsForRoomRow
+		if err := rows.Scan(&i.ID, &i.Name, &i.Balance); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getBotsWithMinBalance = `-- name: GetBotsWithMinBalance :many
 SELECT id, name, balance FROM users
 WHERE bot = true AND balance >= $1
