@@ -21,9 +21,14 @@ func main() {
 	// Create a new scheduler that will manage your jobs
 	scheduler := eon.NewScheduler(ctx)
 
-	// Run a simple, one-off job
+	// Run bot manager every 10 seconds
 	scheduler.Schedule(ctx, time.Second, 10*time.Second, &eon.Job{
 		Runner: crons.BotManager,
+	})
+
+	// Run room starter every 1 second to check for rooms that need to start
+	scheduler.Schedule(ctx, time.Second, 1*time.Second, &eon.Job{
+		Runner: crons.RoomStarter,
 	})
 
 	// Keep the application running until a signal is received

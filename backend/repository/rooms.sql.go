@@ -49,6 +49,66 @@ func (q *Queries) AddMoneyToJackpot(ctx context.Context, arg AddMoneyToJackpotPa
 	return i, err
 }
 
+const botJoinRoom = `-- name: BotJoinRoom :one
+WITH room_info AS (
+    SELECT entry_cost, status, players_needed FROM rooms WHERE rooms.room_id = $1
+),
+user_info AS (
+    SELECT balance, bot FROM users WHERE users.id = $2
+),
+current_player_count AS (
+    SELECT COUNT(*) as count FROM room_players WHERE room_id = $1
+),
+inserted AS (
+    INSERT INTO room_players (room_id, user_id, places)
+    SELECT $1, $2, $3
+    WHERE (SELECT balance FROM user_info) >= (SELECT entry_cost FROM room_info)
+      AND (SELECT bot FROM user_info) = true
+      AND NOT EXISTS (SELECT 1 FROM room_players WHERE room_id = $1 AND user_id = $2)
+      AND (SELECT status FROM room_info) IN ('new', 'starting_soon', 'playing')
+      AND (SELECT count FROM current_player_count) < (SELECT players_needed FROM room_info)
+    RETURNING room_id, user_id, places, joined_at
+),
+balance_update AS (
+    UPDATE users
+    SET balance = users.balance - (SELECT entry_cost FROM room_info)
+    WHERE users.id = $2 AND EXISTS (SELECT 1 FROM inserted)
+    RETURNING users.id
+),
+jackpot_update AS (
+    UPDATE rooms
+    SET jackpot = jackpot + (SELECT entry_cost FROM room_info), updated_at = CURRENT_TIMESTAMP
+    WHERE rooms.room_id = $1 AND EXISTS (SELECT 1 FROM inserted)
+    RETURNING room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost
+)
+SELECT room_id, user_id, places, joined_at FROM inserted
+`
+
+type BotJoinRoomParams struct {
+	RoomID int32  `json:"room_id"`
+	ID     int32  `json:"id"`
+	Places *int32 `json:"places"`
+}
+
+type BotJoinRoomRow struct {
+	RoomID   int32            `json:"room_id"`
+	UserID   int32            `json:"user_id"`
+	Places   *int32           `json:"places"`
+	JoinedAt pgtype.Timestamp `json:"joined_at"`
+}
+
+func (q *Queries) BotJoinRoom(ctx context.Context, arg BotJoinRoomParams) (BotJoinRoomRow, error) {
+	row := q.db.QueryRow(ctx, botJoinRoom, arg.RoomID, arg.ID, arg.Places)
+	var i BotJoinRoomRow
+	err := row.Scan(
+		&i.RoomID,
+		&i.UserID,
+		&i.Places,
+		&i.JoinedAt,
+	)
+	return i, err
+}
+
 const countRoomPlayers = `-- name: CountRoomPlayers :one
 SELECT COUNT(*) FROM room_players
 WHERE room_id = $1
@@ -76,6 +136,44 @@ type DeleteRoomParams struct {
 func (q *Queries) DeleteRoom(ctx context.Context, arg DeleteRoomParams) error {
 	_, err := q.db.Exec(ctx, deleteRoom, arg.RoomID)
 	return err
+}
+
+const getBotsWithMinBalance = `-- name: GetBotsWithMinBalance :many
+SELECT id, name, balance FROM users
+WHERE bot = true AND balance >= $1
+ORDER BY RANDOM()
+LIMIT $2
+`
+
+type GetBotsWithMinBalanceParams struct {
+	Balance pgtype.Numeric `json:"balance"`
+	Limit   int32          `json:"limit"`
+}
+
+type GetBotsWithMinBalanceRow struct {
+	ID      int32          `json:"id"`
+	Name    string         `json:"name"`
+	Balance pgtype.Numeric `json:"balance"`
+}
+
+func (q *Queries) GetBotsWithMinBalance(ctx context.Context, arg GetBotsWithMinBalanceParams) ([]GetBotsWithMinBalanceRow, error) {
+	rows, err := q.db.Query(ctx, getBotsWithMinBalance, arg.Balance, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetBotsWithMinBalanceRow{}
+	for rows.Next() {
+		var i GetBotsWithMinBalanceRow
+		if err := rows.Scan(&i.ID, &i.Name, &i.Balance); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const insertRoom = `-- name: InsertRoom :one

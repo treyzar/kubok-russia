@@ -230,3 +230,43 @@ SELECT * FROM inserted;
 SELECT * FROM room_boosts
 WHERE room_id = $1
 ORDER BY boosted_at DESC;
+
+-- name: BotJoinRoom :one
+WITH room_info AS (
+    SELECT entry_cost, status, players_needed FROM rooms WHERE rooms.room_id = $1
+),
+user_info AS (
+    SELECT balance, bot FROM users WHERE users.id = $2
+),
+current_player_count AS (
+    SELECT COUNT(*) as count FROM room_players WHERE room_id = $1
+),
+inserted AS (
+    INSERT INTO room_players (room_id, user_id, places)
+    SELECT $1, $2, $3
+    WHERE (SELECT balance FROM user_info) >= (SELECT entry_cost FROM room_info)
+      AND (SELECT bot FROM user_info) = true
+      AND NOT EXISTS (SELECT 1 FROM room_players WHERE room_id = $1 AND user_id = $2)
+      AND (SELECT status FROM room_info) IN ('new', 'starting_soon', 'playing')
+      AND (SELECT count FROM current_player_count) < (SELECT players_needed FROM room_info)
+    RETURNING room_id, user_id, places, joined_at
+),
+balance_update AS (
+    UPDATE users
+    SET balance = users.balance - (SELECT entry_cost FROM room_info)
+    WHERE users.id = $2 AND EXISTS (SELECT 1 FROM inserted)
+    RETURNING users.id
+),
+jackpot_update AS (
+    UPDATE rooms
+    SET jackpot = jackpot + (SELECT entry_cost FROM room_info), updated_at = CURRENT_TIMESTAMP
+    WHERE rooms.room_id = $1 AND EXISTS (SELECT 1 FROM inserted)
+    RETURNING *
+)
+SELECT * FROM inserted;
+
+-- name: GetBotsWithMinBalance :many
+SELECT id, name, balance FROM users
+WHERE bot = true AND balance >= $1
+ORDER BY RANDOM()
+LIMIT $2;
