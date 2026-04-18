@@ -16,6 +16,7 @@ type Room struct {
 	PlayersNeeded int32            `json:"players_needed"`
 	CreatedAt     pgtype.Timestamp `json:"created_at"`
 	UpdatedAt     pgtype.Timestamp `json:"updated_at"`
+	EntryCost     pgtype.Numeric   `json:"entry_cost"`
 }
 
 type RoomBoost struct {
