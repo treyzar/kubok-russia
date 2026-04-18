@@ -44,4 +44,23 @@ func MountRoutes(api huma.API, repo *repository.Queries, pool *pgxpool.Pool, red
 		Method:      "GET",
 		Path:        "/hello",
 	}, helloHandler.Get)
+
+	userHandler := handlers.UserHandler{Repo: repo, Pool: pool}
+	huma.Register(api, huma.Operation{
+		OperationID: "create-user",
+		Method:      "POST",
+		Path:        "/users",
+	}, userHandler.Create)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "get-user",
+		Method:      "GET",
+		Path:        "/users/{id}",
+	}, userHandler.Get)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "delete-user",
+		Method:      "DELETE",
+		Path:        "/users/{id}",
+	}, userHandler.Delete)
 }

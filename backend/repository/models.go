@@ -3,3 +3,14 @@
 //   sqlc v1.30.0
 
 package repository
+
+import (
+	"github.com/jackc/pgx/v5/pgtype"
+)
+
+type User struct {
+	ID        int32            `json:"id"`
+	Name      string           `json:"name"`
+	Balance   pgtype.Numeric   `json:"balance"`
+	CreatedAt pgtype.Timestamp `json:"created_at"`
+}
