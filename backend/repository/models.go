@@ -8,6 +8,36 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type Room struct {
+	RoomID        int32            `json:"room_id"`
+	Jackpot       pgtype.Numeric   `json:"jackpot"`
+	StartTime     pgtype.Timestamp `json:"start_time"`
+	Status        string           `json:"status"`
+	PlayersNeeded int32            `json:"players_needed"`
+	CreatedAt     pgtype.Timestamp `json:"created_at"`
+	UpdatedAt     pgtype.Timestamp `json:"updated_at"`
+}
+
+type RoomBoost struct {
+	RoomID    int32            `json:"room_id"`
+	UserID    int32            `json:"user_id"`
+	Amount    pgtype.Numeric   `json:"amount"`
+	BoostedAt pgtype.Timestamp `json:"boosted_at"`
+}
+
+type RoomPlayer struct {
+	RoomID   int32            `json:"room_id"`
+	UserID   int32            `json:"user_id"`
+	JoinedAt pgtype.Timestamp `json:"joined_at"`
+}
+
+type RoomWinner struct {
+	RoomID int32            `json:"room_id"`
+	UserID int32            `json:"user_id"`
+	Prize  pgtype.Numeric   `json:"prize"`
+	WonAt  pgtype.Timestamp `json:"won_at"`
+}
+
 type User struct {
 	ID        int32            `json:"id"`
 	Name      string           `json:"name"`
