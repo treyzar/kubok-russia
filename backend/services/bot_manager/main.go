@@ -4,6 +4,7 @@ import (
 	"context"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/SomeSuperCoder/OnlineShop/internal/crons"
 	"github.com/hx/eon"
@@ -21,7 +22,7 @@ func main() {
 	scheduler := eon.NewScheduler(ctx)
 
 	// Run a simple, one-off job
-	scheduler.Run(ctx, &eon.Job{
+	scheduler.Schedule(ctx, time.Second, 10*time.Second, &eon.Job{
 		Runner: crons.BotManager,
 	})
 

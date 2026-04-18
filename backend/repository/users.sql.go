@@ -11,10 +11,45 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countBots = `-- name: CountBots :one
+SELECT COUNT(*) FROM users WHERE bot = true
+`
+
+func (q *Queries) CountBots(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countBots)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const createBot = `-- name: CreateBot :one
+INSERT INTO users (name, balance, bot)
+VALUES ($1, $2, true)
+RETURNING id, name, balance, created_at, bot
+`
+
+type CreateBotParams struct {
+	Name    string         `json:"name"`
+	Balance pgtype.Numeric `json:"balance"`
+}
+
+func (q *Queries) CreateBot(ctx context.Context, arg CreateBotParams) (User, error) {
+	row := q.db.QueryRow(ctx, createBot, arg.Name, arg.Balance)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Balance,
+		&i.CreatedAt,
+		&i.Bot,
+	)
+	return i, err
+}
+
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (name, balance)
 VALUES ($1, $2)
-RETURNING id, name, balance, created_at
+RETURNING id, name, balance, created_at, bot
 `
 
 type CreateUserParams struct {
@@ -30,6 +65,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.Name,
 		&i.Balance,
 		&i.CreatedAt,
+		&i.Bot,
 	)
 	return i, err
 }
@@ -49,7 +85,7 @@ func (q *Queries) DeleteUser(ctx context.Context, arg DeleteUserParams) error {
 }
 
 const getUser = `-- name: GetUser :one
-SELECT id, name, balance, created_at FROM users
+SELECT id, name, balance, created_at, bot FROM users
 WHERE id = $1
 `
 
@@ -65,6 +101,23 @@ func (q *Queries) GetUser(ctx context.Context, arg GetUserParams) (User, error) 
 		&i.Name,
 		&i.Balance,
 		&i.CreatedAt,
+		&i.Bot,
 	)
 	return i, err
+}
+
+const increaseBalanceForLowBalanceBots = `-- name: IncreaseBalanceForLowBalanceBots :exec
+UPDATE users
+SET balance = balance + $1
+WHERE balance < $2 AND bot = true
+`
+
+type IncreaseBalanceForLowBalanceBotsParams struct {
+	Balance   pgtype.Numeric `json:"balance"`
+	Balance_2 pgtype.Numeric `json:"balance_2"`
+}
+
+func (q *Queries) IncreaseBalanceForLowBalanceBots(ctx context.Context, arg IncreaseBalanceForLowBalanceBotsParams) error {
+	_, err := q.db.Exec(ctx, increaseBalanceForLowBalanceBots, arg.Balance, arg.Balance_2)
+	return err
 }

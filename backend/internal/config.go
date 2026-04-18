@@ -22,6 +22,8 @@ type AppConfig struct {
 	TestMode bool   `envconfig:"API_TEST"`
 	// User Experience
 	UserCartExpiry time.Duration `envconfig:"USER_CART_EXPIRY" default:"720h"`
+	// Bot Manager
+	DesiredBotCount int `envconfig:"DESIRED_BOT_COUNT" default:"10"`
 }
 
 func LoadAppConfig() *AppConfig {

@@ -28,6 +28,7 @@ type RoomBoost struct {
 type RoomPlayer struct {
 	RoomID   int32            `json:"room_id"`
 	UserID   int32            `json:"user_id"`
+	Places   *int32           `json:"places"`
 	JoinedAt pgtype.Timestamp `json:"joined_at"`
 }
 
@@ -43,4 +44,5 @@ type User struct {
 	Name      string           `json:"name"`
 	Balance   pgtype.Numeric   `json:"balance"`
 	CreatedAt pgtype.Timestamp `json:"created_at"`
+	Bot       bool             `json:"bot"`
 }
