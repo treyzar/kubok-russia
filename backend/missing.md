@@ -83,17 +83,6 @@ Test users need a way to have their balance adjusted for demo/testing purposes.
 
 ---
 
-## 9. JWT Authentication Not Implemented
-
-`AppConfig` has `AccessTokenSecret`, `RefreshTokenSecret`, `AccessTokenExpiry`, `RefreshTokenExpiry` fields, but:
-
-- No auth middleware exists.
-- No login/register endpoints exist.
-- All routes are fully public.
-- Required: at minimum a `POST /auth/login` endpoint and a JWT middleware protecting write operations, so the system can identify which real user is performing actions.
-
----
-
 ## 10. External Random Number Generator (RNG) Support
 
 The project spec explicitly mentions the ability to plug in an **external RNG API** for winner determination.
