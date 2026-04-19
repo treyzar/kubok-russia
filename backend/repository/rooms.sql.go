@@ -7,6 +7,7 @@ package repository
 
 import (
 	"context"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -28,9 +29,9 @@ RETURNING room_id, jackpot, start_time, status, players_needed, created_at, upda
 `
 
 type AddMoneyToJackpotParams struct {
-	RoomID  int32          `json:"room_id"`
-	Jackpot pgtype.Numeric `json:"jackpot"`
-	ID      int32          `json:"id"`
+	RoomID  int32 `json:"room_id"`
+	Jackpot int32 `json:"jackpot"`
+	ID      int32 `json:"id"`
 }
 
 func (q *Queries) AddMoneyToJackpot(ctx context.Context, arg AddMoneyToJackpotParams) (Room, error) {
@@ -49,7 +50,7 @@ func (q *Queries) AddMoneyToJackpot(ctx context.Context, arg AddMoneyToJackpotPa
 	return i, err
 }
 
-const botJoinRoom = `-- name: BotJoinRoom :one
+const botJoinRoom = `-- name: BotJoinRoom :many
 WITH room_info AS (
     SELECT entry_cost, status, players_needed FROM rooms WHERE rooms.room_id = $1
 ),
@@ -91,22 +92,35 @@ type BotJoinRoomParams struct {
 }
 
 type BotJoinRoomRow struct {
-	RoomID   int32            `json:"room_id"`
-	UserID   int32            `json:"user_id"`
-	Places   *int32           `json:"places"`
-	JoinedAt pgtype.Timestamp `json:"joined_at"`
+	RoomID   int32     `json:"room_id"`
+	UserID   int32     `json:"user_id"`
+	Places   *int32    `json:"places"`
+	JoinedAt time.Time `json:"joined_at"`
 }
 
-func (q *Queries) BotJoinRoom(ctx context.Context, arg BotJoinRoomParams) (BotJoinRoomRow, error) {
-	row := q.db.QueryRow(ctx, botJoinRoom, arg.RoomID, arg.ID, arg.Places)
-	var i BotJoinRoomRow
-	err := row.Scan(
-		&i.RoomID,
-		&i.UserID,
-		&i.Places,
-		&i.JoinedAt,
-	)
-	return i, err
+func (q *Queries) BotJoinRoom(ctx context.Context, arg BotJoinRoomParams) ([]BotJoinRoomRow, error) {
+	rows, err := q.db.Query(ctx, botJoinRoom, arg.RoomID, arg.ID, arg.Places)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []BotJoinRoomRow{}
+	for rows.Next() {
+		var i BotJoinRoomRow
+		if err := rows.Scan(
+			&i.RoomID,
+			&i.UserID,
+			&i.Places,
+			&i.JoinedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const countRoomPlayers = `-- name: CountRoomPlayers :one
@@ -150,15 +164,15 @@ LIMIT $3
 `
 
 type GetAvailableBotsForRoomParams struct {
-	Balance pgtype.Numeric `json:"balance"`
-	RoomID  int32          `json:"room_id"`
-	Limit   int32          `json:"limit"`
+	Balance int32 `json:"balance"`
+	RoomID  int32 `json:"room_id"`
+	Limit   int32 `json:"limit"`
 }
 
 type GetAvailableBotsForRoomRow struct {
-	ID      int32          `json:"id"`
-	Name    string         `json:"name"`
-	Balance pgtype.Numeric `json:"balance"`
+	ID      int32  `json:"id"`
+	Name    string `json:"name"`
+	Balance int32  `json:"balance"`
 }
 
 func (q *Queries) GetAvailableBotsForRoom(ctx context.Context, arg GetAvailableBotsForRoomParams) ([]GetAvailableBotsForRoomRow, error) {
@@ -189,14 +203,14 @@ LIMIT $2
 `
 
 type GetBotsWithMinBalanceParams struct {
-	Balance pgtype.Numeric `json:"balance"`
-	Limit   int32          `json:"limit"`
+	Balance int32 `json:"balance"`
+	Limit   int32 `json:"limit"`
 }
 
 type GetBotsWithMinBalanceRow struct {
-	ID      int32          `json:"id"`
-	Name    string         `json:"name"`
-	Balance pgtype.Numeric `json:"balance"`
+	ID      int32  `json:"id"`
+	Name    string `json:"name"`
+	Balance int32  `json:"balance"`
 }
 
 func (q *Queries) GetBotsWithMinBalance(ctx context.Context, arg GetBotsWithMinBalanceParams) ([]GetBotsWithMinBalanceRow, error) {
@@ -226,11 +240,11 @@ RETURNING room_id, jackpot, start_time, status, players_needed, created_at, upda
 `
 
 type InsertRoomParams struct {
-	Jackpot       pgtype.Numeric   `json:"jackpot"`
-	StartTime     pgtype.Timestamp `json:"start_time"`
-	Status        string           `json:"status"`
-	PlayersNeeded int32            `json:"players_needed"`
-	EntryCost     pgtype.Numeric   `json:"entry_cost"`
+	Jackpot       int32              `json:"jackpot"`
+	StartTime     pgtype.Timestamptz `json:"start_time"`
+	Status        string             `json:"status"`
+	PlayersNeeded int32              `json:"players_needed"`
+	EntryCost     int32              `json:"entry_cost"`
 }
 
 func (q *Queries) InsertRoom(ctx context.Context, arg InsertRoomParams) (Room, error) {
@@ -286,16 +300,16 @@ SELECT room_id, user_id, amount, boosted_at FROM inserted
 `
 
 type InsertRoomBoostParams struct {
-	RoomID int32          `json:"room_id"`
-	ID     int32          `json:"id"`
-	Amount pgtype.Numeric `json:"amount"`
+	RoomID int32 `json:"room_id"`
+	ID     int32 `json:"id"`
+	Amount int32 `json:"amount"`
 }
 
 type InsertRoomBoostRow struct {
-	RoomID    int32            `json:"room_id"`
-	UserID    int32            `json:"user_id"`
-	Amount    pgtype.Numeric   `json:"amount"`
-	BoostedAt pgtype.Timestamp `json:"boosted_at"`
+	RoomID    int32     `json:"room_id"`
+	UserID    int32     `json:"user_id"`
+	Amount    int32     `json:"amount"`
+	BoostedAt time.Time `json:"boosted_at"`
 }
 
 func (q *Queries) InsertRoomBoost(ctx context.Context, arg InsertRoomBoostParams) (InsertRoomBoostRow, error) {
@@ -330,16 +344,16 @@ SELECT room_id, user_id, prize, won_at FROM inserted
 `
 
 type InsertRoomWinParams struct {
-	RoomID int32          `json:"room_id"`
-	UserID int32          `json:"user_id"`
-	Prize  pgtype.Numeric `json:"prize"`
+	RoomID int32 `json:"room_id"`
+	UserID int32 `json:"user_id"`
+	Prize  int32 `json:"prize"`
 }
 
 type InsertRoomWinRow struct {
-	RoomID int32            `json:"room_id"`
-	UserID int32            `json:"user_id"`
-	Prize  pgtype.Numeric   `json:"prize"`
-	WonAt  pgtype.Timestamp `json:"won_at"`
+	RoomID int32     `json:"room_id"`
+	UserID int32     `json:"user_id"`
+	Prize  int32     `json:"prize"`
+	WonAt  time.Time `json:"won_at"`
 }
 
 func (q *Queries) InsertRoomWin(ctx context.Context, arg InsertRoomWinParams) (InsertRoomWinRow, error) {
@@ -395,10 +409,10 @@ type JoinRoomParams struct {
 }
 
 type JoinRoomRow struct {
-	RoomID   int32            `json:"room_id"`
-	UserID   int32            `json:"user_id"`
-	Places   *int32           `json:"places"`
-	JoinedAt pgtype.Timestamp `json:"joined_at"`
+	RoomID   int32     `json:"room_id"`
+	UserID   int32     `json:"user_id"`
+	Places   *int32    `json:"places"`
+	JoinedAt time.Time `json:"joined_at"`
 }
 
 func (q *Queries) JoinRoom(ctx context.Context, arg JoinRoomParams) (JoinRoomRow, error) {
@@ -443,11 +457,11 @@ player_count AS (
 )
 UPDATE rooms
 SET status = CASE 
-    WHEN (SELECT status FROM room_info) = 'new' AND (SELECT count FROM player_count) > 0 THEN 'starting_soon'
+    WHEN (SELECT status FROM room_info) = 'new' AND EXISTS (SELECT 1 FROM inserted) THEN 'starting_soon'
     ELSE status
 END,
 start_time = CASE
-    WHEN (SELECT status FROM room_info) = 'new' AND (SELECT count FROM player_count) = 1 THEN CURRENT_TIMESTAMP + INTERVAL '1 minute'
+    WHEN (SELECT status FROM room_info) = 'new' AND (SELECT count FROM current_player_count) = 0 AND EXISTS (SELECT 1 FROM inserted) THEN CURRENT_TIMESTAMP + INTERVAL '1 minute'
     ELSE start_time
 END,
 jackpot = CASE
@@ -512,10 +526,10 @@ type LeaveRoomParams struct {
 }
 
 type LeaveRoomRow struct {
-	RoomID   int32            `json:"room_id"`
-	UserID   int32            `json:"user_id"`
-	Places   *int32           `json:"places"`
-	JoinedAt pgtype.Timestamp `json:"joined_at"`
+	RoomID   int32     `json:"room_id"`
+	UserID   int32     `json:"user_id"`
+	Places   *int32    `json:"places"`
+	JoinedAt time.Time `json:"joined_at"`
 }
 
 func (q *Queries) LeaveRoom(ctx context.Context, arg LeaveRoomParams) (LeaveRoomRow, error) {

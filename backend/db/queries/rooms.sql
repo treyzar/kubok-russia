@@ -98,11 +98,11 @@ player_count AS (
 )
 UPDATE rooms
 SET status = CASE 
-    WHEN (SELECT status FROM room_info) = 'new' AND (SELECT count FROM player_count) > 0 THEN 'starting_soon'
+    WHEN (SELECT status FROM room_info) = 'new' AND EXISTS (SELECT 1 FROM inserted) THEN 'starting_soon'
     ELSE status
 END,
 start_time = CASE
-    WHEN (SELECT status FROM room_info) = 'new' AND (SELECT count FROM player_count) = 1 THEN CURRENT_TIMESTAMP + INTERVAL '1 minute'
+    WHEN (SELECT status FROM room_info) = 'new' AND (SELECT count FROM current_player_count) = 0 AND EXISTS (SELECT 1 FROM inserted) THEN CURRENT_TIMESTAMP + INTERVAL '1 minute'
     ELSE start_time
 END,
 jackpot = CASE
@@ -231,7 +231,7 @@ SELECT * FROM room_boosts
 WHERE room_id = $1
 ORDER BY boosted_at DESC;
 
--- name: BotJoinRoom :one
+-- name: BotJoinRoom :many
 WITH room_info AS (
     SELECT entry_cost, status, players_needed FROM rooms WHERE rooms.room_id = $1
 ),

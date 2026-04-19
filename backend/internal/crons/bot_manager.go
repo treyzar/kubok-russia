@@ -4,13 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"math/big"
 	"math/rand"
 
 	"github.com/SomeSuperCoder/OnlineShop/internal"
 	"github.com/SomeSuperCoder/OnlineShop/repository"
 	"github.com/hx/eon"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -49,15 +47,10 @@ func BotManager(pool *pgxpool.Pool, config *internal.AppConfig) func(*eon.Contex
 				// Generate random Russian name with number suffix for uniqueness
 				name := fmt.Sprintf("%s_%d", generateRandomRussianName(), rand.Intn(10000))
 
-				// Create bot with initial balance of 0
+				// Create bot with initial balance of 500 (game currency)
 				_, err := queries.CreateBot(context.Background(), repository.CreateBotParams{
-					Name: name,
-					Balance: pgtype.Numeric{
-						Int:   big.NewInt(0),
-						Exp:   0,
-						NaN:   false,
-						Valid: true,
-					},
+					Name:    name,
+					Balance: 500,
 				})
 				if err != nil {
 					log.Printf("Failed to create bot: %v", err)
@@ -67,20 +60,10 @@ func BotManager(pool *pgxpool.Pool, config *internal.AppConfig) func(*eon.Contex
 			}
 		}
 
-		// Increase balance for bots with balance < 500
+		// Increase balance by 200 for bots with balance < 500
 		err = queries.IncreaseBalanceForLowBalanceBots(context.Background(), repository.IncreaseBalanceForLowBalanceBotsParams{
-			Balance: pgtype.Numeric{
-				Int:   big.NewInt(200),
-				Exp:   0,
-				NaN:   false,
-				Valid: true,
-			},
-			Balance_2: pgtype.Numeric{
-				Int:   big.NewInt(500),
-				Exp:   0,
-				NaN:   false,
-				Valid: true,
-			},
+			Balance:   200,
+			Balance_2: 500,
 		})
 		if err != nil {
 			return err

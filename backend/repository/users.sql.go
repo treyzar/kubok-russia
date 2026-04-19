@@ -7,8 +7,6 @@ package repository
 
 import (
 	"context"
-
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const countBots = `-- name: CountBots :one
@@ -29,8 +27,8 @@ RETURNING id, name, balance, created_at, bot
 `
 
 type CreateBotParams struct {
-	Name    string         `json:"name"`
-	Balance pgtype.Numeric `json:"balance"`
+	Name    string `json:"name"`
+	Balance int32  `json:"balance"`
 }
 
 func (q *Queries) CreateBot(ctx context.Context, arg CreateBotParams) (User, error) {
@@ -53,8 +51,8 @@ RETURNING id, name, balance, created_at, bot
 `
 
 type CreateUserParams struct {
-	Name    string         `json:"name"`
-	Balance pgtype.Numeric `json:"balance"`
+	Name    string `json:"name"`
+	Balance int32  `json:"balance"`
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
@@ -113,11 +111,42 @@ WHERE balance < $2 AND bot = true
 `
 
 type IncreaseBalanceForLowBalanceBotsParams struct {
-	Balance   pgtype.Numeric `json:"balance"`
-	Balance_2 pgtype.Numeric `json:"balance_2"`
+	Balance   int32 `json:"balance"`
+	Balance_2 int32 `json:"balance_2"`
 }
 
 func (q *Queries) IncreaseBalanceForLowBalanceBots(ctx context.Context, arg IncreaseBalanceForLowBalanceBotsParams) error {
 	_, err := q.db.Exec(ctx, increaseBalanceForLowBalanceBots, arg.Balance, arg.Balance_2)
 	return err
+}
+
+const listUsers = `-- name: ListUsers :many
+SELECT id, name, balance, created_at, bot FROM users
+ORDER BY id ASC
+`
+
+func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
+	rows, err := q.db.Query(ctx, listUsers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []User{}
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Balance,
+			&i.CreatedAt,
+			&i.Bot,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

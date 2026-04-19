@@ -24,7 +24,7 @@ func main() {
 	}
 	defer pool.Close()
 
-	log.Println("Room Manager: Database connection pool initialized")
+	log.Println("🎮 Room Manager: Database connection pool initialized")
 
 	// Create a context that listens for OS interrupt signals (like CTRL+C)
 	ctx, _ := signal.NotifyContext(
@@ -41,7 +41,8 @@ func main() {
 		Runner: crons.RoomStarter(pool),
 	})
 
-	log.Println("Room Manager: Cron jobs scheduled and running")
+	log.Println("🎮 Room Manager: Monitoring rooms every 1 second for auto-start")
+	log.Println("🎮 Room Manager: Service is ready")
 
 	// Keep the application running until a signal is received
 	<-ctx.Done()

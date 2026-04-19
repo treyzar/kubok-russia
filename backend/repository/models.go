@@ -5,45 +5,47 @@
 package repository
 
 import (
+	"time"
+
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Room struct {
-	RoomID        int32            `json:"room_id"`
-	Jackpot       pgtype.Numeric   `json:"jackpot"`
-	StartTime     pgtype.Timestamp `json:"start_time"`
-	Status        string           `json:"status"`
-	PlayersNeeded int32            `json:"players_needed"`
-	CreatedAt     pgtype.Timestamp `json:"created_at"`
-	UpdatedAt     pgtype.Timestamp `json:"updated_at"`
-	EntryCost     pgtype.Numeric   `json:"entry_cost"`
+	RoomID        int32              `json:"room_id"`
+	Jackpot       int32              `json:"jackpot"`
+	StartTime     pgtype.Timestamptz `json:"start_time"`
+	Status        string             `json:"status"`
+	PlayersNeeded int32              `json:"players_needed"`
+	CreatedAt     time.Time          `json:"created_at"`
+	UpdatedAt     time.Time          `json:"updated_at"`
+	EntryCost     int32              `json:"entry_cost"`
 }
 
 type RoomBoost struct {
-	RoomID    int32            `json:"room_id"`
-	UserID    int32            `json:"user_id"`
-	Amount    pgtype.Numeric   `json:"amount"`
-	BoostedAt pgtype.Timestamp `json:"boosted_at"`
+	RoomID    int32     `json:"room_id"`
+	UserID    int32     `json:"user_id"`
+	Amount    int32     `json:"amount"`
+	BoostedAt time.Time `json:"boosted_at"`
 }
 
 type RoomPlayer struct {
-	RoomID   int32            `json:"room_id"`
-	UserID   int32            `json:"user_id"`
-	Places   *int32           `json:"places"`
-	JoinedAt pgtype.Timestamp `json:"joined_at"`
+	RoomID   int32     `json:"room_id"`
+	UserID   int32     `json:"user_id"`
+	Places   *int32    `json:"places"`
+	JoinedAt time.Time `json:"joined_at"`
 }
 
 type RoomWinner struct {
-	RoomID int32            `json:"room_id"`
-	UserID int32            `json:"user_id"`
-	Prize  pgtype.Numeric   `json:"prize"`
-	WonAt  pgtype.Timestamp `json:"won_at"`
+	RoomID int32     `json:"room_id"`
+	UserID int32     `json:"user_id"`
+	Prize  int32     `json:"prize"`
+	WonAt  time.Time `json:"won_at"`
 }
 
 type User struct {
-	ID        int32            `json:"id"`
-	Name      string           `json:"name"`
-	Balance   pgtype.Numeric   `json:"balance"`
-	CreatedAt pgtype.Timestamp `json:"created_at"`
-	Bot       bool             `json:"bot"`
+	ID        int32     `json:"id"`
+	Name      string    `json:"name"`
+	Balance   int32     `json:"balance"`
+	CreatedAt time.Time `json:"created_at"`
+	Bot       bool      `json:"bot"`
 }

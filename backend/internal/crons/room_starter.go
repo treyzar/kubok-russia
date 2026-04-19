@@ -11,16 +11,32 @@ import (
 )
 
 func RoomStarter(pool *pgxpool.Pool) func(*eon.Context) error {
+	executionCount := 0
 	return func(ctx *eon.Context) error {
+		executionCount++
 		queries := repository.New(pool)
 
 		// Get all rooms with status 'starting_soon'
 		rooms, err := queries.ListRooms(context.Background())
 		if err != nil {
+			log.Printf("[RoomStarter] Error listing rooms: %v", err)
 			return err
 		}
 
 		now := time.Now()
+		roomsToStart := 0
+
+		// Count rooms that need to start
+		for _, room := range rooms {
+			if room.Status == "starting_soon" && room.StartTime.Valid && !room.StartTime.Time.After(now) {
+				roomsToStart++
+			}
+		}
+
+		// Log periodic status every 10 executions (10 seconds)
+		if executionCount%10 == 0 {
+			log.Printf("[RoomStarter] Execution #%d: Found %d rooms, %d ready to start", executionCount, len(rooms), roomsToStart)
+		}
 
 		for _, room := range rooms {
 			// Skip if not starting_soon
@@ -30,20 +46,24 @@ func RoomStarter(pool *pgxpool.Pool) func(*eon.Context) error {
 
 			// Check if start_time is valid and has passed
 			if !room.StartTime.Valid {
-				log.Printf("Room %d has invalid start_time, skipping", room.RoomID)
+				log.Printf("[RoomStarter] Room %d has invalid start_time, skipping", room.RoomID)
 				continue
 			}
 
+			timeUntilStart := room.StartTime.Time.Sub(now)
 			if room.StartTime.Time.After(now) {
+				if timeUntilStart < 5*time.Second {
+					log.Printf("[RoomStarter] Room %d will start in %.1f seconds", room.RoomID, timeUntilStart.Seconds())
+				}
 				continue
 			}
 
-			log.Printf("Starting room %d", room.RoomID)
+			log.Printf("[RoomStarter] ⏰ Starting room %d (start_time was %v)", room.RoomID, room.StartTime.Time.Format("15:04:05"))
 
 			// Start a transaction for atomic operations
 			tx, err := pool.Begin(context.Background())
 			if err != nil {
-				log.Printf("Failed to start transaction for room %d: %v", room.RoomID, err)
+				log.Printf("[RoomStarter] ❌ Failed to start transaction for room %d: %v", room.RoomID, err)
 				continue
 			}
 
@@ -54,7 +74,7 @@ func RoomStarter(pool *pgxpool.Pool) func(*eon.Context) error {
 				RoomID: room.RoomID,
 			})
 			if err != nil {
-				log.Printf("Failed to count players in room %d: %v", room.RoomID, err)
+				log.Printf("[RoomStarter] ❌ Failed to count players in room %d: %v", room.RoomID, err)
 				tx.Rollback(context.Background())
 				continue
 			}
@@ -66,7 +86,7 @@ func RoomStarter(pool *pgxpool.Pool) func(*eon.Context) error {
 				botsNeeded = 0
 			}
 
-			log.Printf("Room %d needs %d bots (has %d/%d players)", room.RoomID, botsNeeded, currentPlayers, room.PlayersNeeded)
+			log.Printf("[RoomStarter] 🤖 Room %d needs %d bots (has %d/%d players)", room.RoomID, botsNeeded, currentPlayers, room.PlayersNeeded)
 
 			// Get available bots (excluding those already in the room)
 			var bots []repository.GetAvailableBotsForRoomRow
@@ -77,14 +97,14 @@ func RoomStarter(pool *pgxpool.Pool) func(*eon.Context) error {
 					Limit:   int32(botsNeeded),
 				})
 				if err != nil {
-					log.Printf("Failed to get bots: %v", err)
+					log.Printf("[RoomStarter] ❌ Failed to get bots: %v", err)
 					tx.Rollback(context.Background())
 					continue
 				}
 
 				// Check if we have enough bots
 				if len(bots) < botsNeeded {
-					log.Printf("Not enough bots available for room %d (need %d, found %d). Room will not start.",
+					log.Printf("[RoomStarter] ⚠️  Not enough bots available for room %d (need %d, found %d). Room will not start.",
 						room.RoomID, botsNeeded, len(bots))
 					tx.Rollback(context.Background())
 					continue
@@ -94,24 +114,28 @@ func RoomStarter(pool *pgxpool.Pool) func(*eon.Context) error {
 			// Add bots to the room
 			addedBots := 0
 			for _, bot := range bots {
-				_, err := txQueries.BotJoinRoom(context.Background(), repository.BotJoinRoomParams{
+				rows, err := txQueries.BotJoinRoom(context.Background(), repository.BotJoinRoomParams{
 					RoomID: room.RoomID,
 					ID:     bot.ID,
 					Places: nil,
 				})
 				if err != nil {
-					log.Printf("Failed to add bot %s (ID: %d) to room %d: %v", bot.Name, bot.ID, room.RoomID, err)
-					// Rollback the entire transaction if any bot fails to join
+					log.Printf("[RoomStarter] ❌ Failed to add bot %s (ID: %d) to room %d: %v", bot.Name, bot.ID, room.RoomID, err)
+					tx.Rollback(context.Background())
+					goto nextRoom
+				}
+				if len(rows) == 0 {
+					log.Printf("[RoomStarter] ❌ Bot %s (ID: %d) failed to join room %d (conditions not met)", bot.Name, bot.ID, room.RoomID)
 					tx.Rollback(context.Background())
 					goto nextRoom
 				}
 				addedBots++
-				log.Printf("Added bot %s to room %d", bot.Name, room.RoomID)
+				log.Printf("[RoomStarter] ✅ Added bot %s to room %d", bot.Name, room.RoomID)
 			}
 
 			// Verify we added all needed bots
 			if addedBots != botsNeeded {
-				log.Printf("Failed to add all bots to room %d (added %d/%d), rolling back",
+				log.Printf("[RoomStarter] ❌ Failed to add all bots to room %d (added %d/%d), rolling back",
 					room.RoomID, addedBots, botsNeeded)
 				tx.Rollback(context.Background())
 				continue
@@ -123,7 +147,7 @@ func RoomStarter(pool *pgxpool.Pool) func(*eon.Context) error {
 				Status: "playing",
 			})
 			if err != nil {
-				log.Printf("Failed to set room %d to playing: %v", room.RoomID, err)
+				log.Printf("[RoomStarter] ❌ Failed to set room %d to playing: %v", room.RoomID, err)
 				tx.Rollback(context.Background())
 				continue
 			}
@@ -131,11 +155,11 @@ func RoomStarter(pool *pgxpool.Pool) func(*eon.Context) error {
 			// Commit the transaction
 			err = tx.Commit(context.Background())
 			if err != nil {
-				log.Printf("Failed to commit transaction for room %d: %v", room.RoomID, err)
+				log.Printf("[RoomStarter] ❌ Failed to commit transaction for room %d: %v", room.RoomID, err)
 				continue
 			}
 
-			log.Printf("Room %d successfully started with %d bots added", room.RoomID, addedBots)
+			log.Printf("[RoomStarter] 🎮 Room %d successfully started with %d bots added", room.RoomID, addedBots)
 
 		nextRoom:
 			// Continue to next room
