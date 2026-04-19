@@ -1,491 +1,391 @@
-# 🏛️ Intelligent Citizen Appeals Processing System
+# 🎮 OnlineShop Backend
 
-<div align="center">
-
-**Transform citizen engagement with AI-powered appeal management**
-
-[![Go Version](https://img.shields.io/badge/Go-1.25.5-00ADD8?style=flat&logo=go)](https://golang.org/)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-14+-336791?style=flat&logo=postgresql)](https://www.postgresql.org/)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![API Docs](https://img.shields.io/badge/API-Swagger-85EA2D?style=flat&logo=swagger)](http://localhost:8888/api/v1/docs)
-
-*Built for the Chuvash Republic Programming Cup 2026*
-
-[Features](#-features) • [Quick Start](#-quick-start) • [Demo](#-demo) • [Documentation](#-documentation) • [Architecture](#-architecture)
-
-</div>
+> Бэкенд для платформы лотерейных комнат с автоматическим управлением, ботами и системой бустов.
 
 ---
 
-## 🎯 The Problem
+## 📦 Технологии
 
-Government agencies receive thousands of citizen appeals daily from multiple channels - web portals, hotlines, mobile apps, and social media. These channels are fragmented, leading to:
+| Инструмент | Назначение |
+|---|---|
+| **Go 1.25** | Основной язык |
+| **Gin** | HTTP-роутер |
+| **Huma v2** | OpenAPI-обёртка над Gin, валидация запросов/ответов |
+| **PostgreSQL** | Основная база данных |
+| **Redis** | Клиент подключён, зарезервирован для будущих фич |
+| **pgx/v5** | Драйвер PostgreSQL + пул соединений |
+| **sqlc** | Генерация типобезопасного Go-кода из SQL-запросов |
+| **Goose** | Миграции базы данных |
+| **go-redis/v9** | Redis-клиент |
+| **eon** | Планировщик cron-задач |
+| **godotenv + envconfig** | Загрузка конфигурации из `.env` |
+| **golang-jwt/v5** | JWT (подключён, зарезервирован) |
+| **Docker Compose** | Запуск PostgreSQL и Redis |
 
-- 📉 **Lost appeals** - Messages fall through the cracks
-- 🔄 **Duplicate processing** - Same issue reported multiple times
-- ⏱️ **Delayed responses** - No unified tracking system
-- 📊 **No analytics** - Impossible to identify problem areas
-- 🤷 **Zero transparency** - Citizens can't track their appeals
+---
 
-## 💡 The Solution
-
-A unified CRM system that intelligently processes citizen appeals with:
-
-### 🤖 AI-Powered Duplicate Detection
-Uses semantic embeddings and vector similarity to automatically identify duplicate appeals - even when worded differently. No more processing the same issue twice!
+## 🗂️ Структура проекта
 
 ```
-"Нет отопления в доме"  ←→  "Холодные батареи"
-        ↓                           ↓
-   [Embedding]              [Embedding]
-        ↓                           ↓
-    Similarity: 92% → DUPLICATE DETECTED ✓
+backend/
+├── services/
+│   ├── api/          # HTTP API сервис
+│   ├── bot_manager/  # Сервис управления ботами
+│   └── room_manager/ # Сервис управления комнатами
+├── handlers/         # Обработчики HTTP-запросов
+├── internal/
+│   ├── config.go     # Загрузка конфигурации
+│   ├── database.go   # Подключение к БД
+│   └── crons/        # Cron-задачи
+├── repository/       # Сгенерированный sqlc-код
+├── db/
+│   ├── migrations/   # SQL-миграции (Goose)
+│   └── queries/      # SQL-запросы для sqlc
+└── tests/
+    ├── api/          # Интеграционные тесты API
+    ├── room_management/ # Тесты управления комнатами
+    └── boost_calc/   # Тесты формул буста
 ```
 
-### 🗺️ Geographic Heatmap
-Visualize problem areas on an interactive map. Instantly identify neighborhoods with the most issues.
+---
 
-### 📊 Real-Time Analytics
-Track KPIs, department efficiency, and resolution times. Make data-driven decisions.
+## ⚙️ Конфигурация
 
-### 🔄 Complete Audit Trail
-Every action is logged. Full transparency from submission to resolution.
+Все параметры загружаются из файла `.env` через `godotenv` + `envconfig`.
+
+| Переменная | Описание |
+|---|---|
+| `GOOSE_DBSTRING` | URL подключения к PostgreSQL |
+| `REDIS_URL` | Адрес Redis (`host:port`) |
+| `ACCESS_TOKEN_SECRET` | Секрет для access JWT |
+| `REFRESH_TOKEN_SECRET` | Секрет для refresh JWT |
+| `ACCESS_TOKEN_EXPIRY` | Время жизни access-токена |
+| `REFRESH_TOKEN_EXPIRY` | Время жизни refresh-токена |
+| `PORT` | Порт HTTP API |
+| `API_TEST` | Тестовый режим (`true`/`false`) |
+| `USER_CART_EXPIRY` | TTL корзины пользователя (по умолчанию `720h`) |
+| `DESIRED_BOT_COUNT` | Желаемое количество ботов (по умолчанию `10`) |
 
 ---
 
-## ✨ Features
+## 🚀 Запуск
 
-<table>
-<tr>
-<td width="50%">
-
-### 🎯 Core Features
-- ✅ **Multi-channel intake** - Web, mobile, social media
-- 🤖 **AI duplicate detection** - Semantic similarity search
-- 🗺️ **Geographic heatmap** - Problem area visualization
-- 📊 **Real-time statistics** - Live dashboards
-- 🔍 **Advanced search** - Semantic and filter-based
-- 📝 **Complete history** - Full audit trail
-- 🏷️ **Smart tagging** - Organize and prioritize
-- 💬 **Comments system** - Internal communication
-
-</td>
-<td width="50%">
-
-### 🛡️ Enterprise Ready
-- 🔐 **Role-based access** - Admin, Org, Executor
-- 🏢 **Multi-department** - Hierarchical organization
-- ⚡ **High performance** - Optimized queries
-- 📈 **Scalable** - Horizontal and vertical
-- 🔄 **Transaction safety** - ACID compliance
-- 📱 **API-first** - RESTful with OpenAPI
-- 🐳 **Docker ready** - Easy deployment
-- 📚 **Auto-documented** - Swagger UI
-
-</td>
-</tr>
-</table>
-
----
-
-## 🚀 Quick Start
-
-Get up and running in **5 minutes**:
+### 1. Поднять базы данных
 
 ```bash
-# 1. Clone the repository
-git clone <repository-url>
-cd <project-directory>
-
-# 2. Start databases (PostgreSQL + Redis)
 make databases
+```
 
-# 3. Run migrations and generate code
+Запускает PostgreSQL и Redis через Docker Compose (`db/docker-compose.yaml`).
+
+### 2. Применить миграции и сгенерировать код
+
+```bash
 make migrate
+```
 
-# 4. Load mock data (optional but recommended)
-make mock
+Выполняет `goose up` + `sqlc generate`.
 
-# Note: Requires Ollama running locally with nomic-embed-text-v2-moe model
-# If Ollama is not available, the script will use fallback embeddings
+### 3. Запустить все сервисы
 
-# 5. Start the API server
+```bash
 make serve
 ```
 
-**That's it!** 🎉
+Запускает три процесса параллельно:
+- `services/api` — HTTP API на порту из `PORT`
+- `services/bot_manager` — менеджер ботов
+- `services/room_manager` — менеджер комнат
 
-Access the API at:
-- 🌐 **API Base**: http://localhost:8888/api/v1
-- 📖 **Swagger UI**: http://localhost:8888/api/v1/docs
-
-> 📘 **Detailed guide**: See [docs/](docs/)
-
----
-
-## 🎬 Demo
-
-### Create an Appeal
+### Запуск только API
 
 ```bash
-curl -X POST http://localhost:8888/api/v1/public/tickets \
-  -H "Content-Type: application/json" \
-  -d '{
-    "description": "Проблема с отоплением в доме",
-    "sender_name": "Иванов Иван",
-    "sender_phone": "+7 900 123 45 67",
-    "longitude": 47.2501,
-    "latitude": 56.1324,
-    "subcategory_id": 1
-  }'
+make api-test
 ```
 
-### Search for Similar Appeals (AI-Powered)
+### Остановить базы данных
 
 ```bash
-curl "http://localhost:8888/api/v1/tickets?query=холодные+батареи"
+make databases-down
 ```
 
-Returns semantically similar appeals with similarity scores!
+---
 
-### Get Real-Time Statistics
+## 🗄️ Схема базы данных
+
+### `users`
+| Поле | Тип | Описание |
+|---|---|---|
+| `id` | SERIAL PK | Идентификатор |
+| `name` | VARCHAR(255) | Имя пользователя |
+| `balance` | INTEGER | Баланс (игровая валюта) |
+| `bot` | BOOLEAN | Является ли ботом |
+| `created_at` | TIMESTAMPTZ | Дата создания |
+
+### `rooms`
+| Поле | Тип | Описание |
+|---|---|---|
+| `room_id` | SERIAL PK | Идентификатор комнаты |
+| `jackpot` | INTEGER | Текущий джекпот |
+| `entry_cost` | INTEGER | Стоимость входа |
+| `players_needed` | INTEGER | Необходимое число игроков |
+| `status` | VARCHAR(20) | `new` / `starting_soon` / `playing` / `finished` |
+| `start_time` | TIMESTAMPTZ | Время старта |
+| `created_at` | TIMESTAMPTZ | Дата создания |
+| `updated_at` | TIMESTAMPTZ | Дата обновления |
+
+### `room_players`
+| Поле | Тип | Описание |
+|---|---|---|
+| `room_id` | INTEGER FK | Комната |
+| `user_id` | INTEGER FK | Игрок |
+| `places` | INTEGER | Количество мест (множитель ставки) |
+| `joined_at` | TIMESTAMPTZ | Время входа |
+
+### `room_boosts`
+| Поле | Тип | Описание |
+|---|---|---|
+| `room_id` | INTEGER FK | Комната |
+| `user_id` | INTEGER FK | Игрок |
+| `amount` | INTEGER | Сумма буста |
+| `boosted_at` | TIMESTAMPTZ | Время буста |
+
+### `room_winners`
+| Поле | Тип | Описание |
+|---|---|---|
+| `room_id` | INTEGER FK | Комната |
+| `user_id` | INTEGER FK | Победитель |
+| `prize` | INTEGER | Приз |
+| `won_at` | TIMESTAMPTZ | Время победы |
+
+---
+
+## 🌐 API
+
+Базовый путь: `/api/v1`
+
+Документация OpenAPI доступна по адресу `/api/v1/openapi.json` (генерируется Huma автоматически).
+
+### 👤 Пользователи
+
+| Метод | Путь | Описание |
+|---|---|---|
+| `POST` | `/users` | Создать пользователя |
+| `GET` | `/users/{id}` | Получить пользователя |
+| `DELETE` | `/users/{id}` | Удалить пользователя |
+
+### 🏠 Комнаты
+
+| Метод | Путь | Описание |
+|---|---|---|
+| `POST` | `/rooms` | Создать комнату |
+| `GET` | `/rooms` | Список всех комнат |
+| `GET` | `/rooms/{room_id}` | Получить комнату |
+
+### 🧑‍🤝‍🧑 Игроки комнаты
+
+| Метод | Путь | Описание |
+|---|---|---|
+| `POST` | `/rooms/{room_id}/players` | Войти в комнату |
+| `DELETE` | `/rooms/{room_id}/players` | Покинуть комнату |
+| `GET` | `/rooms/{room_id}/players` | Список игроков |
+
+### 🏆 Победители
+
+| Метод | Путь | Описание |
+|---|---|---|
+| `GET` | `/rooms/{room_id}/winners` | Список победителей |
+| `GET` | `/rooms/{room_id}/winners/{user_id}` | Получить победителя |
+
+### ⚡ Бусты
+
+| Метод | Путь | Описание |
+|---|---|---|
+| `POST` | `/rooms/{room_id}/boosts` | Забустить комнату |
+| `GET` | `/rooms/{room_id}/boosts` | Список бустов |
+| `GET` | `/rooms/{room_id}/boosts/calc/probability` | Рассчитать вероятность |
+| `GET` | `/rooms/{room_id}/boosts/calc/boost` | Рассчитать нужный буст |
+
+---
+
+## 🔁 Жизненный цикл комнаты
+
+```
+new → starting_soon → playing → finished
+```
+
+### `new`
+Комната только что создана, игроков нет.
+
+### `starting_soon`
+Первый игрок вошёл в комнату. Автоматически устанавливается `start_time = NOW() + 1 минута`.
+
+### `playing`
+`RoomStarter` (каждую секунду) проверяет комнаты со статусом `starting_soon`, у которых `start_time` уже наступил. Если игроков меньше `players_needed`, добирает ботов. Всё происходит в одной транзакции: добавление ботов + смена статуса на `playing`.
+
+### `finished`
+`RoomFinisher` (каждую секунду) проверяет комнаты со статусом `playing`, у которых `start_time + 30 секунд <= NOW()`. Выбирает победителя взвешенной случайностью, атомарно меняет статус на `finished`, начисляет приз и записывает победителя.
+
+---
+
+## 💰 Логика входа в комнату
+
+Запрос `POST /rooms/{room_id}/players` выполняется одним атомарным SQL-запросом (`JoinRoomAndUpdateStatus`), который:
+
+1. Проверяет, что у пользователя достаточно баланса (`balance >= entry_cost`).
+2. Проверяет, что пользователь ещё не в комнате.
+3. Проверяет, что статус комнаты `new` или `starting_soon`.
+4. Проверяет, что в комнате есть свободные места (`count < players_needed`).
+5. Вставляет запись в `room_players`.
+6. Списывает `entry_cost` с баланса пользователя.
+7. Добавляет `entry_cost` к джекпоту комнаты.
+8. Если статус был `new` — меняет на `starting_soon` и устанавливает `start_time = NOW() + 1 минута`.
+
+Если хотя бы одно условие не выполнено — ни одно изменение не применяется.
+
+---
+
+## 🚪 Логика выхода из комнаты
+
+Запрос `DELETE /rooms/{room_id}/players` (`LeaveRoomAndUpdateStatus`):
+
+1. Проверяет, что статус комнаты `new` или `starting_soon` (из `playing` выйти нельзя).
+2. Удаляет игрока из `room_players`.
+3. Возвращает `entry_cost` на баланс пользователя.
+4. Уменьшает джекпот на `entry_cost` (минимум 0).
+5. Если после выхода игроков не осталось — возвращает статус в `new`.
+
+---
+
+## ⚡ Логика буста
+
+Запрос `POST /rooms/{room_id}/boosts` (`InsertRoomBoost`):
+
+1. Проверяет, что статус комнаты `playing` (буст только в активной игре).
+2. Проверяет, что у пользователя достаточно баланса.
+3. Вставляет запись в `room_boosts`.
+4. Списывает `amount` с баланса пользователя.
+5. Добавляет `amount` к джекпоту комнаты.
+
+---
+
+## 📐 Формулы расчёта буста
+
+### Термины
+
+- `poolBase = players_needed × entry_cost` — базовый пул комнаты
+- `acc` — сумма всех бустов в комнате
+- `totalPlayerAmount` — ставка игрока: `places × entry_cost + boost_amount`
+
+### Вероятность победы
+
+```
+probability = 100 × (totalPlayerAmount + boostAmount) / (poolBase + acc + boostAmount)
+```
+
+Эндпоинт: `GET /rooms/{room_id}/boosts/calc/probability?user_id=X&boost_amount=Y`
+
+### Необходимый буст для желаемой вероятности
+
+```
+boostAmount = ceil( (p × (poolBase + acc) - 100 × totalPlayerAmount) / (100 - p) )
+```
+
+Эндпоинт: `GET /rooms/{room_id}/boosts/calc/boost?user_id=X&desired_probability=P`
+
+Параметр `desired_probability` должен быть строго в диапазоне `(0, 100)`, иначе возвращается `400 Bad Request`.
+
+Функции `CalcBoost` и `CalcProbability` являются обратными друг другу: буст, рассчитанный для вероятности `p`, при подстановке в формулу вероятности даёт результат `>= p`.
+
+---
+
+## 🤖 Менеджер ботов (`bot_manager`)
+
+Запускается как отдельный сервис, выполняет cron-задачу каждые **10 секунд**:
+
+1. Считает текущее количество ботов в БД.
+2. Если ботов меньше `DESIRED_BOT_COUNT` — создаёт недостающих. Каждый бот получает случайное русское имя с числовым суффиксом (`Александр_4271`) и начальный баланс **500**.
+3. Всем ботам с балансом < 500 начисляет +200 (пополнение баланса).
+
+---
+
+## 🎮 Менеджер комнат (`room_manager`)
+
+Запускается как отдельный сервис, выполняет две cron-задачи каждую **1 секунду**:
+
+### RoomStarter
+
+- Получает все комнаты со статусом `starting_soon`.
+- Для каждой, у которой `start_time <= NOW()`:
+  - Считает текущих игроков.
+  - Вычисляет `botsNeeded = players_needed - currentPlayers`.
+  - Запрашивает доступных ботов (`GetAvailableBotsForRoom`): боты с `balance >= entry_cost`, не состоящие в этой комнате, в случайном порядке.
+  - Если ботов недостаточно — комната не стартует.
+  - В транзакции: добавляет всех ботов через `BotJoinRoom` + меняет статус на `playing`.
+  - При любой ошибке — откат транзакции.
+
+### RoomFinisher
+
+- Получает все комнаты со статусом `playing`, у которых `start_time + 30 секунд <= NOW()`.
+- Для каждой:
+  - Получает всех игроков с их ставками (`GetPlayersWithStakes`).
+  - Выбирает победителя взвешенной случайностью: вес каждого игрока = `total_stake / sum(total_stakes)`.
+  - Атомарно (`FinishRoomAndAwardWinner`): меняет статус на `finished`, начисляет победителю **80% джекпота**, записывает в `room_winners`.
+
+---
+
+## 🧪 Тесты
+
+### Интеграционные тесты API
 
 ```bash
-curl http://localhost:8888/api/v1/statistics/summary
+make test-api
 ```
 
-```json
-{
-  "total_tickets": 1250,
-  "open_tickets": 320,
-  "closed_tickets": 850,
-  "active_executors": 45
-}
-```
+Запускает `tests/api/run.sh`, который поднимает API и прогоняет 14 тестов через HTTP:
+создание/получение/удаление пользователей, создание/список/получение комнат, вход/выход игроков, бусты, победители.
 
----
-
-## 🏗️ Architecture
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                    Client Layer                          │
-│         Web Browser • Mobile App • API Client           │
-└────────────────────┬────────────────────────────────────┘
-                     │ HTTP
-                     ▼
-┌─────────────────────────────────────────────────────────┐
-│           Go API Server (Gin + Huma)                    │
-│                                                          │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐             │
-│  │ Handlers │→ │ Services │→ │Repository│             │
-│  └──────────┘  └──────────┘  └──────────┘             │
-└────────────────────┬────────────────────────────────────┘
-                     │
-        ┌────────────┼────────────┐
-        │            │            │
-        ▼            ▼            ▼
-┌─────────────┐ ┌─────────┐ ┌─────────────┐
-│ PostgreSQL  │ │  Redis  │ │ AI Embeddings│
-│  + PostGIS  │ │ (Cache) │ │   (Ollama)   │
-│ + pgvector  │ │         │ │              │
-└─────────────┘ └─────────┘ └─────────────┘
-```
-
-**Tech Stack**:
-- 🔷 **Backend**: Go 1.25.5 with Gin + Huma
-- 🐘 **Database**: PostgreSQL 14+ (PostGIS, pgvector)
-- 🔴 **Cache**: Redis 6.0+
-- 🤖 **AI**: Transformer-based embeddings (768D vectors via Ollama)
-- 🔧 **Tools**: sqlc, goose, Docker
-
----
-
-## 🎨 Key Innovations
-
-### 1. Semantic Duplicate Detection
-
-Traditional systems use exact text matching. We use **AI embeddings** to understand meaning:
-
-```
-Traditional:  "нет отопления" ≠ "холодные батареи" ❌
-Our System:   "нет отопления" ≈ "холодные батареи" ✅ (92% similar)
-```
-
-**How it works**:
-1. Convert appeal text to 768-dimensional vector
-2. Store in PostgreSQL with pgvector extension
-3. Find similar appeals using cosine similarity
-4. Suggest duplicates to operators
-
-> 🧠 **Learn more**: [docs/EMBEDDINGS_AND_DUPLICATES.md](docs/EMBEDDINGS_AND_DUPLICATES.md)
-
-### 2. Geographic Intelligence
-
-Every appeal has a location. We use **PostGIS** to:
-- 🗺️ Create heatmaps of problem areas
-- 📍 Find nearby similar issues
-- 📊 Analyze geographic patterns
-- 🎯 Optimize resource allocation
-
-### 3. Centralized Overdue Logic
-
-SLA tracking is critical. We use a **database view** for consistency:
-
-```sql
-CREATE VIEW v_ticket_overdue_status AS
-SELECT 
-    ticket_id,
-    status_start_date,
-    GREATEST(0, EXTRACT(DAY FROM (NOW() - status_start_date)) - 7) AS lost_days,
-    (EXTRACT(DAY FROM (NOW() - status_start_date)) > 7) AS is_overdue
-FROM tickets
-WHERE status IN ('open', 'init');
-```
-
-Single source of truth. Change SLA in one place.
-
----
-
-## 📊 API Highlights
-
-### RESTful Design
-
-```
-Public Endpoints:
-  GET  /api/v1/public/categories      # Get category tree
-  POST /api/v1/public/tickets         # Submit appeal
-
-Ticket Management:
-  GET    /api/v1/tickets               # List with filters
-  GET    /api/v1/tickets/{id}          # Get details
-  PATCH  /api/v1/tickets/{id}          # Update status/tags
-  DELETE /api/v1/tickets/{id}          # Soft delete
-  POST   /api/v1/tickets/merge         # Merge duplicates
-
-Analytics:
-  GET /api/v1/statistics/summary       # Overall stats
-  GET /api/v1/statistics/dynamics      # Time series
-  GET /api/v1/monitoring/kpi           # Key metrics
-  GET /api/v1/heatmap/points           # Geographic data
-
-Admin:
-  GET    /api/v1/admin/users           # List users
-  POST   /api/v1/admin/users           # Create user
-  PATCH  /api/v1/admin/users/{id}      # Update permissions
-  DELETE /api/v1/admin/users/{id}      # Remove access
-```
-
-### Auto-Generated Documentation
-
-Built with **Huma v2** - OpenAPI 3.1 spec generated from code:
-
-```go
-huma.Register(api, huma.Operation{
-    OperationID: "create-ticket",
-    Method:      http.MethodPost,
-    Path:        "/public/tickets",
-    Description: "Submit a new citizen appeal",
-    Tags:        []string{"Tickets"},
-}, handler.Post)
-```
-
-Result: Beautiful Swagger UI with zero manual work! 🎉
-
-> 📖 **Full reference**: [docs/API_REFERENCE.md](docs/API_REFERENCE.md)
-
----
-
-## 🎭 User Roles
-
-### 👑 Admin (Администрация)
-- Full system access
-- Manage all users and departments
-- View all statistics and appeals
-- Configure system settings
-
-### 🏢 Organization (Организация/РОИ)
-- Department-level access
-- Manage department users
-- View department appeals
-- Department statistics
-
-### 👷 Executor (Исполнитель)
-- View assigned appeals
-- Add comments and updates
-- Change appeal status
-- Work on resolutions
-
----
-
-## 📚 Documentation
-
-Complete documentation for developers:
-
-- 📖 [API Reference](docs/API_REFERENCE.md) - Complete endpoint documentation
-- 👥 [Admin API](docs/ADMIN_USERS_API.md) - User management endpoints
-- � [KPiI Endpoint](docs/KPI_ENDPOINT.md) - Monitoring metrics
-
----
-
-## 🛠️ Development
-
-### Prerequisites
-
-- Go 1.25.5+
-- PostgreSQL 14+ with PostGIS and pgvector
-- Redis 6.0+
-- Docker & Docker Compose
-- Ollama (for AI embeddings)
-
-### Setup
+### Тесты управления комнатами
 
 ```bash
-# Install dependencies
-go mod download
-
-# Install tools
-go install github.com/pressly/goose/v3/cmd/goose@latest
-go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
-
-# Configure environment
-cp .env.example .env
-nano .env
-
-# Start development
-make databases  # Start PostgreSQL + Redis
-make migrate    # Run migrations + generate code
-make mock       # Load mock data
-make serve      # Start API server
+cd tests/room_management && bash run_tests.sh
 ```
 
-### Common Commands
+13 тестов напрямую через БД: проверка баланса при входе/выходе, защита от дублей, полная комната, автостарт с ботами, буст только в `playing`, автофиниш с выбором победителя.
+
+### Тесты формул буста
 
 ```bash
-make serve          # Start API server
-make api-test       # Start in test mode
-make databases      # Start databases
-make databases-down # Stop databases
-make migrate        # Run migrations + generate code
-make mock           # Load mock data with real AI embeddings
-make postgres       # Connect to PostgreSQL
-make redis          # Connect to Redis
+make test-boost-calc
 ```
 
-**Note**: The `make mock` command generates real AI embeddings using Ollama. Make sure Ollama is running locally with the `nomic-embed-text-v2-moe` model. If not available, fallback embeddings will be used.
-
-### Adding Features
-
-1. **Database changes**: Create migration in `db/migrations/`
-2. **SQL queries**: Add to `db/queries/`
-3. **Generate code**: Run `make migrate`
-4. **Add handler**: Create in `handlers/`
-5. **Register route**: Update `services/api/main.go`
+Запускает `tests/boost_calc/run.sh`. 5 тестов через HTTP:
+- Вероятность при нулевом бусте
+- Вероятность при ненулевом бусте
+- Расчёт нужного буста
+- Проверка обратности `CalcBoost` ↔ `CalcProbability`
+- Валидация граничных значений `desired_probability`
 
 ---
 
-## 📈 Performance
+## 🔧 Полезные команды
 
-- **API Response Time**: < 50ms (p95)
-- **Vector Search**: < 100ms for 100k tickets
-- **Database**: Optimized with indexes and connection pooling
+```bash
+# Подключиться к PostgreSQL
+make postgres
 
----
+# Подключиться к Redis
+make redis
 
-## 🔒 Security
+# Пересоздать БД с сохранением данных
+make recreate
 
-- 🔐 JWT authentication (planned)
-- 🛡️ SQL injection protection (parameterized queries)
-- � CompletLe audit trail
-- � Raole-based access control
+# Сгенерировать sqlc-код
+sqlc generate
 
----
+# Применить миграции
+goose up
 
-## 🤝 Contributing
-
-We welcome contributions! Here's how:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes
-4. Run tests (`go test ./...`)
-5. Commit (`git commit -m 'Add amazing feature'`)
-6. Push (`git push origin feature/amazing-feature`)
-7. Open a Pull Request
-
-### Code Style
-
-- Follow [Effective Go](https://golang.org/doc/effective_go)
-- Use `gofmt` for formatting
-- Add tests for new features
-- Update documentation
-
----
-
-## 📊 Project Stats
-
+# Откатить миграции
+goose down
 ```
-Language                 Files        Lines         Code     Comments
-────────────────────────────────────────────────────────────────────
-Go                          25         3500         2800          400
-SQL                         15         1200         1000          150
-Markdown                    11         4000         3500          200
-YAML                         3          150          120           20
-────────────────────────────────────────────────────────────────────
-Total                       54         8850         7420          770
-```
-
----
-
-## 🏆 Built For
-
-**Кубок Чувашии по спортивному программированию 2026**
-
-*Intelligent system for processing citizen appeals to government authorities*
-
-### Requirements Met
-
-- ✅ Multi-channel appeal intake
-- ✅ AI-powered duplicate detection
-- ✅ CRM system with role-based access
-- ✅ Geographic heatmap visualization
-- ✅ Real-time monitoring and KPIs
-- ✅ Complete audit trail
-- ✅ Production-ready architecture
-
----
-
-## 📞 Support
-
-- 📖 **Documentation**: [docs/](docs/)
-- 🐛 **Issues**: GitHub Issues
-- 💬 **Discussions**: GitHub Discussions
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-## 🙏 Acknowledgments
-
-- **PostgreSQL Team** - Amazing database
-- **pgvector** - Vector similarity search
-- **PostGIS** - Geographic capabilities
-- **Go Team** - Excellent language
-- **Huma** - Beautiful API framework
-- **sqlc** - Type-safe SQL generation
-
----
-
-<div align="center">
-
-**Made with ❤️ for the Chuvash Republic**
-
-⭐ Star us on GitHub — it helps!
-
-[Documentation](docs/) • [API Reference](docs/API_REFERENCE.md) • [Quick Start](docs/QUICK_START.md)
-
-</div>
