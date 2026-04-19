@@ -1,0 +1,141 @@
+# Implementation Plan
+
+- [x] 1. Database migrations and sqlc regeneration
+- [x] 1.1 Write migration 000006: add `winner_pct` column to `rooms` table
+  - Create `backend/db/migrations/000006_add_winner_pct_to_rooms.sql`
+  - Column: `winner_pct INTEGER NOT NULL DEFAULT 80 CHECK (winner_pct BETWEEN 1 AND 99)`
+  - _Requirements: 10.1_
+- [x] 1.2 Write migration 000007: enforce unique boost per user per room
+  - Create `backend/db/migrations/000007_unique_boost_per_user_room.sql`
+  - The existing `PRIMARY KEY (room_id, user_id)` already enforces uniqueness; migration is a no-op Up/Down confirming the constraint exists
+  - _Requirements: 4.1_
+- [x] 1.3 Write migration 000008: create `room_templates` table
+  - Create `backend/db/migrations/000008_create_room_templates.sql`
+  - Columns: `template_id SERIAL PK`, `name VARCHAR(255) UNIQUE NOT NULL`, `players_needed INTEGER NOT NULL`, `entry_cost INTEGER NOT NULL DEFAULT 100`, `winner_pct INTEGER NOT NULL DEFAULT 80`, `created_at`, `updated_at`
+  - _Requirements: 12.1_
+- [x] 1.4 Add new SQL queries for rooms: `ListRoomsFiltered`, `FinishRoomAndAwardWinnerPct`, update `InsertRoom` to include `winner_pct`
+  - Edit `backend/db/queries/rooms.sql`
+  - _Requirements: 2.1–2.5, 10.2–10.3_
+- [x] 1.5 Add new SQL query `UpdateUserBalance` to `backend/db/queries/users.sql`
+  - _Requirements: 7.1–7.2_
+- [x] 1.6 Create `backend/db/queries/rounds.sql` with `ListFinishedRooms` and `GetRoundDetail` queries
+  - `GetRoundDetail` joins rooms + room_players + room_boosts + room_winners
+  - _Requirements: 6.1–6.2_
+- [x] 1.7 Create `backend/db/queries/templates.sql` with full CRUD queries
+  - `InsertTemplate`, `ListTemplates`, `GetTemplate`, `UpdateTemplate`, `DeleteTemplate`
+  - _Requirements: 12.2–12.6_
+- [x] 1.8 Regenerate sqlc repository
+  - Run `sqlc generate` in `backend/`
+  - Verify generated files compile: `rooms.sql.go`, `users.sql.go`, `rounds.sql.go`, `templates.sql.go`, `models.go`
+  - _Requirements: all DB-touching requirements_
+
+- [x] 2. Redis pub/sub helper and config updates
+- [x] 2.1 Implement `backend/internal/redisclient/pubsub.go`
+  - `PubSub` struct wrapping `*redis.Client`
+  - `New(client *redis.Client) *PubSub`
+  - `Publish(ctx, roomID int32, payload []byte) error` — publishes to `room:{roomID}`
+  - `Subscribe(ctx, roomID int32) *redis.PubSub` — returns subscription handle
+  - _Requirements: 11.1–11.4_
+- [x] 2.2 Add `RNGURL string` field to `AppConfig` in `backend/internal/config.go`
+  - Tag: `` envconfig:"RNG_URL" `` (optional, no default)
+  - _Requirements: 9.4_
+
+- [x] 3. Update `room_finisher.go` for configurable winner_pct and external RNG
+- [x] 3.1 Add `selectWinner` function that accepts `rngURL string` and calls external API when set
+  - `GET {rngURL}?max={totalStake}` → expects `{"result": N}`
+  - On error: log and fall back to local `math/rand`
+  - _Requirements: 9.1–9.3_
+- [x] 3.2 Update `RoomFinisher` to accept `*internal.AppConfig`, use `config.RNGURL`, and call `FinishRoomAndAwardWinnerPct` with the room's `winner_pct`
+  - Update cron registration in `services/crons/main.go` to pass config
+  - _Requirements: 9.1–9.3, 10.3_
+- [x] 3.3 Update `room_starter.go` and `bot_manager.go` cron registrations to match any signature changes
+  - _Requirements: 10.3_
+
+- [x] 4. User handler additions
+- [x] 4.1 Add `List` method to `UserHandler` — calls `repo.ListUsers`, returns array of user objects
+  - _Requirements: 8.1_
+- [x] 4.2 Add `UpdateBalance` method to `UserHandler` — `PATCH /users/{id}/balance` with `delta` body field
+  - Call `repo.UpdateUserBalance`; if no row returned (balance would go negative), return HTTP 422
+  - _Requirements: 7.1–7.2_
+
+- [x] 5. Room handler additions and updates
+- [x] 5.1 Update `roomItem` and `RoomResponse` structs to include `winner_pct int32`
+  - Update `roomToItem` and `roomItemToResponse` helpers
+  - Update `Create` handler to accept and pass `winner_pct` to `InsertRoom`
+  - _Requirements: 10.2, 10.4_
+- [x] 5.2 Update `List` handler to accept optional query params and call `ListRoomsFiltered`
+  - Add `ListRoomsRequest` struct with `Status *string`, `EntryCost *int32`, `PlayersNeeded *int32`, `SortBy *string`, `SortOrder *string` query fields
+  - _Requirements: 2.1–2.5_
+- [x] 5.3 Add `Validate` method to `RoomHandler` — `POST /rooms/validate`
+  - Pure computation: compute `prize_fund`, `organiser_cut`, `player_roi`, accumulate `warnings`
+  - _Requirements: 3.1–3.6_
+- [x] 5.4 Update `JoinRoom` handler with pre-checks before calling atomic SQL
+  - Pre-check: room status, player count vs capacity, user balance, user not already in room
+  - Return HTTP 402 / 409 with descriptive messages
+  - _Requirements: 5.1–5.3_
+- [x] 5.5 Update `BoostRoom` handler with pre-checks before calling atomic SQL
+  - Pre-check: user balance >= amount (HTTP 402), no existing boost for this user+room (HTTP 409)
+  - Catch pgx unique-violation error `23505` as fallback for duplicate boost
+  - _Requirements: 4.2–4.3, 5.4_
+
+- [x] 6. New handlers: rounds and templates
+- [x] 6.1 Create `backend/handlers/round_handler.go` with `RoundHandler`
+  - `List` method: `GET /rounds` — calls `ListFinishedRooms`, assembles `RoundDetail` per room
+  - `Get` method: `GET /rounds/{room_id}` — calls `GetRoundDetail`, returns 404 if not finished
+  - _Requirements: 6.1–6.3_
+- [x] 6.2 Create `backend/handlers/template_handler.go` with `TemplateHandler`
+  - `Create`, `List`, `Get`, `Update`, `Delete` methods
+  - Catch unique-name violation and return HTTP 409
+  - _Requirements: 12.2–12.7_
+
+- [x] 7. WebSocket handler
+- [x] 7.1 Add `github.com/gorilla/websocket` to `go.mod` / `go.sum`
+  - Run `go get github.com/gorilla/websocket` in `backend/`
+  - _Requirements: 1.1_
+- [x] 7.2 Create `backend/handlers/ws_handler.go` with `WSHandler`
+  - Upgrade HTTP to WebSocket using gorilla
+  - Subscribe to Redis channel `room:{room_id}` via `redisclient.PubSub.Subscribe`
+  - Goroutine: read from Redis PubSub → write JSON to WS client
+  - Set 30-second ping/pong keepalive; on disconnect close subscription
+  - _Requirements: 1.1–1.4_
+- [x] 7.3 Update publish calls: after `JoinRoom`, `LeaveRoom`, `BoostRoom` succeed, publish updated room snapshot to Redis
+  - Call `pubSub.Publish(ctx, roomID, roomJSON)` in each handler
+  - Also publish from `room_finisher.go` and `room_starter.go` after status transitions
+  - _Requirements: 1.2_
+
+- [x] 8. Register all new routes in `MountRoutes`
+- [x] 8.1 Register `GET /users` (list users) and `PATCH /users/{id}/balance` in `services/api/main.go`
+  - _Requirements: 8.1–8.2, 7.1_
+- [x] 8.2 Register `POST /rooms/validate` in `services/api/main.go`
+  - _Requirements: 3.1_
+- [x] 8.3 Register `GET /rounds` and `GET /rounds/{room_id}` in `services/api/main.go`
+  - _Requirements: 6.1–6.2_
+- [x] 8.4 Register room template CRUD routes in `services/api/main.go`
+  - `POST /room-templates`, `GET /room-templates`, `GET /room-templates/{template_id}`, `PUT /room-templates/{template_id}`, `DELETE /room-templates/{template_id}`
+  - _Requirements: 12.2–12.6_
+- [x] 8.5 Register WebSocket route on raw Gin router (not Huma) in `services/api/main.go`
+  - `r.GET("/api/v1/rooms/:room_id/ws", wsHandler.Handle)`
+  - Pass `PubSub` instance to `WSHandler`
+  - _Requirements: 1.1_
+
+- [x] 9. Update and extend test suites
+- [x] 9.1 Extend `backend/tests/api/main.go` with new test cases
+  - Test list users (`GET /users`)
+  - Test update balance (`PATCH /users/{id}/balance`) — positive delta, negative delta, underflow
+  - Test room filtering by status, entry_cost, players_needed
+  - Test room configurator (`POST /rooms/validate`) — valid config, config with warnings
+  - Test round history (`GET /rounds`, `GET /rounds/{room_id}`)
+  - Test template CRUD
+  - Test boost duplicate rejection (HTTP 409)
+  - Test join with insufficient balance (HTTP 402)
+  - Test join full room (HTTP 409)
+  - _Requirements: 2, 3, 4, 5, 6, 7, 8, 12_
+- [x] 9.2 Extend `backend/tests/room_management/main.go` with new test cases
+  - Test `winner_pct` is stored and used in prize calculation
+  - Test external RNG fallback (set `RNG_URL` to an invalid URL, verify fallback works)
+  - Test boost uniqueness at DB level
+  - _Requirements: 4, 9, 10_
+- [x] 9.3 Create `backend/tests/websocket/main.go` — WebSocket integration test
+  - Connect WS client to `/api/v1/rooms/{room_id}/ws`
+  - Trigger a join via REST, assert WS message arrives within 2 seconds
+  - _Requirements: 1.1–1.3_
