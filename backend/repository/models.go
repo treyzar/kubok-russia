@@ -5,10 +5,121 @@
 package repository
 
 import (
+	"database/sql/driver"
+	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+type FairRiskLevel string
+
+const (
+	FairRiskLevelLow    FairRiskLevel = "low"
+	FairRiskLevelMedium FairRiskLevel = "medium"
+	FairRiskLevelHigh   FairRiskLevel = "high"
+)
+
+func (e *FairRiskLevel) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = FairRiskLevel(s)
+	case string:
+		*e = FairRiskLevel(s)
+	default:
+		return fmt.Errorf("unsupported scan type for FairRiskLevel: %T", src)
+	}
+	return nil
+}
+
+type NullFairRiskLevel struct {
+	FairRiskLevel FairRiskLevel `json:"fair_risk_level"`
+	Valid         bool          `json:"valid"` // Valid is true if FairRiskLevel is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullFairRiskLevel) Scan(value interface{}) error {
+	if value == nil {
+		ns.FairRiskLevel, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.FairRiskLevel.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullFairRiskLevel) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.FairRiskLevel), nil
+}
+
+type FairRoomState string
+
+const (
+	FairRoomStateCreated   FairRoomState = "created"
+	FairRoomStateWaiting   FairRoomState = "waiting"
+	FairRoomStateRefunding FairRoomState = "refunding"
+	FairRoomStateFinished  FairRoomState = "finished"
+)
+
+func (e *FairRoomState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = FairRoomState(s)
+	case string:
+		*e = FairRoomState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for FairRoomState: %T", src)
+	}
+	return nil
+}
+
+type NullFairRoomState struct {
+	FairRoomState FairRoomState `json:"fair_room_state"`
+	Valid         bool          `json:"valid"` // Valid is true if FairRoomState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullFairRoomState) Scan(value interface{}) error {
+	if value == nil {
+		ns.FairRoomState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.FairRoomState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullFairRoomState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.FairRoomState), nil
+}
+
+type FairPlayer struct {
+	ID             uuid.UUID      `json:"id"`
+	RoomID         uuid.UUID      `json:"room_id"`
+	UserID         uuid.UUID      `json:"user_id"`
+	InitialDeposit pgtype.Numeric `json:"initial_deposit"`
+	RefundAmount   pgtype.Numeric `json:"refund_amount"`
+	Refunded       bool           `json:"refunded"`
+}
+
+type FairRoom struct {
+	ID          uuid.UUID      `json:"id"`
+	RiskLevel   FairRiskLevel  `json:"risk_level"`
+	State       FairRoomState  `json:"state"`
+	MaxCapacity int32          `json:"max_capacity"`
+	SeedPhrase  string         `json:"seed_phrase"`
+	SeedHash    string         `json:"seed_hash"`
+	FinalFee    pgtype.Numeric `json:"final_fee"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
+}
 
 type Room struct {
 	RoomID        int32              `json:"room_id"`

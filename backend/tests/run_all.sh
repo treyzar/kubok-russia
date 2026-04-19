@@ -15,6 +15,7 @@ SUITES=(
     "Boost Calc|tests/boost_calc/run.sh"
     "WebSocket|tests/websocket/run.sh"
     "Room Management|tests/room_management/run_tests.sh"
+    "Fair Rooms|tests/fair_rooms/run.sh"
 )
 
 declare -a RESULTS   # "suite|passed|failed|status"
