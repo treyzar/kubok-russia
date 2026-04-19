@@ -280,3 +280,42 @@ WHERE u.bot = true
   )
 ORDER BY RANDOM()
 LIMIT $3;
+
+-- name: ListPlayingRoomsReadyToFinish :many
+SELECT * FROM rooms
+WHERE status = 'playing'
+  AND start_time IS NOT NULL
+  AND start_time + INTERVAL '30 seconds' <= CURRENT_TIMESTAMP;
+
+-- name: GetPlayersWithStakes :many
+SELECT
+    rp.user_id,
+    rp.places,
+    COALESCE(rp.places, 1) * r.entry_cost AS stake,
+    COALESCE(rb.amount, 0) AS boost_amount,
+    COALESCE(rp.places, 1) * r.entry_cost + COALESCE(rb.amount, 0) AS total_stake
+FROM room_players rp
+JOIN rooms r ON r.room_id = rp.room_id
+LEFT JOIN room_boosts rb ON rb.room_id = rp.room_id AND rb.user_id = rp.user_id
+WHERE rp.room_id = $1;
+
+-- name: FinishRoomAndAwardWinner :one
+WITH finish_room AS (
+    UPDATE rooms
+    SET status = 'finished', updated_at = CURRENT_TIMESTAMP
+    WHERE rooms.room_id = $1 AND rooms.status = 'playing'
+    RETURNING jackpot
+),
+award_winner AS (
+    UPDATE users
+    SET balance = users.balance + ($2 * 80 / 100)
+    WHERE users.id = $3 AND EXISTS (SELECT 1 FROM finish_room)
+    RETURNING users.id
+),
+insert_win AS (
+    INSERT INTO room_winners (room_id, user_id, prize)
+    SELECT $1, $3, ($2 * 80 / 100)
+    WHERE EXISTS (SELECT 1 FROM finish_room)
+    RETURNING room_id, user_id, prize, won_at
+)
+SELECT * FROM insert_win;

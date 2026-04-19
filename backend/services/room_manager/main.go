@@ -41,6 +41,11 @@ func main() {
 		Runner: crons.RoomStarter(pool),
 	})
 
+	// Run room finisher every 1 second to check for rooms that need to finish
+	scheduler.Schedule(ctx, time.Second, 1*time.Second, &eon.Job{
+		Runner: crons.RoomFinisher(pool),
+	})
+
 	log.Println("🎮 Room Manager: Monitoring rooms every 1 second for auto-start")
 	log.Println("🎮 Room Manager: Service is ready")
 

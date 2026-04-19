@@ -54,7 +54,8 @@ func main() {
 		{"Test 9: User can boost playing room", testBoostPlayingRoom},
 		{"Test 10: User cannot boost non-playing room", testCannotBoostNonPlaying},
 		{"Test 11: Winner can be declared in finished room", testDeclareWinner},
-		{"Test 12: Cleanup test data", testCleanup},
+		{"Test 12: Room finishes automatically and declares winner", testRoomAutoFinish},
+		{"Test 13: Cleanup test data", testCleanup},
 	}
 
 	for _, test := range tests {
@@ -642,6 +643,98 @@ func testDeclareWinner() error {
 	}
 
 	log.Printf("Winner declaration correctly requires user to be in room")
+	return nil
+}
+
+func testRoomAutoFinish() error {
+	// Create a playing room with start_time 31 seconds in the past
+	// Add 2 bots so there are players with stakes
+	room, err := queries.InsertRoom(context.Background(), repository.InsertRoomParams{
+		Jackpot: 0,
+		StartTime: pgtype.Timestamptz{
+			Time:  time.Now().Add(-31 * time.Second),
+			Valid: true,
+		},
+		Status:        "playing",
+		PlayersNeeded: 2,
+		EntryCost:     100,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create room: %v", err)
+	}
+	log.Printf("Created playing room %d with start_time 31 seconds ago", room.RoomID)
+
+	// Add 2 bots to the room
+	bots, err := queries.GetAvailableBotsForRoom(context.Background(), repository.GetAvailableBotsForRoomParams{
+		Balance: 100,
+		RoomID:  room.RoomID,
+		Limit:   2,
+	})
+	if err != nil || len(bots) < 2 {
+		return fmt.Errorf("not enough bots available: %v", err)
+	}
+
+	for _, bot := range bots {
+		rows, err := queries.BotJoinRoom(context.Background(), repository.BotJoinRoomParams{
+			RoomID: room.RoomID,
+			ID:     bot.ID,
+			Places: nil,
+		})
+		if err != nil || len(rows) == 0 {
+			return fmt.Errorf("failed to add bot %d to room: %v", bot.ID, err)
+		}
+	}
+
+	// Refresh jackpot value
+	rooms, err := queries.ListRooms(context.Background())
+	if err != nil {
+		return err
+	}
+	var jackpot int32
+	for _, r := range rooms {
+		if r.RoomID == room.RoomID {
+			jackpot = r.Jackpot
+			break
+		}
+	}
+	log.Printf("Room %d has jackpot %d, waiting for room_finisher to finish it...", room.RoomID, jackpot)
+
+	// Wait for room_finisher to process it (runs every 1 second)
+	time.Sleep(5 * time.Second)
+
+	// Check room is now finished
+	rooms, err = queries.ListRooms(context.Background())
+	if err != nil {
+		return err
+	}
+	var finalStatus string
+	for _, r := range rooms {
+		if r.RoomID == room.RoomID {
+			finalStatus = r.Status
+			break
+		}
+	}
+
+	if finalStatus != "finished" {
+		return fmt.Errorf("expected room status 'finished', got '%s'", finalStatus)
+	}
+
+	// Check a winner was declared
+	winners, err := queries.ListRoomWins(context.Background(), repository.ListRoomWinsParams{RoomID: room.RoomID})
+	if err != nil {
+		return err
+	}
+	if len(winners) == 0 {
+		return fmt.Errorf("no winner was declared for room %d", room.RoomID)
+	}
+
+	expectedPrize := jackpot * 80 / 100
+	log.Printf("✅ Room %d finished! Winner: user %d, Prize: %d (expected %d)", room.RoomID, winners[0].UserID, winners[0].Prize, expectedPrize)
+
+	if winners[0].Prize != expectedPrize {
+		return fmt.Errorf("expected prize %d, got %d", expectedPrize, winners[0].Prize)
+	}
+
 	return nil
 }
 

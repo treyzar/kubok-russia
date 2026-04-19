@@ -152,6 +152,53 @@ func (q *Queries) DeleteRoom(ctx context.Context, arg DeleteRoomParams) error {
 	return err
 }
 
+const finishRoomAndAwardWinner = `-- name: FinishRoomAndAwardWinner :one
+WITH finish_room AS (
+    UPDATE rooms
+    SET status = 'finished', updated_at = CURRENT_TIMESTAMP
+    WHERE rooms.room_id = $1 AND rooms.status = 'playing'
+    RETURNING jackpot
+),
+award_winner AS (
+    UPDATE users
+    SET balance = users.balance + ($2 * 80 / 100)
+    WHERE users.id = $3 AND EXISTS (SELECT 1 FROM finish_room)
+    RETURNING users.id
+),
+insert_win AS (
+    INSERT INTO room_winners (room_id, user_id, prize)
+    SELECT $1, $3, ($2 * 80 / 100)
+    WHERE EXISTS (SELECT 1 FROM finish_room)
+    RETURNING room_id, user_id, prize, won_at
+)
+SELECT room_id, user_id, prize, won_at FROM insert_win
+`
+
+type FinishRoomAndAwardWinnerParams struct {
+	RoomID  int32       `json:"room_id"`
+	Column2 interface{} `json:"column_2"`
+	ID      int32       `json:"id"`
+}
+
+type FinishRoomAndAwardWinnerRow struct {
+	RoomID int32     `json:"room_id"`
+	UserID int32     `json:"user_id"`
+	Prize  int32     `json:"prize"`
+	WonAt  time.Time `json:"won_at"`
+}
+
+func (q *Queries) FinishRoomAndAwardWinner(ctx context.Context, arg FinishRoomAndAwardWinnerParams) (FinishRoomAndAwardWinnerRow, error) {
+	row := q.db.QueryRow(ctx, finishRoomAndAwardWinner, arg.RoomID, arg.Column2, arg.ID)
+	var i FinishRoomAndAwardWinnerRow
+	err := row.Scan(
+		&i.RoomID,
+		&i.UserID,
+		&i.Prize,
+		&i.WonAt,
+	)
+	return i, err
+}
+
 const getAvailableBotsForRoom = `-- name: GetAvailableBotsForRoom :many
 SELECT u.id, u.name, u.balance FROM users u
 WHERE u.bot = true 
@@ -223,6 +270,57 @@ func (q *Queries) GetBotsWithMinBalance(ctx context.Context, arg GetBotsWithMinB
 	for rows.Next() {
 		var i GetBotsWithMinBalanceRow
 		if err := rows.Scan(&i.ID, &i.Name, &i.Balance); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getPlayersWithStakes = `-- name: GetPlayersWithStakes :many
+SELECT
+    rp.user_id,
+    rp.places,
+    COALESCE(rp.places, 1) * r.entry_cost AS stake,
+    COALESCE(rb.amount, 0) AS boost_amount,
+    COALESCE(rp.places, 1) * r.entry_cost + COALESCE(rb.amount, 0) AS total_stake
+FROM room_players rp
+JOIN rooms r ON r.room_id = rp.room_id
+LEFT JOIN room_boosts rb ON rb.room_id = rp.room_id AND rb.user_id = rp.user_id
+WHERE rp.room_id = $1
+`
+
+type GetPlayersWithStakesParams struct {
+	RoomID int32 `json:"room_id"`
+}
+
+type GetPlayersWithStakesRow struct {
+	UserID      int32  `json:"user_id"`
+	Places      *int32 `json:"places"`
+	Stake       int32  `json:"stake"`
+	BoostAmount int32  `json:"boost_amount"`
+	TotalStake  int32  `json:"total_stake"`
+}
+
+func (q *Queries) GetPlayersWithStakes(ctx context.Context, arg GetPlayersWithStakesParams) ([]GetPlayersWithStakesRow, error) {
+	rows, err := q.db.Query(ctx, getPlayersWithStakes, arg.RoomID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetPlayersWithStakesRow{}
+	for rows.Next() {
+		var i GetPlayersWithStakesRow
+		if err := rows.Scan(
+			&i.UserID,
+			&i.Places,
+			&i.Stake,
+			&i.BoostAmount,
+			&i.TotalStake,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -596,6 +694,42 @@ func (q *Queries) LeaveRoomAndUpdateStatus(ctx context.Context, arg LeaveRoomAnd
 		&i.EntryCost,
 	)
 	return i, err
+}
+
+const listPlayingRoomsReadyToFinish = `-- name: ListPlayingRoomsReadyToFinish :many
+SELECT room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost FROM rooms
+WHERE status = 'playing'
+  AND start_time IS NOT NULL
+  AND start_time + INTERVAL '30 seconds' <= CURRENT_TIMESTAMP
+`
+
+func (q *Queries) ListPlayingRoomsReadyToFinish(ctx context.Context) ([]Room, error) {
+	rows, err := q.db.Query(ctx, listPlayingRoomsReadyToFinish)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Room{}
+	for rows.Next() {
+		var i Room
+		if err := rows.Scan(
+			&i.RoomID,
+			&i.Jackpot,
+			&i.StartTime,
+			&i.Status,
+			&i.PlayersNeeded,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.EntryCost,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listRoomBoosts = `-- name: ListRoomBoosts :many
