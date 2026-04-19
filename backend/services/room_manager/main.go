@@ -24,7 +24,7 @@ func main() {
 	}
 	defer pool.Close()
 
-	log.Println("Bot Manager: Database connection pool initialized")
+	log.Println("Room Manager: Database connection pool initialized")
 
 	// Create a context that listens for OS interrupt signals (like CTRL+C)
 	ctx, _ := signal.NotifyContext(
@@ -36,15 +36,15 @@ func main() {
 	// Create a new scheduler that will manage your jobs
 	scheduler := eon.NewScheduler(ctx)
 
-	// Run bot manager every 10 seconds
-	scheduler.Schedule(ctx, time.Second, 10*time.Second, &eon.Job{
-		Runner: crons.BotManager(pool, config),
+	// Run room starter every 1 second to check for rooms that need to start
+	scheduler.Schedule(ctx, time.Second, 1*time.Second, &eon.Job{
+		Runner: crons.RoomStarter(pool),
 	})
 
-	log.Println("Bot Manager: Cron jobs scheduled and running")
+	log.Println("Room Manager: Cron jobs scheduled and running")
 
 	// Keep the application running until a signal is received
 	<-ctx.Done()
 
-	log.Println("Bot Manager: Shutting down gracefully...")
+	log.Println("Room Manager: Shutting down gracefully...")
 }

@@ -7,6 +7,7 @@ serve:
 	@trap 'kill 0' SIGINT; \
 	go run services/api/main.go & \
 	go run services/bot_manager/main.go & \
+	go run services/room_manager/main.go & \
 	wait
 
 api-test:
