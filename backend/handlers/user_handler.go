@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/SomeSuperCoder/OnlineShop/repository"
+	"github.com/danielgtaylor/huma/v2"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -89,5 +91,68 @@ func (h *UserHandler) Delete(ctx context.Context, req *DeleteUserRequest) (*Dele
 	resp := &DeleteUserResponse{}
 	resp.Body.Message = "User deleted successfully"
 
+	return resp, nil
+}
+
+// --- List users ---
+
+type ListUsersResponse struct {
+	Body struct {
+		Users []userItem `json:"users"`
+	}
+}
+
+type userItem struct {
+	ID        int32     `json:"id"`
+	Name      string    `json:"name"`
+	Balance   int32     `json:"balance"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func (h *UserHandler) List(ctx context.Context, _ *struct{}) (*ListUsersResponse, error) {
+	users, err := h.Repo.ListUsers(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := &ListUsersResponse{}
+	resp.Body.Users = make([]userItem, len(users))
+	for i, u := range users {
+		resp.Body.Users[i] = userItem{
+			ID:        u.ID,
+			Name:      u.Name,
+			Balance:   u.Balance,
+			CreatedAt: u.CreatedAt,
+		}
+	}
+	return resp, nil
+}
+
+// --- Update balance ---
+
+type UpdateBalanceRequest struct {
+	ID   int32 `path:"id"`
+	Body struct {
+		Delta int32 `json:"delta"`
+	}
+}
+
+func (h *UserHandler) UpdateBalance(ctx context.Context, req *UpdateBalanceRequest) (*UserResponse, error) {
+	user, err := h.Repo.UpdateUserBalance(ctx, repository.UpdateUserBalanceParams{
+		ID:      req.ID,
+		Balance: req.Body.Delta,
+	})
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, huma.Error422UnprocessableEntity("balance cannot go below zero", nil)
+		}
+		return nil, err
+	}
+
+	resp := &UserResponse{}
+	resp.Body.ID = user.ID
+	resp.Body.Name = user.Name
+	resp.Body.Balance = user.Balance
+	resp.Body.CreatedAt = user.CreatedAt
 	return resp, nil
 }

@@ -25,7 +25,7 @@ balance_update AS (
 UPDATE rooms
 SET jackpot = jackpot + $2, updated_at = CURRENT_TIMESTAMP
 WHERE room_id = $1 AND EXISTS (SELECT 1 FROM balance_update)
-RETURNING room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost
+RETURNING room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost, winner_pct
 `
 
 type AddMoneyToJackpotParams struct {
@@ -46,6 +46,7 @@ func (q *Queries) AddMoneyToJackpot(ctx context.Context, arg AddMoneyToJackpotPa
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.EntryCost,
+		&i.WinnerPct,
 	)
 	return i, err
 }
@@ -80,7 +81,7 @@ jackpot_update AS (
     UPDATE rooms
     SET jackpot = jackpot + (SELECT entry_cost FROM room_info), updated_at = CURRENT_TIMESTAMP
     WHERE rooms.room_id = $1 AND EXISTS (SELECT 1 FROM inserted)
-    RETURNING room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost
+    RETURNING room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost, winner_pct
 )
 SELECT room_id, user_id, places, joined_at FROM inserted
 `
@@ -190,6 +191,55 @@ type FinishRoomAndAwardWinnerRow struct {
 func (q *Queries) FinishRoomAndAwardWinner(ctx context.Context, arg FinishRoomAndAwardWinnerParams) (FinishRoomAndAwardWinnerRow, error) {
 	row := q.db.QueryRow(ctx, finishRoomAndAwardWinner, arg.RoomID, arg.Column2, arg.ID)
 	var i FinishRoomAndAwardWinnerRow
+	err := row.Scan(
+		&i.RoomID,
+		&i.UserID,
+		&i.Prize,
+		&i.WonAt,
+	)
+	return i, err
+}
+
+const finishRoomAndAwardWinnerPct = `-- name: FinishRoomAndAwardWinnerPct :one
+WITH finish_room AS (
+    UPDATE rooms
+    SET status = 'finished', updated_at = CURRENT_TIMESTAMP
+    WHERE rooms.room_id = $1 AND rooms.status = 'playing'
+    RETURNING jackpot, winner_pct
+),
+prize AS (
+    SELECT (jackpot * winner_pct / 100) AS amount FROM finish_room
+),
+award_winner AS (
+    UPDATE users
+    SET balance = users.balance + (SELECT amount FROM prize)
+    WHERE users.id = $2 AND EXISTS (SELECT 1 FROM finish_room)
+    RETURNING users.id
+),
+insert_win AS (
+    INSERT INTO room_winners (room_id, user_id, prize)
+    SELECT $1, $2, (SELECT amount FROM prize)
+    WHERE EXISTS (SELECT 1 FROM finish_room)
+    RETURNING room_id, user_id, prize, won_at
+)
+SELECT room_id, user_id, prize, won_at FROM insert_win
+`
+
+type FinishRoomAndAwardWinnerPctParams struct {
+	RoomID int32 `json:"room_id"`
+	ID     int32 `json:"id"`
+}
+
+type FinishRoomAndAwardWinnerPctRow struct {
+	RoomID int32     `json:"room_id"`
+	UserID int32     `json:"user_id"`
+	Prize  int32     `json:"prize"`
+	WonAt  time.Time `json:"won_at"`
+}
+
+func (q *Queries) FinishRoomAndAwardWinnerPct(ctx context.Context, arg FinishRoomAndAwardWinnerPctParams) (FinishRoomAndAwardWinnerPctRow, error) {
+	row := q.db.QueryRow(ctx, finishRoomAndAwardWinnerPct, arg.RoomID, arg.ID)
+	var i FinishRoomAndAwardWinnerPctRow
 	err := row.Scan(
 		&i.RoomID,
 		&i.UserID,
@@ -331,10 +381,56 @@ func (q *Queries) GetPlayersWithStakes(ctx context.Context, arg GetPlayersWithSt
 	return items, nil
 }
 
+const getRoom = `-- name: GetRoom :one
+SELECT room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost, winner_pct FROM rooms WHERE room_id = $1
+`
+
+type GetRoomParams struct {
+	RoomID int32 `json:"room_id"`
+}
+
+func (q *Queries) GetRoom(ctx context.Context, arg GetRoomParams) (Room, error) {
+	row := q.db.QueryRow(ctx, getRoom, arg.RoomID)
+	var i Room
+	err := row.Scan(
+		&i.RoomID,
+		&i.Jackpot,
+		&i.StartTime,
+		&i.Status,
+		&i.PlayersNeeded,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.EntryCost,
+		&i.WinnerPct,
+	)
+	return i, err
+}
+
+const getRoomWinner = `-- name: GetRoomWinner :one
+SELECT room_id, user_id, prize, won_at FROM room_winners WHERE room_id = $1 AND user_id = $2
+`
+
+type GetRoomWinnerParams struct {
+	RoomID int32 `json:"room_id"`
+	UserID int32 `json:"user_id"`
+}
+
+func (q *Queries) GetRoomWinner(ctx context.Context, arg GetRoomWinnerParams) (RoomWinner, error) {
+	row := q.db.QueryRow(ctx, getRoomWinner, arg.RoomID, arg.UserID)
+	var i RoomWinner
+	err := row.Scan(
+		&i.RoomID,
+		&i.UserID,
+		&i.Prize,
+		&i.WonAt,
+	)
+	return i, err
+}
+
 const insertRoom = `-- name: InsertRoom :one
-INSERT INTO rooms (jackpot, start_time, status, players_needed, entry_cost)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost
+INSERT INTO rooms (jackpot, start_time, status, players_needed, entry_cost, winner_pct)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost, winner_pct
 `
 
 type InsertRoomParams struct {
@@ -343,6 +439,7 @@ type InsertRoomParams struct {
 	Status        string             `json:"status"`
 	PlayersNeeded int32              `json:"players_needed"`
 	EntryCost     int32              `json:"entry_cost"`
+	WinnerPct     int32              `json:"winner_pct"`
 }
 
 func (q *Queries) InsertRoom(ctx context.Context, arg InsertRoomParams) (Room, error) {
@@ -352,6 +449,7 @@ func (q *Queries) InsertRoom(ctx context.Context, arg InsertRoomParams) (Room, e
 		arg.Status,
 		arg.PlayersNeeded,
 		arg.EntryCost,
+		arg.WinnerPct,
 	)
 	var i Room
 	err := row.Scan(
@@ -363,6 +461,7 @@ func (q *Queries) InsertRoom(ctx context.Context, arg InsertRoomParams) (Room, e
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.EntryCost,
+		&i.WinnerPct,
 	)
 	return i, err
 }
@@ -392,7 +491,7 @@ jackpot_update AS (
     UPDATE rooms
     SET jackpot = jackpot + $3, updated_at = CURRENT_TIMESTAMP
     WHERE rooms.room_id = $1 AND EXISTS (SELECT 1 FROM inserted)
-    RETURNING room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost
+    RETURNING room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost, winner_pct
 )
 SELECT room_id, user_id, amount, boosted_at FROM inserted
 `
@@ -495,7 +594,7 @@ jackpot_update AS (
     UPDATE rooms
     SET jackpot = jackpot + (SELECT entry_cost FROM room_info), updated_at = CURRENT_TIMESTAMP
     WHERE rooms.room_id = $1 AND EXISTS (SELECT 1 FROM inserted)
-    RETURNING room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost
+    RETURNING room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost, winner_pct
 )
 SELECT room_id, user_id, places, joined_at FROM inserted
 `
@@ -568,7 +667,7 @@ jackpot = CASE
 END,
 updated_at = CURRENT_TIMESTAMP
 WHERE rooms.room_id = $1
-RETURNING room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost
+RETURNING room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost, winner_pct
 `
 
 type JoinRoomAndUpdateStatusParams struct {
@@ -589,6 +688,7 @@ func (q *Queries) JoinRoomAndUpdateStatus(ctx context.Context, arg JoinRoomAndUp
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.EntryCost,
+		&i.WinnerPct,
 	)
 	return i, err
 }
@@ -613,7 +713,7 @@ jackpot_update AS (
     UPDATE rooms
     SET jackpot = GREATEST(jackpot - (SELECT entry_cost FROM room_info), 0), updated_at = CURRENT_TIMESTAMP
     WHERE rooms.room_id = $1 AND EXISTS (SELECT 1 FROM deleted)
-    RETURNING room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost
+    RETURNING room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost, winner_pct
 )
 SELECT room_id, user_id, places, joined_at FROM deleted
 `
@@ -672,7 +772,7 @@ jackpot = CASE
 END,
 updated_at = CURRENT_TIMESTAMP
 WHERE rooms.room_id = $1
-RETURNING room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost
+RETURNING room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost, winner_pct
 `
 
 type LeaveRoomAndUpdateStatusParams struct {
@@ -692,12 +792,13 @@ func (q *Queries) LeaveRoomAndUpdateStatus(ctx context.Context, arg LeaveRoomAnd
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.EntryCost,
+		&i.WinnerPct,
 	)
 	return i, err
 }
 
 const listPlayingRoomsReadyToFinish = `-- name: ListPlayingRoomsReadyToFinish :many
-SELECT room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost FROM rooms
+SELECT room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost, winner_pct FROM rooms
 WHERE status = 'playing'
   AND start_time IS NOT NULL
   AND start_time + INTERVAL '30 seconds' <= CURRENT_TIMESTAMP
@@ -721,6 +822,7 @@ func (q *Queries) ListPlayingRoomsReadyToFinish(ctx context.Context) ([]Room, er
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.EntryCost,
+			&i.WinnerPct,
 		); err != nil {
 			return nil, err
 		}
@@ -837,53 +939,8 @@ func (q *Queries) ListRoomWins(ctx context.Context, arg ListRoomWinsParams) ([]R
 	return items, nil
 }
 
-const getRoom = `-- name: GetRoom :one
-SELECT room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost FROM rooms WHERE room_id = $1
-`
-
-type GetRoomParams struct {
-	RoomID int32 `json:"room_id"`
-}
-
-func (q *Queries) GetRoom(ctx context.Context, arg GetRoomParams) (Room, error) {
-	row := q.db.QueryRow(ctx, getRoom, arg.RoomID)
-	var i Room
-	err := row.Scan(
-		&i.RoomID,
-		&i.Jackpot,
-		&i.StartTime,
-		&i.Status,
-		&i.PlayersNeeded,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.EntryCost,
-	)
-	return i, err
-}
-
-const getRoomWinner = `-- name: GetRoomWinner :one
-SELECT room_id, user_id, prize, won_at FROM room_winners WHERE room_id = $1 AND user_id = $2
-`
-
-type GetRoomWinnerParams struct {
-	RoomID int32 `json:"room_id"`
-	UserID int32 `json:"user_id"`
-}
-
-func (q *Queries) GetRoomWinner(ctx context.Context, arg GetRoomWinnerParams) (RoomWinner, error) {
-	row := q.db.QueryRow(ctx, getRoomWinner, arg.RoomID, arg.UserID)
-	var i RoomWinner
-	err := row.Scan(
-		&i.RoomID,
-		&i.UserID,
-		&i.Prize,
-		&i.WonAt,
-	)
-	return i, err
-}
-
 const listRooms = `-- name: ListRooms :many
-SELECT room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost FROM rooms
+SELECT room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost, winner_pct FROM rooms
 ORDER BY created_at DESC
 `
 
@@ -905,6 +962,66 @@ func (q *Queries) ListRooms(ctx context.Context) ([]Room, error) {
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.EntryCost,
+			&i.WinnerPct,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRoomsFiltered = `-- name: ListRoomsFiltered :many
+SELECT room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost, winner_pct FROM rooms
+WHERE ($1::varchar IS NULL OR status = $1)
+  AND ($2::integer IS NULL OR entry_cost = $2)
+  AND ($3::integer IS NULL OR players_needed = $3)
+ORDER BY
+  CASE WHEN $4 = 'entry_cost'     AND $5 = 'asc'  THEN entry_cost     END ASC,
+  CASE WHEN $4 = 'entry_cost'     AND $5 = 'desc' THEN entry_cost     END DESC,
+  CASE WHEN $4 = 'jackpot'        AND $5 = 'asc'  THEN jackpot        END ASC,
+  CASE WHEN $4 = 'jackpot'        AND $5 = 'desc' THEN jackpot        END DESC,
+  CASE WHEN $4 = 'players_needed' AND $5 = 'asc'  THEN players_needed END ASC,
+  CASE WHEN $4 = 'players_needed' AND $5 = 'desc' THEN players_needed END DESC,
+  created_at DESC
+`
+
+type ListRoomsFilteredParams struct {
+	Column1 string      `json:"column_1"`
+	Column2 int32       `json:"column_2"`
+	Column3 int32       `json:"column_3"`
+	Column4 interface{} `json:"column_4"`
+	Column5 interface{} `json:"column_5"`
+}
+
+func (q *Queries) ListRoomsFiltered(ctx context.Context, arg ListRoomsFilteredParams) ([]Room, error) {
+	rows, err := q.db.Query(ctx, listRoomsFiltered,
+		arg.Column1,
+		arg.Column2,
+		arg.Column3,
+		arg.Column4,
+		arg.Column5,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Room{}
+	for rows.Next() {
+		var i Room
+		if err := rows.Scan(
+			&i.RoomID,
+			&i.Jackpot,
+			&i.StartTime,
+			&i.Status,
+			&i.PlayersNeeded,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.EntryCost,
+			&i.WinnerPct,
 		); err != nil {
 			return nil, err
 		}
@@ -920,7 +1037,7 @@ const setRoomStatus = `-- name: SetRoomStatus :one
 UPDATE rooms
 SET status = $2, updated_at = CURRENT_TIMESTAMP
 WHERE room_id = $1
-RETURNING room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost
+RETURNING room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost, winner_pct
 `
 
 type SetRoomStatusParams struct {
@@ -940,6 +1057,7 @@ func (q *Queries) SetRoomStatus(ctx context.Context, arg SetRoomStatusParams) (R
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.EntryCost,
+		&i.WinnerPct,
 	)
 	return i, err
 }

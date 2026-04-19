@@ -150,3 +150,27 @@ func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
 	}
 	return items, nil
 }
+
+const updateUserBalance = `-- name: UpdateUserBalance :one
+UPDATE users SET balance = balance + $2
+WHERE id = $1 AND balance + $2 >= 0
+RETURNING id, name, balance, created_at, bot
+`
+
+type UpdateUserBalanceParams struct {
+	ID      int32 `json:"id"`
+	Balance int32 `json:"balance"`
+}
+
+func (q *Queries) UpdateUserBalance(ctx context.Context, arg UpdateUserBalanceParams) (User, error) {
+	row := q.db.QueryRow(ctx, updateUserBalance, arg.ID, arg.Balance)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Balance,
+		&i.CreatedAt,
+		&i.Bot,
+	)
+	return i, err
+}

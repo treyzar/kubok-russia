@@ -2,18 +2,40 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"log"
 	"math"
 	"time"
 
+	"github.com/SomeSuperCoder/OnlineShop/internal/redisclient"
 	"github.com/SomeSuperCoder/OnlineShop/repository"
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type RoomHandler struct {
-	Repo *repository.Queries
-	Pool *pgxpool.Pool
+	Repo   *repository.Queries
+	Pool   *pgxpool.Pool
+	PubSub *redisclient.PubSub
+}
+
+// publishRoomSnapshot serialises the room item and publishes it to the room's Redis channel.
+// Errors are logged but do not affect the HTTP response.
+func (h *RoomHandler) publishRoomSnapshot(ctx context.Context, item roomItem) {
+	if h.PubSub == nil {
+		return
+	}
+	payload, err := json.Marshal(item)
+	if err != nil {
+		log.Printf("[RoomHandler] failed to marshal room snapshot for room %d: %v", item.RoomID, err)
+		return
+	}
+	if err := h.PubSub.Publish(ctx, item.RoomID, payload); err != nil {
+		log.Printf("[RoomHandler] failed to publish room snapshot for room %d: %v", item.RoomID, err)
+	}
 }
 
 // --- Shared response types ---
@@ -26,6 +48,7 @@ type RoomResponse struct {
 		Status        string     `json:"status"`
 		PlayersNeeded int32      `json:"players_needed"`
 		EntryCost     int32      `json:"entry_cost"`
+		WinnerPct     int32      `json:"winner_pct"`
 		CreatedAt     time.Time  `json:"created_at"`
 		UpdatedAt     time.Time  `json:"updated_at"`
 	}
@@ -58,6 +81,7 @@ type CreateRoomRequest struct {
 		Status        string     `json:"status" enum:"new,starting_soon,playing"`
 		PlayersNeeded int32      `json:"players_needed" minimum:"1"`
 		EntryCost     int32      `json:"entry_cost" minimum:"0"`
+		WinnerPct     *int32     `json:"winner_pct,omitempty" minimum:"1" maximum:"99"`
 	}
 }
 
@@ -67,6 +91,14 @@ type ListRoomsResponse struct {
 	}
 }
 
+type ListRoomsRequest struct {
+	Status        *string `query:"status"`
+	EntryCost     *int32  `query:"entry_cost"`
+	PlayersNeeded *int32  `query:"players_needed"`
+	SortBy        *string `query:"sort_by"`
+	SortOrder     *string `query:"sort_order"`
+}
+
 type roomItem struct {
 	RoomID        int32      `json:"room_id"`
 	Jackpot       int32      `json:"jackpot"`
@@ -74,6 +106,7 @@ type roomItem struct {
 	Status        string     `json:"status"`
 	PlayersNeeded int32      `json:"players_needed"`
 	EntryCost     int32      `json:"entry_cost"`
+	WinnerPct     int32      `json:"winner_pct"`
 	CreatedAt     time.Time  `json:"created_at"`
 	UpdatedAt     time.Time  `json:"updated_at"`
 }
@@ -89,6 +122,7 @@ func roomToItem(r repository.Room) roomItem {
 		Status:        r.Status,
 		PlayersNeeded: r.PlayersNeeded,
 		EntryCost:     r.EntryCost,
+		WinnerPct:     r.WinnerPct,
 		CreatedAt:     r.CreatedAt,
 		UpdatedAt:     r.UpdatedAt,
 	}
@@ -106,6 +140,7 @@ func roomItemToResponse(item roomItem) *RoomResponse {
 	resp.Body.Status = item.Status
 	resp.Body.PlayersNeeded = item.PlayersNeeded
 	resp.Body.EntryCost = item.EntryCost
+	resp.Body.WinnerPct = item.WinnerPct
 	resp.Body.CreatedAt = item.CreatedAt
 	resp.Body.UpdatedAt = item.UpdatedAt
 	return resp
@@ -117,12 +152,18 @@ func (h *RoomHandler) Create(ctx context.Context, req *CreateRoomRequest) (*Room
 		startTime = pgtype.Timestamptz{Time: *req.Body.StartTime, Valid: true}
 	}
 
+	winnerPct := int32(80)
+	if req.Body.WinnerPct != nil {
+		winnerPct = *req.Body.WinnerPct
+	}
+
 	room, err := h.Repo.InsertRoom(ctx, repository.InsertRoomParams{
 		Jackpot:       req.Body.Jackpot,
 		StartTime:     startTime,
 		Status:        req.Body.Status,
 		PlayersNeeded: req.Body.PlayersNeeded,
 		EntryCost:     req.Body.EntryCost,
+		WinnerPct:     winnerPct,
 	})
 	if err != nil {
 		return nil, err
@@ -131,8 +172,38 @@ func (h *RoomHandler) Create(ctx context.Context, req *CreateRoomRequest) (*Room
 	return roomItemToResponse(roomToItem(room)), nil
 }
 
-func (h *RoomHandler) List(ctx context.Context, _ *struct{}) (*ListRoomsResponse, error) {
-	rooms, err := h.Repo.ListRooms(ctx)
+func (h *RoomHandler) List(ctx context.Context, req *ListRoomsRequest) (*ListRoomsResponse, error) {
+	// Build nullable params — pass empty string / 0 when nil; the SQL uses IS NULL check
+	var statusParam string
+	if req.Status != nil {
+		statusParam = *req.Status
+	}
+	var entryCostParam int32
+	if req.EntryCost != nil {
+		entryCostParam = *req.EntryCost
+	}
+	var playersNeededParam int32
+	if req.PlayersNeeded != nil {
+		playersNeededParam = *req.PlayersNeeded
+	}
+
+	// For sort, pass nil interface{} when not set so SQL CASE falls through to created_at DESC
+	var sortBy interface{}
+	var sortOrder interface{}
+	if req.SortBy != nil {
+		sortBy = *req.SortBy
+	}
+	if req.SortOrder != nil {
+		sortOrder = *req.SortOrder
+	}
+
+	rooms, err := h.Repo.ListRoomsFiltered(ctx, repository.ListRoomsFilteredParams{
+		Column1: statusParam,
+		Column2: entryCostParam,
+		Column3: playersNeededParam,
+		Column4: sortBy,
+		Column5: sortOrder,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -151,6 +222,57 @@ func (h *RoomHandler) Get(ctx context.Context, req *GetRoomRequest) (*RoomRespon
 		return nil, err
 	}
 	return roomItemToResponse(roomToItem(room)), nil
+}
+
+// --- room configurator ---
+
+type ValidateRoomRequest struct {
+	Body struct {
+		PlayersNeeded int32 `json:"players_needed" minimum:"1"`
+		EntryCost     int32 `json:"entry_cost" minimum:"0"`
+		WinnerPct     int32 `json:"winner_pct" minimum:"1" maximum:"99"`
+	}
+}
+
+type ValidateRoomResponse struct {
+	Body struct {
+		PrizeFund    int32    `json:"prize_fund"`
+		OrganiserCut int32    `json:"organiser_cut"`
+		PlayerROI    float64  `json:"player_roi"`
+		Warnings     []string `json:"warnings"`
+	}
+}
+
+func (h *RoomHandler) Validate(_ context.Context, req *ValidateRoomRequest) (*ValidateRoomResponse, error) {
+	fullJackpot := req.Body.PlayersNeeded * req.Body.EntryCost
+	prizeFund := fullJackpot * req.Body.WinnerPct / 100
+	organiserCut := fullJackpot - prizeFund
+
+	var playerROI float64
+	if req.Body.EntryCost > 0 {
+		playerROI = float64(prizeFund) / float64(req.Body.EntryCost)
+	}
+
+	var warnings []string
+	if playerROI < 1.5 {
+		warnings = append(warnings, "prize fund may be unattractive to players")
+	}
+	if fullJackpot > 0 && float64(organiserCut) < float64(fullJackpot)*0.10 {
+		warnings = append(warnings, "organiser margin is very low")
+	}
+	if req.Body.WinnerPct > 95 {
+		warnings = append(warnings, "winner_pct leaves no organiser margin")
+	}
+	if req.Body.WinnerPct < 50 {
+		warnings = append(warnings, "winner receives less than half the jackpot")
+	}
+
+	resp := &ValidateRoomResponse{}
+	resp.Body.PrizeFund = prizeFund
+	resp.Body.OrganiserCut = organiserCut
+	resp.Body.PlayerROI = playerROI
+	resp.Body.Warnings = warnings
+	return resp, nil
 }
 
 // --- room_players ---
@@ -188,7 +310,44 @@ type roomPlayerItem struct {
 }
 
 func (h *RoomHandler) JoinRoom(ctx context.Context, req *JoinRoomRequest) (*RoomResponse, error) {
-	room, err := h.Repo.JoinRoomAndUpdateStatus(ctx, repository.JoinRoomAndUpdateStatusParams{
+	// Pre-check: room status and capacity
+	room, err := h.Repo.GetRoom(ctx, repository.GetRoomParams{RoomID: req.RoomID})
+	if err != nil {
+		return nil, err
+	}
+	if room.Status != "new" && room.Status != "starting_soon" {
+		return nil, huma.Error409Conflict("room is not open for joining", nil)
+	}
+
+	playerCount, err := h.Repo.CountRoomPlayers(ctx, repository.CountRoomPlayersParams{RoomID: req.RoomID})
+	if err != nil {
+		return nil, err
+	}
+	if playerCount >= int64(room.PlayersNeeded) {
+		return nil, huma.Error409Conflict("room is full", nil)
+	}
+
+	// Pre-check: user balance
+	user, err := h.Repo.GetUser(ctx, repository.GetUserParams{ID: req.Body.UserID})
+	if err != nil {
+		return nil, err
+	}
+	if user.Balance < room.EntryCost {
+		return nil, huma.Error402PaymentRequired("insufficient balance to join room", nil)
+	}
+
+	// Pre-check: user not already in room
+	players, err := h.Repo.ListRoomPlayers(ctx, repository.ListRoomPlayersParams{RoomID: req.RoomID})
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range players {
+		if p.UserID == req.Body.UserID {
+			return nil, huma.Error409Conflict("user already in room", nil)
+		}
+	}
+
+	updatedRoom, err := h.Repo.JoinRoomAndUpdateStatus(ctx, repository.JoinRoomAndUpdateStatusParams{
 		RoomID: req.RoomID,
 		ID:     req.Body.UserID,
 		Places: req.Body.Places,
@@ -196,7 +355,9 @@ func (h *RoomHandler) JoinRoom(ctx context.Context, req *JoinRoomRequest) (*Room
 	if err != nil {
 		return nil, err
 	}
-	return roomItemToResponse(roomToItem(room)), nil
+	item := roomToItem(updatedRoom)
+	h.publishRoomSnapshot(ctx, item)
+	return roomItemToResponse(item), nil
 }
 
 func (h *RoomHandler) LeaveRoom(ctx context.Context, req *LeaveRoomRequest) (*RoomResponse, error) {
@@ -207,7 +368,9 @@ func (h *RoomHandler) LeaveRoom(ctx context.Context, req *LeaveRoomRequest) (*Ro
 	if err != nil {
 		return nil, err
 	}
-	return roomItemToResponse(roomToItem(room)), nil
+	item := roomToItem(room)
+	h.publishRoomSnapshot(ctx, item)
+	return roomItemToResponse(item), nil
 }
 
 func (h *RoomHandler) ListRoomPlayers(ctx context.Context, req *ListRoomPlayersRequest) (*ListRoomPlayersResponse, error) {
@@ -317,13 +480,43 @@ type roomBoostItem struct {
 }
 
 func (h *RoomHandler) BoostRoom(ctx context.Context, req *BoostRoomRequest) (*RoomBoostResponse, error) {
+	// Pre-check: user balance
+	user, err := h.Repo.GetUser(ctx, repository.GetUserParams{ID: req.Body.UserID})
+	if err != nil {
+		return nil, err
+	}
+	if user.Balance < req.Body.Amount {
+		return nil, huma.Error402PaymentRequired("insufficient balance for boost", nil)
+	}
+
+	// Pre-check: no existing boost for this user+room
+	boosts, err := h.Repo.ListRoomBoosts(ctx, repository.ListRoomBoostsParams{RoomID: req.RoomID})
+	if err != nil {
+		return nil, err
+	}
+	for _, b := range boosts {
+		if b.UserID == req.Body.UserID {
+			return nil, huma.Error409Conflict("user has already boosted this room", nil)
+		}
+	}
+
 	boost, err := h.Repo.InsertRoomBoost(ctx, repository.InsertRoomBoostParams{
 		RoomID: req.RoomID,
 		ID:     req.Body.UserID,
 		Amount: req.Body.Amount,
 	})
 	if err != nil {
+		// Catch DB-level unique violation as fallback
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return nil, huma.Error409Conflict("user has already boosted this room", nil)
+		}
 		return nil, err
+	}
+
+	// Publish updated room snapshot after successful boost
+	if room, rErr := h.Repo.GetRoom(ctx, repository.GetRoomParams{RoomID: req.RoomID}); rErr == nil {
+		h.publishRoomSnapshot(ctx, roomToItem(room))
 	}
 
 	resp := &RoomBoostResponse{}

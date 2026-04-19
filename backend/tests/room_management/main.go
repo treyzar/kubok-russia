@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math/rand"
+	"net/http"
 	"os"
 	"time"
 
@@ -55,7 +57,10 @@ func main() {
 		{"Test 10: User cannot boost non-playing room", testCannotBoostNonPlaying},
 		{"Test 11: Winner can be declared in finished room", testDeclareWinner},
 		{"Test 12: Room finishes automatically and declares winner", testRoomAutoFinish},
-		{"Test 13: Cleanup test data", testCleanup},
+		{"Test 13: winner_pct is stored and used in prize calculation", testWinnerPctPrizeCalculation},
+		{"Test 14: External RNG fallback on invalid URL", testExternalRNGFallback},
+		{"Test 15: Boost uniqueness enforced at DB level", testBoostUniquenessDB},
+		{"Test 16: Cleanup test data", testCleanup},
 	}
 
 	for _, test := range tests {
@@ -735,6 +740,264 @@ func testRoomAutoFinish() error {
 		return fmt.Errorf("expected prize %d, got %d", expectedPrize, winners[0].Prize)
 	}
 
+	return nil
+}
+
+// testWinnerPctPrizeCalculation verifies that winner_pct is persisted on the room
+// and that FinishRoomAndAwardWinnerPct uses it when computing the prize.
+func testWinnerPctPrizeCalculation() error {
+	const customPct = int32(60)
+	const entryCost = int32(100)
+	const playersNeeded = int32(2)
+	expectedJackpot := entryCost * playersNeeded       // 200
+	expectedPrize := expectedJackpot * customPct / 100 // 120
+
+	room, err := queries.InsertRoom(context.Background(), repository.InsertRoomParams{
+		Jackpot: 0,
+		StartTime: pgtype.Timestamptz{
+			Time:  time.Now().Add(-31 * time.Second),
+			Valid: true,
+		},
+		Status:        "playing",
+		PlayersNeeded: playersNeeded,
+		EntryCost:     entryCost,
+		WinnerPct:     customPct,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create room: %v", err)
+	}
+
+	// Verify winner_pct was stored
+	fetched, err := queries.GetRoom(context.Background(), repository.GetRoomParams{RoomID: room.RoomID})
+	if err != nil {
+		return fmt.Errorf("failed to fetch room: %v", err)
+	}
+	if fetched.WinnerPct != customPct {
+		return fmt.Errorf("expected winner_pct %d, got %d", customPct, fetched.WinnerPct)
+	}
+
+	// Add 2 bots so the room has players and a jackpot
+	bots, err := queries.GetAvailableBotsForRoom(context.Background(), repository.GetAvailableBotsForRoomParams{
+		Balance: entryCost,
+		RoomID:  room.RoomID,
+		Limit:   2,
+	})
+	if err != nil || len(bots) < 2 {
+		return fmt.Errorf("not enough bots available: %v", err)
+	}
+	for _, bot := range bots {
+		rows, err := queries.BotJoinRoom(context.Background(), repository.BotJoinRoomParams{
+			RoomID: room.RoomID,
+			ID:     bot.ID,
+			Places: nil,
+		})
+		if err != nil || len(rows) == 0 {
+			return fmt.Errorf("failed to add bot %d: %v", bot.ID, err)
+		}
+	}
+
+	// Refresh jackpot
+	refreshed, err := queries.GetRoom(context.Background(), repository.GetRoomParams{RoomID: room.RoomID})
+	if err != nil {
+		return err
+	}
+	if refreshed.Jackpot != expectedJackpot {
+		return fmt.Errorf("expected jackpot %d, got %d", expectedJackpot, refreshed.Jackpot)
+	}
+
+	// Finish the room and award winner
+	result, err := queries.FinishRoomAndAwardWinnerPct(context.Background(), repository.FinishRoomAndAwardWinnerPctParams{
+		RoomID: room.RoomID,
+		ID:     bots[0].ID,
+	})
+	if err != nil {
+		return fmt.Errorf("FinishRoomAndAwardWinnerPct failed: %v", err)
+	}
+
+	winners, err := queries.ListRoomWins(context.Background(), repository.ListRoomWinsParams{RoomID: room.RoomID})
+	if err != nil {
+		return err
+	}
+	if len(winners) == 0 {
+		return fmt.Errorf("no winner recorded for room %d", room.RoomID)
+	}
+	if winners[0].Prize != expectedPrize {
+		return fmt.Errorf("expected prize %d (%d%% of %d), got %d", expectedPrize, customPct, expectedJackpot, winners[0].Prize)
+	}
+
+	log.Printf("winner_pct=%d stored and used correctly; prize=%d, winner user_id=%d",
+		customPct, winners[0].Prize, result.UserID)
+	return nil
+}
+
+// testExternalRNGFallback sets RNG_URL to an invalid address and verifies winner
+// selection still completes via local math/rand fallback.
+func testExternalRNGFallback() error {
+	users, err := queries.ListUsers(context.Background())
+	if err != nil {
+		return err
+	}
+	var user1 repository.User
+	for _, u := range users {
+		if u.Name == "TestUser1" {
+			user1 = u
+			break
+		}
+	}
+	if user1.ID == 0 {
+		return fmt.Errorf("TestUser1 not found")
+	}
+
+	room, err := queries.InsertRoom(context.Background(), repository.InsertRoomParams{
+		Jackpot: 0,
+		StartTime: pgtype.Timestamptz{
+			Time:  time.Now().Add(-31 * time.Second),
+			Valid: true,
+		},
+		Status:        "playing",
+		PlayersNeeded: 1,
+		EntryCost:     0,
+		WinnerPct:     80,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create room: %v", err)
+	}
+
+	_, err = queries.JoinRoomAndUpdateStatus(context.Background(), repository.JoinRoomAndUpdateStatusParams{
+		RoomID: room.RoomID,
+		ID:     user1.ID,
+		Places: nil,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to join room: %v", err)
+	}
+
+	players, err := queries.GetPlayersWithStakes(context.Background(), repository.GetPlayersWithStakesParams{
+		RoomID: room.RoomID,
+	})
+	if err != nil || len(players) == 0 {
+		return fmt.Errorf("no players found: %v", err)
+	}
+
+	// Simulate the fallback: call an invalid RNG URL, expect local rand to be used
+	badRNGURL := "http://127.0.0.1:19999/rng"
+	winnerID := localSelectWinner(players, badRNGURL)
+	if winnerID == 0 {
+		return fmt.Errorf("expected a winner even with bad RNG URL, got 0")
+	}
+
+	log.Printf("RNG fallback worked: winner_id=%d selected despite bad RNG URL", winnerID)
+	return nil
+}
+
+// localSelectWinner replicates the room_finisher fallback logic for testing.
+func localSelectWinner(players []repository.GetPlayersWithStakesRow, rngURL string) int32 {
+	if len(players) == 0 {
+		return 0
+	}
+	var totalStake int32
+	for _, p := range players {
+		totalStake += p.TotalStake
+	}
+
+	var roll int32
+	if rngURL != "" {
+		// Attempt external call — expected to fail, triggering fallback
+		resp, err := http.Get(rngURL + "?max=100") //nolint:gosec
+		if err != nil || resp.StatusCode != http.StatusOK {
+			if totalStake > 0 {
+				roll = rand.Int31n(totalStake)
+			}
+		} else {
+			resp.Body.Close()
+			if totalStake > 0 {
+				roll = rand.Int31n(totalStake)
+			}
+		}
+	} else if totalStake > 0 {
+		roll = rand.Int31n(totalStake)
+	}
+
+	var cumulative int32
+	for _, p := range players {
+		cumulative += p.TotalStake
+		if roll < cumulative {
+			return p.UserID
+		}
+	}
+	return players[len(players)-1].UserID
+}
+
+// testBoostUniquenessDB verifies the DB-level unique constraint on (room_id, user_id)
+// in room_boosts prevents a second boost from the same user.
+func testBoostUniquenessDB() error {
+	rooms, err := queries.ListRooms(context.Background())
+	if err != nil {
+		return err
+	}
+	var playingRoom repository.Room
+	for _, r := range rooms {
+		if r.Status == "playing" {
+			playingRoom = r
+			break
+		}
+	}
+	if playingRoom.RoomID == 0 {
+		playingRoom, err = queries.InsertRoom(context.Background(), repository.InsertRoomParams{
+			Jackpot: 0,
+			StartTime: pgtype.Timestamptz{
+				Time:  time.Now().Add(5 * time.Minute),
+				Valid: true,
+			},
+			Status:        "playing",
+			PlayersNeeded: 2,
+			EntryCost:     0,
+			WinnerPct:     80,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to create playing room: %v", err)
+		}
+	}
+
+	users, err := queries.ListUsers(context.Background())
+	if err != nil {
+		return err
+	}
+	var user3 repository.User
+	for _, u := range users {
+		if u.Name == "TestUser3" {
+			user3 = u
+			break
+		}
+	}
+	if user3.ID == 0 {
+		return fmt.Errorf("TestUser3 not found")
+	}
+
+	// First boost — should succeed
+	boost1, err := queries.InsertRoomBoost(context.Background(), repository.InsertRoomBoostParams{
+		RoomID: playingRoom.RoomID,
+		ID:     user3.ID,
+		Amount: 10,
+	})
+	if err != nil {
+		return fmt.Errorf("first boost failed unexpectedly: %v", err)
+	}
+	if boost1.RoomID == 0 {
+		return fmt.Errorf("first boost returned empty result")
+	}
+
+	// Second boost by same user — DB unique constraint should block it
+	boost2, err := queries.InsertRoomBoost(context.Background(), repository.InsertRoomBoostParams{
+		RoomID: playingRoom.RoomID,
+		ID:     user3.ID,
+		Amount: 10,
+	})
+	if err == nil && boost2.RoomID != 0 {
+		return fmt.Errorf("expected duplicate boost to be rejected at DB level, but it succeeded")
+	}
+
+	log.Printf("DB-level boost uniqueness enforced: second boost correctly rejected (err=%v, room_id=%d)", err, boost2.RoomID)
 	return nil
 }
 

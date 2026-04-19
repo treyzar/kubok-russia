@@ -27,3 +27,8 @@ WHERE balance < $2 AND bot = true;
 -- name: ListUsers :many
 SELECT * FROM users
 ORDER BY id ASC;
+
+-- name: UpdateUserBalance :one
+UPDATE users SET balance = balance + $2
+WHERE id = $1 AND balance + $2 >= 0
+RETURNING *;

@@ -1,6 +1,6 @@
 -- name: InsertRoom :one
-INSERT INTO rooms (jackpot, start_time, status, players_needed, entry_cost)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO rooms (jackpot, start_time, status, players_needed, entry_cost, winner_pct)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING *;
 
 -- name: DeleteRoom :exec
@@ -321,6 +321,44 @@ award_winner AS (
 insert_win AS (
     INSERT INTO room_winners (room_id, user_id, prize)
     SELECT $1, $3, ($2 * 80 / 100)
+    WHERE EXISTS (SELECT 1 FROM finish_room)
+    RETURNING room_id, user_id, prize, won_at
+)
+SELECT * FROM insert_win;
+
+-- name: ListRoomsFiltered :many
+SELECT * FROM rooms
+WHERE ($1::varchar IS NULL OR status = $1)
+  AND ($2::integer IS NULL OR entry_cost = $2)
+  AND ($3::integer IS NULL OR players_needed = $3)
+ORDER BY
+  CASE WHEN $4 = 'entry_cost'     AND $5 = 'asc'  THEN entry_cost     END ASC,
+  CASE WHEN $4 = 'entry_cost'     AND $5 = 'desc' THEN entry_cost     END DESC,
+  CASE WHEN $4 = 'jackpot'        AND $5 = 'asc'  THEN jackpot        END ASC,
+  CASE WHEN $4 = 'jackpot'        AND $5 = 'desc' THEN jackpot        END DESC,
+  CASE WHEN $4 = 'players_needed' AND $5 = 'asc'  THEN players_needed END ASC,
+  CASE WHEN $4 = 'players_needed' AND $5 = 'desc' THEN players_needed END DESC,
+  created_at DESC;
+
+-- name: FinishRoomAndAwardWinnerPct :one
+WITH finish_room AS (
+    UPDATE rooms
+    SET status = 'finished', updated_at = CURRENT_TIMESTAMP
+    WHERE rooms.room_id = $1 AND rooms.status = 'playing'
+    RETURNING jackpot, winner_pct
+),
+prize AS (
+    SELECT (jackpot * winner_pct / 100) AS amount FROM finish_room
+),
+award_winner AS (
+    UPDATE users
+    SET balance = users.balance + (SELECT amount FROM prize)
+    WHERE users.id = $2 AND EXISTS (SELECT 1 FROM finish_room)
+    RETURNING users.id
+),
+insert_win AS (
+    INSERT INTO room_winners (room_id, user_id, prize)
+    SELECT $1, $2, (SELECT amount FROM prize)
     WHERE EXISTS (SELECT 1 FROM finish_room)
     RETURNING room_id, user_id, prize, won_at
 )

@@ -2,15 +2,17 @@ package crons
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"time"
 
+	"github.com/SomeSuperCoder/OnlineShop/internal/redisclient"
 	"github.com/SomeSuperCoder/OnlineShop/repository"
 	"github.com/hx/eon"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func RoomStarter(pool *pgxpool.Pool) func(*eon.Context) error {
+func RoomStarter(pool *pgxpool.Pool, pubSub *redisclient.PubSub) func(*eon.Context) error {
 	executionCount := 0
 	return func(ctx *eon.Context) error {
 		executionCount++
@@ -160,6 +162,21 @@ func RoomStarter(pool *pgxpool.Pool) func(*eon.Context) error {
 			}
 
 			log.Printf("[RoomStarter] 🎮 Room %d successfully started with %d bots added", room.RoomID, addedBots)
+
+			// Publish playing room snapshot
+			if pubSub != nil {
+				snapshot := map[string]interface{}{
+					"room_id":        room.RoomID,
+					"status":         "playing",
+					"jackpot":        room.Jackpot,
+					"players_needed": room.PlayersNeeded,
+					"entry_cost":     room.EntryCost,
+					"updated_at":     time.Now(),
+				}
+				if payload, err := json.Marshal(snapshot); err == nil {
+					pubSub.Publish(context.Background(), room.RoomID, payload)
+				}
+			}
 
 		nextRoom:
 			// Continue to next room

@@ -2,15 +2,21 @@ package crons
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log"
 	"math/rand"
+	"net/http"
+	"time"
 
+	"github.com/SomeSuperCoder/OnlineShop/internal"
+	"github.com/SomeSuperCoder/OnlineShop/internal/redisclient"
 	"github.com/SomeSuperCoder/OnlineShop/repository"
 	"github.com/hx/eon"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func RoomFinisher(pool *pgxpool.Pool) func(*eon.Context) error {
+func RoomFinisher(pool *pgxpool.Pool, config *internal.AppConfig, pubSub *redisclient.PubSub) func(*eon.Context) error {
 	return func(ctx *eon.Context) error {
 		queries := repository.New(pool)
 
@@ -38,8 +44,8 @@ func RoomFinisher(pool *pgxpool.Pool) func(*eon.Context) error {
 				continue
 			}
 
-			// Select winner by weighted probability: stake / jackpot
-			winnerID := selectWeightedWinner(players, room.Jackpot)
+			// Select winner using configurable RNG
+			winnerID := selectWinner(players, room.Jackpot, config.RNGURL)
 			if winnerID == 0 {
 				log.Printf("[RoomFinisher] ❌ Failed to select winner for room %d", room.RoomID)
 				continue
@@ -47,53 +53,102 @@ func RoomFinisher(pool *pgxpool.Pool) func(*eon.Context) error {
 
 			log.Printf("[RoomFinisher] 🎲 Selected winner user ID %d for room %d", winnerID, room.RoomID)
 
-			// Atomically: set room to finished + award winner 80% of jackpot
-			result, err := queries.FinishRoomAndAwardWinner(context.Background(), repository.FinishRoomAndAwardWinnerParams{
-				RoomID:  room.RoomID,
-				Column2: room.Jackpot,
-				ID:      winnerID,
+			// Atomically: set room to finished + award winner using room's winner_pct
+			result, err := queries.FinishRoomAndAwardWinnerPct(context.Background(), repository.FinishRoomAndAwardWinnerPctParams{
+				RoomID: room.RoomID,
+				ID:     winnerID,
 			})
 			if err != nil {
 				log.Printf("[RoomFinisher] ❌ Failed to finish room %d: %v", room.RoomID, err)
 				continue
 			}
 
-			prize := room.Jackpot * 80 / 100
-			log.Printf("[RoomFinisher] 🏆 Room %d finished! Winner: user %d, Prize: %d (80%% of jackpot %d)", room.RoomID, result.UserID, prize, room.Jackpot)
+			prize := room.Jackpot * room.WinnerPct / 100
+			log.Printf("[RoomFinisher] 🏆 Room %d finished! Winner: user %d, Prize: %d (%d%% of jackpot %d)", room.RoomID, result.UserID, prize, room.WinnerPct, room.Jackpot)
+
+			// Publish finished room snapshot
+			if pubSub != nil {
+				snapshot := map[string]interface{}{
+					"room_id":    room.RoomID,
+					"status":     "finished",
+					"jackpot":    room.Jackpot,
+					"winner_pct": room.WinnerPct,
+					"winner_id":  result.UserID,
+					"prize":      prize,
+					"updated_at": time.Now(),
+				}
+				if payload, err := json.Marshal(snapshot); err == nil {
+					pubSub.Publish(context.Background(), room.RoomID, payload)
+				}
+			}
 		}
 
 		return nil
 	}
 }
 
-// selectWeightedWinner picks a winner where each player's probability = their_stake / jackpot
-func selectWeightedWinner(players []repository.GetPlayersWithStakesRow, jackpot int32) int32 {
-	if jackpot <= 0 {
-		// Fallback: uniform random if jackpot is 0
+// selectWinner picks a winner by weighted probability.
+// When rngURL is set it calls the external RNG API; on any error it falls back to local math/rand.
+func selectWinner(players []repository.GetPlayersWithStakesRow, jackpot int32, rngURL string) int32 {
+	// Compute total stake across all players
+	var totalStake int32
+	for _, p := range players {
+		totalStake += p.TotalStake
+	}
+
+	if totalStake <= 0 {
 		return players[rand.Intn(len(players))].UserID
 	}
 
-	// Build cumulative weights
-	type entry struct {
-		userID     int32
-		cumulative int32
+	var roll int32
+
+	if rngURL != "" {
+		result, err := callExternalRNG(rngURL, totalStake)
+		if err != nil {
+			log.Printf("[RoomFinisher] ⚠️  External RNG failed (%v), falling back to local rand", err)
+			roll = rand.Int31n(totalStake)
+		} else {
+			roll = result
+		}
+	} else {
+		roll = rand.Int31n(totalStake)
 	}
 
-	entries := make([]entry, 0, len(players))
+	// Walk cumulative weights to find the winner
 	var cumulative int32
 	for _, p := range players {
 		cumulative += p.TotalStake
-		entries = append(entries, entry{userID: p.UserID, cumulative: cumulative})
-	}
-
-	// Pick a random value in [0, total_stake)
-	roll := rand.Int31n(cumulative)
-	for _, e := range entries {
-		if roll < e.cumulative {
-			return e.userID
+		if roll < cumulative {
+			return p.UserID
 		}
 	}
 
-	// Fallback
 	return players[len(players)-1].UserID
+}
+
+// callExternalRNG calls GET {rngURL}?max={max} and expects {"result": N} in [0, max).
+func callExternalRNG(rngURL string, max int32) (int32, error) {
+	url := fmt.Sprintf("%s?max=%d", rngURL, max)
+	resp, err := http.Get(url) //nolint:gosec
+	if err != nil {
+		return 0, fmt.Errorf("http get: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("unexpected status %d", resp.StatusCode)
+	}
+
+	var body struct {
+		Result int32 `json:"result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return 0, fmt.Errorf("decode response: %w", err)
+	}
+
+	if body.Result < 0 || body.Result >= max {
+		return 0, fmt.Errorf("result %d out of range [0, %d)", body.Result, max)
+	}
+
+	return body.Result, nil
 }

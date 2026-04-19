@@ -24,6 +24,8 @@ type AppConfig struct {
 	UserCartExpiry time.Duration `envconfig:"USER_CART_EXPIRY" default:"720h"`
 	// Bot Manager
 	DesiredBotCount int `envconfig:"DESIRED_BOT_COUNT" default:"10"`
+	// RNG
+	RNGURL string `envconfig:"RNG_URL"`
 }
 
 func LoadAppConfig() *AppConfig {

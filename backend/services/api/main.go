@@ -6,6 +6,7 @@ import (
 
 	"github.com/SomeSuperCoder/OnlineShop/handlers"
 	"github.com/SomeSuperCoder/OnlineShop/internal"
+	"github.com/SomeSuperCoder/OnlineShop/internal/redisclient"
 	"github.com/SomeSuperCoder/OnlineShop/repository"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humagin"
@@ -32,12 +33,13 @@ func main() {
 	}
 	api := humagin.NewWithGroup(r, apiGroup, humaConfig)
 
-	MountRoutes(api, repo, pool, redisClient, appConfig)
+	pubSub := redisclient.New(redisClient)
+	MountRoutes(api, r, repo, pool, redisClient, pubSub, appConfig)
 
 	r.Run(fmt.Sprintf(":%s", appConfig.Port))
 }
 
-func MountRoutes(api huma.API, repo *repository.Queries, pool *pgxpool.Pool, redisClient *redis.Client, appConfig *internal.AppConfig) {
+func MountRoutes(api huma.API, r *gin.Engine, repo *repository.Queries, pool *pgxpool.Pool, redisClient *redis.Client, pubSub *redisclient.PubSub, appConfig *internal.AppConfig) {
 	helloHandler := handlers.HelloHandler{Repo: repo, Pool: pool}
 	huma.Register(api, huma.Operation{
 		OperationID: "get-hello",
@@ -64,7 +66,19 @@ func MountRoutes(api huma.API, repo *repository.Queries, pool *pgxpool.Pool, red
 		Path:        "/users/{id}",
 	}, userHandler.Delete)
 
-	roomHandler := handlers.RoomHandler{Repo: repo, Pool: pool}
+	huma.Register(api, huma.Operation{
+		OperationID: "list-users",
+		Method:      "GET",
+		Path:        "/users",
+	}, userHandler.List)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "update-user-balance",
+		Method:      "PATCH",
+		Path:        "/users/{id}/balance",
+	}, userHandler.UpdateBalance)
+
+	roomHandler := handlers.RoomHandler{Repo: repo, Pool: pool, PubSub: pubSub}
 	// rooms
 	huma.Register(api, huma.Operation{
 		OperationID: "create-room",
@@ -76,6 +90,11 @@ func MountRoutes(api huma.API, repo *repository.Queries, pool *pgxpool.Pool, red
 		Method:      "GET",
 		Path:        "/rooms",
 	}, roomHandler.List)
+	huma.Register(api, huma.Operation{
+		OperationID: "validate-room",
+		Method:      "POST",
+		Path:        "/rooms/validate",
+	}, roomHandler.Validate)
 	huma.Register(api, huma.Operation{
 		OperationID: "get-room",
 		Method:      "GET",
@@ -132,4 +151,49 @@ func MountRoutes(api huma.API, repo *repository.Queries, pool *pgxpool.Pool, red
 		Method:      "GET",
 		Path:        "/rooms/{room_id}/boosts/calc/boost",
 	}, roomHandler.CalcBoost)
+
+	// rounds
+	roundHandler := handlers.RoundHandler{Repo: repo, Pool: pool}
+	huma.Register(api, huma.Operation{
+		OperationID: "list-rounds",
+		Method:      "GET",
+		Path:        "/rounds",
+	}, roundHandler.List)
+	huma.Register(api, huma.Operation{
+		OperationID: "get-round",
+		Method:      "GET",
+		Path:        "/rounds/{room_id}",
+	}, roundHandler.Get)
+
+	// room templates
+	templateHandler := handlers.TemplateHandler{Repo: repo, Pool: pool}
+	huma.Register(api, huma.Operation{
+		OperationID: "create-room-template",
+		Method:      "POST",
+		Path:        "/room-templates",
+	}, templateHandler.Create)
+	huma.Register(api, huma.Operation{
+		OperationID: "list-room-templates",
+		Method:      "GET",
+		Path:        "/room-templates",
+	}, templateHandler.List)
+	huma.Register(api, huma.Operation{
+		OperationID: "get-room-template",
+		Method:      "GET",
+		Path:        "/room-templates/{template_id}",
+	}, templateHandler.Get)
+	huma.Register(api, huma.Operation{
+		OperationID: "update-room-template",
+		Method:      "PUT",
+		Path:        "/room-templates/{template_id}",
+	}, templateHandler.Update)
+	huma.Register(api, huma.Operation{
+		OperationID: "delete-room-template",
+		Method:      "DELETE",
+		Path:        "/room-templates/{template_id}",
+	}, templateHandler.Delete)
+
+	// WebSocket — registered on raw Gin router (Huma doesn't support WS upgrades)
+	wsHandler := handlers.WSHandler{PubSub: pubSub}
+	r.GET("/api/v1/rooms/:room_id/ws", wsHandler.Handle)
 }

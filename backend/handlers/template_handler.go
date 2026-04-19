@@ -1,0 +1,176 @@
+package handlers
+
+import (
+	"context"
+	"errors"
+	"time"
+
+	"github.com/SomeSuperCoder/OnlineShop/repository"
+	"github.com/danielgtaylor/huma/v2"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+type TemplateHandler struct {
+	Repo *repository.Queries
+	Pool *pgxpool.Pool
+}
+
+// --- shared response type ---
+
+type templateItem struct {
+	TemplateID    int32     `json:"template_id"`
+	Name          string    `json:"name"`
+	PlayersNeeded int32     `json:"players_needed"`
+	EntryCost     int32     `json:"entry_cost"`
+	WinnerPct     int32     `json:"winner_pct"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}
+
+type TemplateResponse struct {
+	Body templateItem
+}
+
+func templateToItem(t repository.RoomTemplate) templateItem {
+	return templateItem{
+		TemplateID:    t.TemplateID,
+		Name:          t.Name,
+		PlayersNeeded: t.PlayersNeeded,
+		EntryCost:     t.EntryCost,
+		WinnerPct:     t.WinnerPct,
+		CreatedAt:     t.CreatedAt,
+		UpdatedAt:     t.UpdatedAt,
+	}
+}
+
+func catchUniqueNameViolation(err error) error {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return huma.Error409Conflict("template name already exists", nil)
+	}
+	return err
+}
+
+// --- Create ---
+
+type CreateTemplateRequest struct {
+	Body struct {
+		Name          string `json:"name" minLength:"1" maxLength:"255"`
+		PlayersNeeded int32  `json:"players_needed" minimum:"1"`
+		EntryCost     int32  `json:"entry_cost" minimum:"0"`
+		WinnerPct     *int32 `json:"winner_pct,omitempty" minimum:"1" maximum:"99"`
+	}
+}
+
+func (h *TemplateHandler) Create(ctx context.Context, req *CreateTemplateRequest) (*TemplateResponse, error) {
+	winnerPct := int32(80)
+	if req.Body.WinnerPct != nil {
+		winnerPct = *req.Body.WinnerPct
+	}
+
+	t, err := h.Repo.InsertTemplate(ctx, repository.InsertTemplateParams{
+		Name:          req.Body.Name,
+		PlayersNeeded: req.Body.PlayersNeeded,
+		EntryCost:     req.Body.EntryCost,
+		WinnerPct:     winnerPct,
+	})
+	if err != nil {
+		return nil, catchUniqueNameViolation(err)
+	}
+
+	resp := &TemplateResponse{}
+	resp.Body = templateToItem(t)
+	return resp, nil
+}
+
+// --- List ---
+
+type ListTemplatesResponse struct {
+	Body struct {
+		Templates []templateItem `json:"templates"`
+	}
+}
+
+func (h *TemplateHandler) List(ctx context.Context, _ *struct{}) (*ListTemplatesResponse, error) {
+	templates, err := h.Repo.ListTemplates(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := &ListTemplatesResponse{}
+	resp.Body.Templates = make([]templateItem, len(templates))
+	for i, t := range templates {
+		resp.Body.Templates[i] = templateToItem(t)
+	}
+	return resp, nil
+}
+
+// --- Get ---
+
+type GetTemplateRequest struct {
+	TemplateID int32 `path:"template_id"`
+}
+
+func (h *TemplateHandler) Get(ctx context.Context, req *GetTemplateRequest) (*TemplateResponse, error) {
+	t, err := h.Repo.GetTemplate(ctx, repository.GetTemplateParams{TemplateID: req.TemplateID})
+	if err != nil {
+		return nil, err
+	}
+
+	resp := &TemplateResponse{}
+	resp.Body = templateToItem(t)
+	return resp, nil
+}
+
+// --- Update ---
+
+type UpdateTemplateRequest struct {
+	TemplateID int32 `path:"template_id"`
+	Body       struct {
+		Name          string `json:"name" minLength:"1" maxLength:"255"`
+		PlayersNeeded int32  `json:"players_needed" minimum:"1"`
+		EntryCost     int32  `json:"entry_cost" minimum:"0"`
+		WinnerPct     int32  `json:"winner_pct" minimum:"1" maximum:"99"`
+	}
+}
+
+func (h *TemplateHandler) Update(ctx context.Context, req *UpdateTemplateRequest) (*TemplateResponse, error) {
+	t, err := h.Repo.UpdateTemplate(ctx, repository.UpdateTemplateParams{
+		TemplateID:    req.TemplateID,
+		Name:          req.Body.Name,
+		PlayersNeeded: req.Body.PlayersNeeded,
+		EntryCost:     req.Body.EntryCost,
+		WinnerPct:     req.Body.WinnerPct,
+	})
+	if err != nil {
+		return nil, catchUniqueNameViolation(err)
+	}
+
+	resp := &TemplateResponse{}
+	resp.Body = templateToItem(t)
+	return resp, nil
+}
+
+// --- Delete ---
+
+type DeleteTemplateRequest struct {
+	TemplateID int32 `path:"template_id"`
+}
+
+type DeleteTemplateResponse struct {
+	Body struct {
+		Message string `json:"message"`
+	}
+}
+
+func (h *TemplateHandler) Delete(ctx context.Context, req *DeleteTemplateRequest) (*DeleteTemplateResponse, error) {
+	err := h.Repo.DeleteTemplate(ctx, repository.DeleteTemplateParams{TemplateID: req.TemplateID})
+	if err != nil {
+		return nil, err
+	}
+
+	resp := &DeleteTemplateResponse{}
+	resp.Body.Message = "template deleted successfully"
+	return resp, nil
+}

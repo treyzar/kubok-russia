@@ -9,8 +9,10 @@ import (
 
 	"github.com/SomeSuperCoder/OnlineShop/internal"
 	"github.com/SomeSuperCoder/OnlineShop/internal/crons"
+	"github.com/SomeSuperCoder/OnlineShop/internal/redisclient"
 	"github.com/hx/eon"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 )
 
 func main() {
@@ -26,6 +28,10 @@ func main() {
 
 	log.Println("🎮 Room Manager: Database connection pool initialized")
 
+	// Initialize Redis pub/sub
+	redisClient := redis.NewClient(&redis.Options{Addr: config.RedisURL})
+	pubSub := redisclient.New(redisClient)
+
 	// Create a context that listens for OS interrupt signals (like CTRL+C)
 	ctx, _ := signal.NotifyContext(
 		context.Background(),
@@ -38,12 +44,12 @@ func main() {
 
 	// Run room starter every 1 second to check for rooms that need to start
 	scheduler.Schedule(ctx, time.Second, 1*time.Second, &eon.Job{
-		Runner: crons.RoomStarter(pool),
+		Runner: crons.RoomStarter(pool, pubSub),
 	})
 
 	// Run room finisher every 1 second to check for rooms that need to finish
 	scheduler.Schedule(ctx, time.Second, 1*time.Second, &eon.Job{
-		Runner: crons.RoomFinisher(pool),
+		Runner: crons.RoomFinisher(pool, config, pubSub),
 	})
 
 	log.Println("🎮 Room Manager: Monitoring rooms every 1 second for auto-start")

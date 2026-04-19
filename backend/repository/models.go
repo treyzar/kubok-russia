@@ -19,6 +19,7 @@ type Room struct {
 	CreatedAt     time.Time          `json:"created_at"`
 	UpdatedAt     time.Time          `json:"updated_at"`
 	EntryCost     int32              `json:"entry_cost"`
+	WinnerPct     int32              `json:"winner_pct"`
 }
 
 type RoomBoost struct {
@@ -33,6 +34,16 @@ type RoomPlayer struct {
 	UserID   int32     `json:"user_id"`
 	Places   *int32    `json:"places"`
 	JoinedAt time.Time `json:"joined_at"`
+}
+
+type RoomTemplate struct {
+	TemplateID    int32     `json:"template_id"`
+	Name          string    `json:"name"`
+	PlayersNeeded int32     `json:"players_needed"`
+	EntryCost     int32     `json:"entry_cost"`
+	WinnerPct     int32     `json:"winner_pct"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 type RoomWinner struct {
