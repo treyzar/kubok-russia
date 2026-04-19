@@ -837,6 +837,51 @@ func (q *Queries) ListRoomWins(ctx context.Context, arg ListRoomWinsParams) ([]R
 	return items, nil
 }
 
+const getRoom = `-- name: GetRoom :one
+SELECT room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost FROM rooms WHERE room_id = $1
+`
+
+type GetRoomParams struct {
+	RoomID int32 `json:"room_id"`
+}
+
+func (q *Queries) GetRoom(ctx context.Context, arg GetRoomParams) (Room, error) {
+	row := q.db.QueryRow(ctx, getRoom, arg.RoomID)
+	var i Room
+	err := row.Scan(
+		&i.RoomID,
+		&i.Jackpot,
+		&i.StartTime,
+		&i.Status,
+		&i.PlayersNeeded,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.EntryCost,
+	)
+	return i, err
+}
+
+const getRoomWinner = `-- name: GetRoomWinner :one
+SELECT room_id, user_id, prize, won_at FROM room_winners WHERE room_id = $1 AND user_id = $2
+`
+
+type GetRoomWinnerParams struct {
+	RoomID int32 `json:"room_id"`
+	UserID int32 `json:"user_id"`
+}
+
+func (q *Queries) GetRoomWinner(ctx context.Context, arg GetRoomWinnerParams) (RoomWinner, error) {
+	row := q.db.QueryRow(ctx, getRoomWinner, arg.RoomID, arg.UserID)
+	var i RoomWinner
+	err := row.Scan(
+		&i.RoomID,
+		&i.UserID,
+		&i.Prize,
+		&i.WonAt,
+	)
+	return i, err
+}
+
 const listRooms = `-- name: ListRooms :many
 SELECT room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost FROM rooms
 ORDER BY created_at DESC

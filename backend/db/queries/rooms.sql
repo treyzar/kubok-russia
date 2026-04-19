@@ -31,6 +31,12 @@ RETURNING *;
 SELECT * FROM rooms
 ORDER BY created_at DESC;
 
+-- name: GetRoom :one
+SELECT * FROM rooms WHERE room_id = $1;
+
+-- name: GetRoomWinner :one
+SELECT * FROM room_winners WHERE room_id = $1 AND user_id = $2;
+
 -- name: JoinRoom :one
 WITH room_info AS (
     SELECT entry_cost, status, players_needed FROM rooms WHERE rooms.room_id = $1

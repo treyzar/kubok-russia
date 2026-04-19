@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"time"
 
 	"github.com/SomeSuperCoder/OnlineShop/repository"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -21,10 +22,10 @@ type CreateUserRequest struct {
 
 type UserResponse struct {
 	Body struct {
-		ID        int32  `json:"id"`
-		Name      string `json:"name"`
-		Balance   int32  `json:"balance"`
-		CreatedAt string `json:"created_at"`
+		ID        int32     `json:"id"`
+		Name      string    `json:"name"`
+		Balance   int32     `json:"balance"`
+		CreatedAt time.Time `json:"created_at"`
 	}
 }
 
@@ -55,7 +56,7 @@ func (h *UserHandler) Create(ctx context.Context, req *CreateUserRequest) (*User
 	resp.Body.ID = user.ID
 	resp.Body.Name = user.Name
 	resp.Body.Balance = user.Balance
-	resp.Body.CreatedAt = user.CreatedAt.Time.Format("2006-01-02T15:04:05Z")
+	resp.Body.CreatedAt = user.CreatedAt
 
 	return resp, nil
 }
@@ -72,7 +73,7 @@ func (h *UserHandler) Get(ctx context.Context, req *GetUserRequest) (*UserRespon
 	resp.Body.ID = user.ID
 	resp.Body.Name = user.Name
 	resp.Body.Balance = user.Balance
-	resp.Body.CreatedAt = user.CreatedAt.Time.Format("2006-01-02T15:04:05Z")
+	resp.Body.CreatedAt = user.CreatedAt
 
 	return resp, nil
 }

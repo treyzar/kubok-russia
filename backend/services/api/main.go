@@ -63,4 +63,63 @@ func MountRoutes(api huma.API, repo *repository.Queries, pool *pgxpool.Pool, red
 		Method:      "DELETE",
 		Path:        "/users/{id}",
 	}, userHandler.Delete)
+
+	roomHandler := handlers.RoomHandler{Repo: repo, Pool: pool}
+	// rooms
+	huma.Register(api, huma.Operation{
+		OperationID: "create-room",
+		Method:      "POST",
+		Path:        "/rooms",
+	}, roomHandler.Create)
+	huma.Register(api, huma.Operation{
+		OperationID: "list-rooms",
+		Method:      "GET",
+		Path:        "/rooms",
+	}, roomHandler.List)
+	huma.Register(api, huma.Operation{
+		OperationID: "get-room",
+		Method:      "GET",
+		Path:        "/rooms/{room_id}",
+	}, roomHandler.Get)
+
+	// room_players
+	huma.Register(api, huma.Operation{
+		OperationID: "join-room",
+		Method:      "POST",
+		Path:        "/rooms/{room_id}/players",
+	}, roomHandler.JoinRoom)
+	huma.Register(api, huma.Operation{
+		OperationID: "leave-room",
+		Method:      "DELETE",
+		Path:        "/rooms/{room_id}/players",
+	}, roomHandler.LeaveRoom)
+	huma.Register(api, huma.Operation{
+		OperationID: "list-room-players",
+		Method:      "GET",
+		Path:        "/rooms/{room_id}/players",
+	}, roomHandler.ListRoomPlayers)
+
+	// room_winners
+	huma.Register(api, huma.Operation{
+		OperationID: "list-room-winners",
+		Method:      "GET",
+		Path:        "/rooms/{room_id}/winners",
+	}, roomHandler.ListRoomWinners)
+	huma.Register(api, huma.Operation{
+		OperationID: "get-room-winner",
+		Method:      "GET",
+		Path:        "/rooms/{room_id}/winners/{user_id}",
+	}, roomHandler.GetRoomWinner)
+
+	// room_boosts
+	huma.Register(api, huma.Operation{
+		OperationID: "boost-room",
+		Method:      "POST",
+		Path:        "/rooms/{room_id}/boosts",
+	}, roomHandler.BoostRoom)
+	huma.Register(api, huma.Operation{
+		OperationID: "list-room-boosts",
+		Method:      "GET",
+		Path:        "/rooms/{room_id}/boosts",
+	}, roomHandler.ListRoomBoosts)
 }
