@@ -19,6 +19,9 @@ test-api:
 test-boost-calc:
 	@bash tests/boost_calc/run.sh
 
+test-websocket:
+	@bash tests/websocket/run.sh
+
 build-dbs:
 	docker-compose -f db/docker-compose.yaml build
 

@@ -328,9 +328,9 @@ SELECT * FROM insert_win;
 
 -- name: ListRoomsFiltered :many
 SELECT * FROM rooms
-WHERE ($1::varchar IS NULL OR status = $1)
-  AND ($2::integer IS NULL OR entry_cost = $2)
-  AND ($3::integer IS NULL OR players_needed = $3)
+WHERE ($1::varchar = '' OR status = $1)
+  AND ($2::integer = 0 OR entry_cost = $2)
+  AND ($3::integer = 0 OR players_needed = $3)
 ORDER BY
   CASE WHEN $4 = 'entry_cost'     AND $5 = 'asc'  THEN entry_cost     END ASC,
   CASE WHEN $4 = 'entry_cost'     AND $5 = 'desc' THEN entry_cost     END DESC,

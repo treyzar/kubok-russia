@@ -129,11 +129,8 @@ func testUserJoinRoom() error {
 		Status:        "new",
 		PlayersNeeded: 3,
 		EntryCost:     100,
+		WinnerPct:     80,
 	})
-	if err != nil {
-		return fmt.Errorf("failed to create room: %v", err)
-	}
-	log.Printf("Created room: ID=%d, EntryCost=%d", room.RoomID, room.EntryCost)
 
 	// Get user1
 	users, err := queries.ListUsers(context.Background())
@@ -278,6 +275,7 @@ func testFullRoom() error {
 		Status:        "new",
 		PlayersNeeded: 1,
 		EntryCost:     100,
+		WinnerPct:     80,
 	})
 	if err != nil {
 		return err
@@ -433,6 +431,7 @@ func testRoomAutoStart() error {
 		Status:        "starting_soon",
 		PlayersNeeded: 2,
 		EntryCost:     100,
+		WinnerPct:     80,
 	})
 	if err != nil {
 		return err
@@ -569,6 +568,7 @@ func testCannotBoostNonPlaying() error {
 			Status:        "new",
 			PlayersNeeded: 3,
 			EntryCost:     100,
+			WinnerPct:     80,
 		})
 		if err != nil {
 			return err
@@ -614,6 +614,7 @@ func testDeclareWinner() error {
 		Status:        "finished",
 		PlayersNeeded: 2,
 		EntryCost:     100,
+		WinnerPct:     80,
 	})
 	if err != nil {
 		return err
@@ -663,6 +664,7 @@ func testRoomAutoFinish() error {
 		Status:        "playing",
 		PlayersNeeded: 2,
 		EntryCost:     100,
+		WinnerPct:     80,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create room: %v", err)
@@ -851,11 +853,11 @@ func testExternalRNGFallback() error {
 	room, err := queries.InsertRoom(context.Background(), repository.InsertRoomParams{
 		Jackpot: 0,
 		StartTime: pgtype.Timestamptz{
-			Time:  time.Now().Add(-31 * time.Second),
+			Time:  time.Now().Add(5 * time.Minute),
 			Valid: true,
 		},
-		Status:        "playing",
-		PlayersNeeded: 1,
+		Status:        "new",
+		PlayersNeeded: 2,
 		EntryCost:     0,
 		WinnerPct:     80,
 	})
@@ -931,32 +933,20 @@ func localSelectWinner(players []repository.GetPlayersWithStakesRow, rngURL stri
 // testBoostUniquenessDB verifies the DB-level unique constraint on (room_id, user_id)
 // in room_boosts prevents a second boost from the same user.
 func testBoostUniquenessDB() error {
-	rooms, err := queries.ListRooms(context.Background())
+	// Create a dedicated playing room for this test to avoid leftover boosts from other tests
+	playingRoom, err := queries.InsertRoom(context.Background(), repository.InsertRoomParams{
+		Jackpot: 0,
+		StartTime: pgtype.Timestamptz{
+			Time:  time.Now().Add(5 * time.Minute),
+			Valid: true,
+		},
+		Status:        "playing",
+		PlayersNeeded: 2,
+		EntryCost:     0,
+		WinnerPct:     80,
+	})
 	if err != nil {
-		return err
-	}
-	var playingRoom repository.Room
-	for _, r := range rooms {
-		if r.Status == "playing" {
-			playingRoom = r
-			break
-		}
-	}
-	if playingRoom.RoomID == 0 {
-		playingRoom, err = queries.InsertRoom(context.Background(), repository.InsertRoomParams{
-			Jackpot: 0,
-			StartTime: pgtype.Timestamptz{
-				Time:  time.Now().Add(5 * time.Minute),
-				Valid: true,
-			},
-			Status:        "playing",
-			PlayersNeeded: 2,
-			EntryCost:     0,
-			WinnerPct:     80,
-		})
-		if err != nil {
-			return fmt.Errorf("failed to create playing room: %v", err)
-		}
+		return fmt.Errorf("failed to create playing room: %v", err)
 	}
 
 	users, err := queries.ListUsers(context.Background())

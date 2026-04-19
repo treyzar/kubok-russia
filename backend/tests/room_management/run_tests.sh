@@ -49,8 +49,18 @@ cleanup() {
 # Register cleanup function
 trap cleanup EXIT INT TERM
 
-echo "⏳ Waiting for services to start (5 seconds)..."
-sleep 5
+echo "⏳ Waiting for API server to be ready..."
+for i in $(seq 1 60); do
+    if curl -sf http://localhost:8888/api/v1/hello > /dev/null 2>&1; then
+        echo "Server ready"
+        break
+    fi
+    if [ $i -eq 60 ]; then
+        echo "❌ Server did not become ready in time"
+        exit 1
+    fi
+    sleep 1
+done
 
 echo ""
 echo "🧪 Running integration tests..."

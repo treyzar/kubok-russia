@@ -92,11 +92,11 @@ type ListRoomsResponse struct {
 }
 
 type ListRoomsRequest struct {
-	Status        *string `query:"status"`
-	EntryCost     *int32  `query:"entry_cost"`
-	PlayersNeeded *int32  `query:"players_needed"`
-	SortBy        *string `query:"sort_by"`
-	SortOrder     *string `query:"sort_order"`
+	Status        string `query:"status"`
+	EntryCost     int32  `query:"entry_cost"`
+	PlayersNeeded int32  `query:"players_needed"`
+	SortBy        string `query:"sort_by"`
+	SortOrder     string `query:"sort_order"`
 }
 
 type roomItem struct {
@@ -173,34 +173,20 @@ func (h *RoomHandler) Create(ctx context.Context, req *CreateRoomRequest) (*Room
 }
 
 func (h *RoomHandler) List(ctx context.Context, req *ListRoomsRequest) (*ListRoomsResponse, error) {
-	// Build nullable params — pass empty string / 0 when nil; the SQL uses IS NULL check
-	var statusParam string
-	if req.Status != nil {
-		statusParam = *req.Status
-	}
-	var entryCostParam int32
-	if req.EntryCost != nil {
-		entryCostParam = *req.EntryCost
-	}
-	var playersNeededParam int32
-	if req.PlayersNeeded != nil {
-		playersNeededParam = *req.PlayersNeeded
-	}
-
-	// For sort, pass nil interface{} when not set so SQL CASE falls through to created_at DESC
+	// Zero values mean "no filter" — SQL uses = '' / = 0 checks to skip the condition
 	var sortBy interface{}
 	var sortOrder interface{}
-	if req.SortBy != nil {
-		sortBy = *req.SortBy
+	if req.SortBy != "" {
+		sortBy = req.SortBy
 	}
-	if req.SortOrder != nil {
-		sortOrder = *req.SortOrder
+	if req.SortOrder != "" {
+		sortOrder = req.SortOrder
 	}
 
 	rooms, err := h.Repo.ListRoomsFiltered(ctx, repository.ListRoomsFilteredParams{
-		Column1: statusParam,
-		Column2: entryCostParam,
-		Column3: playersNeededParam,
+		Column1: req.Status,
+		Column2: req.EntryCost,
+		Column3: req.PlayersNeeded,
 		Column4: sortBy,
 		Column5: sortOrder,
 	})

@@ -95,6 +95,7 @@ func testWSJoinNotification() error {
 		"status":         "new",
 		"players_needed": 2,
 		"entry_cost":     0,
+		"winner_pct":     80,
 	})
 	if err != nil {
 		return fmt.Errorf("create room: %w", err)
