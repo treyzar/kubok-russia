@@ -6,7 +6,9 @@ import (
 
 	"github.com/SomeSuperCoder/OnlineShop/handlers"
 	"github.com/SomeSuperCoder/OnlineShop/internal"
+	"github.com/SomeSuperCoder/OnlineShop/internal/handler"
 	"github.com/SomeSuperCoder/OnlineShop/internal/redisclient"
+	"github.com/SomeSuperCoder/OnlineShop/internal/service"
 	"github.com/SomeSuperCoder/OnlineShop/repository"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humagin"
@@ -196,4 +198,32 @@ func MountRoutes(api huma.API, r *gin.Engine, repo *repository.Queries, pool *pg
 	// WebSocket — registered on raw Gin router (Huma doesn't support WS upgrades)
 	wsHandler := handlers.WSHandler{PubSub: pubSub}
 	r.GET("/api/v1/rooms/:room_id/ws", wsHandler.Handle)
+
+	// Provably fair rooms
+	fairHandler := &handler.FairRoomHandler{Service: service.NewRoomService(pool)}
+	huma.Register(api, huma.Operation{
+		OperationID: "create-fair-room",
+		Method:      "POST",
+		Path:        "/fair-rooms",
+	}, fairHandler.Create)
+	huma.Register(api, huma.Operation{
+		OperationID: "list-fair-rooms",
+		Method:      "GET",
+		Path:        "/fair-rooms",
+	}, fairHandler.List)
+	huma.Register(api, huma.Operation{
+		OperationID: "get-fair-room",
+		Method:      "GET",
+		Path:        "/fair-rooms/{id}",
+	}, fairHandler.Get)
+	huma.Register(api, huma.Operation{
+		OperationID: "join-fair-room",
+		Method:      "POST",
+		Path:        "/fair-rooms/{id}/join",
+	}, fairHandler.Join)
+	huma.Register(api, huma.Operation{
+		OperationID: "start-fair-room",
+		Method:      "POST",
+		Path:        "/fair-rooms/{id}/start",
+	}, fairHandler.Start)
 }

@@ -32,19 +32,25 @@ backend/
 │   ├── api/          # HTTP API сервис
 │   ├── bot_manager/  # Сервис управления ботами
 │   └── room_manager/ # Сервис управления комнатами
-├── handlers/         # Обработчики HTTP-запросов
+├── handlers/         # Обработчики HTTP-запросов (legacy rooms)
 ├── internal/
 │   ├── config.go     # Загрузка конфигурации
 │   ├── database.go   # Подключение к БД
-│   └── crons/        # Cron-задачи
-├── repository/       # Сгенерированный sqlc-код
+│   ├── crons/        # Cron-задачи
+│   ├── domain/       # Доменные типы fair rooms (FairRoom, FairPlayer, RiskLevel…)
+│   ├── handler/      # HTTP-обработчики fair rooms (Huma)
+│   ├── repository/   # Репозитории fair rooms (room_repo, player_repo)
+│   └── service/      # Бизнес-логика fair rooms (RoomService)
+├── repository/       # Сгенерированный sqlc-код (legacy)
 ├── db/
 │   ├── migrations/   # SQL-миграции (Goose)
 │   └── queries/      # SQL-запросы для sqlc
 └── tests/
     ├── api/          # Интеграционные тесты API
     ├── room_management/ # Тесты управления комнатами
-    └── boost_calc/   # Тесты формул буста
+    ├── boost_calc/   # Тесты формул буста
+    ├── websocket/    # Тесты WebSocket
+    └── fair_rooms/   # Unit-тесты provably fair rooms (go test)
 ```
 
 ---
@@ -158,6 +164,40 @@ make databases-down
 | `prize` | INTEGER | Приз |
 | `won_at` | TIMESTAMPTZ | Время победы |
 
+### `room_templates` (миграция 000010)
+| Поле | Тип | Описание |
+|---|---|---|
+| `template_id` | SERIAL PK | Идентификатор шаблона |
+| `name` | VARCHAR(255) UNIQUE | Название шаблона |
+| `players_needed` | INTEGER | Необходимое число игроков |
+| `entry_cost` | INTEGER | Стоимость входа |
+| `winner_pct` | INTEGER | Процент джекпота победителю (по умолчанию 80) |
+| `created_at` | TIMESTAMPTZ | Дата создания |
+| `updated_at` | TIMESTAMPTZ | Дата обновления |
+
+### `fair_rooms` (миграция 000011)
+| Поле | Тип | Описание |
+|---|---|---|
+| `id` | UUID PK | `gen_random_uuid()` |
+| `risk_level` | ENUM | `low` / `medium` / `high` |
+| `state` | ENUM | `created` → `waiting` → `refunding` → `finished` |
+| `max_capacity` | INT | Максимум игроков (по умолчанию 10) |
+| `seed_phrase` | TEXT | Секретная соль — **никогда не отдаётся в API напрямую** |
+| `seed_hash` | TEXT | SHA-256 от `seed_phrase` — публичный |
+| `final_fee` | NUMERIC(18,8) | `MIN(initial_deposit)` по комнате |
+| `created_at` | TIMESTAMPTZ | Дата создания |
+| `updated_at` | TIMESTAMPTZ | Дата обновления |
+
+### `fair_players` (миграция 000011)
+| Поле | Тип | Описание |
+|---|---|---|
+| `id` | UUID PK | Идентификатор |
+| `room_id` | UUID FK | Комната (CASCADE DELETE) |
+| `user_id` | UUID | Внешний идентификатор пользователя |
+| `initial_deposit` | NUMERIC(18,8) | Депозит при входе |
+| `refund_amount` | NUMERIC(18,8) | `initial_deposit − final_fee` (≥ 0) |
+| `refunded` | BOOLEAN | Флаг: возврат обработан |
+
 ---
 
 ## 🌐 API
@@ -206,9 +246,74 @@ make databases-down
 | `GET` | `/rooms/{room_id}/boosts/calc/probability` | Рассчитать вероятность |
 | `GET` | `/rooms/{room_id}/boosts/calc/boost` | Рассчитать нужный буст |
 
+### 📋 Шаблоны комнат
+
+| Метод | Путь | Описание |
+|---|---|---|
+| `POST` | `/room-templates` | Создать шаблон |
+| `GET` | `/room-templates` | Список шаблонов |
+| `GET` | `/room-templates/{template_id}` | Получить шаблон |
+| `PUT` | `/room-templates/{template_id}` | Обновить шаблон |
+| `DELETE` | `/room-templates/{template_id}` | Удалить шаблон |
+
+### 🎲 Provably Fair комнаты
+
+| Метод | Путь | Описание |
+|---|---|---|
+| `POST` | `/fair-rooms` | Создать fair-комнату |
+| `GET` | `/fair-rooms?risk_level=low` | Список доступных комнат (up-sell по уровню риска) |
+| `GET` | `/fair-rooms/{id}` | Получить комнату; `seed_reveal` только при `finished` |
+| `POST` | `/fair-rooms/{id}/join` | Войти в комнату; триггер auto-scale |
+| `POST` | `/fair-rooms/{id}/start` | Запустить игру: refund + переход в `finished` |
+
+### 🔌 WebSocket
+
+| Путь | Описание |
+|---|---|
+| `GET /rooms/{room_id}/ws` | Подписка на real-time события комнаты (Gin, не Huma) |
+
 ---
 
-## 🔁 Жизненный цикл комнаты
+## 🎲 Provably Fair комнаты
+
+### Жизненный цикл
+
+```
+created ──(первый игрок)──► waiting ──(POST /start)──► refunding ──► finished
+```
+
+### Алгоритм честности (Provably Fair)
+
+При создании комнаты генерируется криптографически случайный `seed_phrase` (32 байта, hex) и его SHA-256 хэш `seed_hash`. До старта игры API возвращает только `seed_hash` — игрок «замораживает» обязательство сервера. После перехода в `finished` API раскрывает `seed_phrase` через поле `seed_reveal`, и любой может проверить: `SHA-256(seed_phrase) == seed_hash`.
+
+Поле `seed_phrase` помечено `json:"-"` и **никогда** не попадает в JSON напрямую.
+
+### Алгоритм возврата (Refund)
+
+```
+final_fee = MIN(initial_deposit) по всем игрокам комнаты
+refund_i  = MAX(0, initial_deposit_i − final_fee)
+```
+
+Всё выполняется атомарно в одной транзакции. При ошибке внешнего сервиса кредитования — полный откат.
+
+### Динамическое масштабирование (Auto-Scale)
+
+После каждого `JoinRoom` проверяется правило 70%: если ≥ 70% активных комнат того же `risk_level` заполнены на ≥ 70%, автоматически создаётся новая комната. Ответ `JoinRoom` содержит `scaled: true` и `new_room_id`.
+
+### Up-sell по уровню риска
+
+`GET /fair-rooms?risk_level=X` возвращает комнаты для уровней **X и выше**:
+
+| Уровень игрока | Видит комнаты |
+|---|---|
+| `low` | low, medium, high |
+| `medium` | medium, high |
+| `high` | high |
+
+---
+
+## 🔁 Жизненный цикл комнаты (legacy)
 
 ```
 new → starting_soon → playing → finished
@@ -336,6 +441,18 @@ boostAmount = ceil( (p × (poolBase + acc) - 100 × totalPlayerAmount) / (100 - 
 
 ## 🧪 Тесты
 
+### Unit-тесты Provably Fair комнат
+
+```bash
+cd backend && go test ./tests/fair_rooms/... -v
+```
+
+11 unit-тестов без зависимости от БД:
+- Форма и корректность `seed_hash` (TC-01, TC-03, TC-19)
+- Алгоритм возврата: стандартный случай, равные депозиты, один минимум (TC-04 – TC-06)
+- Логика auto-scale: порог не достигнут, достигнут, одна комната (TC-07 – TC-09)
+- Фильтрация up-sell через `RiskLevelOrder` (TC-10, TC-11)
+
 ### Интеграционные тесты API
 
 ```bash
@@ -366,6 +483,14 @@ make test-boost-calc
 - Проверка обратности `CalcBoost` ↔ `CalcProbability`
 - Валидация граничных значений `desired_probability`
 
+### Тесты WebSocket
+
+```bash
+make test-websocket
+```
+
+Проверяет подключение и получение real-time событий через `GET /rooms/{room_id}/ws`.
+
 ---
 
 ## 🔧 Полезные команды
@@ -388,4 +513,10 @@ goose up
 
 # Откатить миграции
 goose down
+
+# Запустить все тесты
+make test-all
+
+# Unit-тесты fair rooms (без БД)
+go test ./tests/fair_rooms/... -v
 ```
