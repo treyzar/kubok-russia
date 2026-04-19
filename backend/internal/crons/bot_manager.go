@@ -29,71 +29,64 @@ func generateRandomRussianName() string {
 	return russianNames[rand.Intn(len(russianNames))]
 }
 
-func BotManager(ctx *eon.Context) error {
-	// Load config
-	config := internal.LoadAppConfig()
+func BotManager(pool *pgxpool.Pool, config *internal.AppConfig) func(*eon.Context) error {
+	return func(ctx *eon.Context) error {
+		queries := repository.New(pool)
 
-	// Connect to database
-	pool, err := pgxpool.New(context.Background(), config.PostgresURL)
-	if err != nil {
-		return err
-	}
-	defer pool.Close()
-
-	queries := repository.New(pool)
-
-	// Get the existing bot count
-	existingBotCount, err := queries.CountBots(context.Background())
-	if err != nil {
-		return err
-	}
-
-	log.Printf("Existing bot count: %d, Desired: %d", existingBotCount, config.DesiredBotCount)
-
-	// Create bots if needed
-	botsToCreate := int64(config.DesiredBotCount) - existingBotCount
-	if botsToCreate > 0 {
-		log.Printf("Creating %d new bots", botsToCreate)
-		for i := int64(0); i < botsToCreate; i++ {
-			// Generate random Russian name with number suffix for uniqueness
-			name := fmt.Sprintf("%s_%d", generateRandomRussianName(), rand.Intn(10000))
-
-			// Create bot with initial balance of 0
-			_, err := queries.CreateBot(context.Background(), repository.CreateBotParams{
-				Name: name,
-				Balance: pgtype.Numeric{
-					Int:   big.NewInt(0),
-					Exp:   0,
-					NaN:   false,
-					Valid: true,
-				},
-			})
-			if err != nil {
-				log.Printf("Failed to create bot: %v", err)
-				continue
-			}
-			log.Printf("Created bot: %s", name)
+		// Get the existing bot count
+		existingBotCount, err := queries.CountBots(context.Background())
+		if err != nil {
+			return err
 		}
-	}
 
-	// Increase balance for bots with balance < 500
-	err = queries.IncreaseBalanceForLowBalanceBots(context.Background(), repository.IncreaseBalanceForLowBalanceBotsParams{
-		Balance: pgtype.Numeric{
-			Int:   big.NewInt(200),
-			Exp:   0,
-			NaN:   false,
-			Valid: true,
-		},
-		Balance_2: pgtype.Numeric{
-			Int:   big.NewInt(500),
-			Exp:   0,
-			NaN:   false,
-			Valid: true,
-		},
-	})
-	if err != nil {
-		return err
-	}
+		log.Printf("Existing bot count: %d, Desired: %d", existingBotCount, config.DesiredBotCount)
 
-	return nil
+		// Create bots if needed
+		botsToCreate := int64(config.DesiredBotCount) - existingBotCount
+		if botsToCreate > 0 {
+			log.Printf("Creating %d new bots", botsToCreate)
+			for i := int64(0); i < botsToCreate; i++ {
+				// Generate random Russian name with number suffix for uniqueness
+				name := fmt.Sprintf("%s_%d", generateRandomRussianName(), rand.Intn(10000))
+
+				// Create bot with initial balance of 0
+				_, err := queries.CreateBot(context.Background(), repository.CreateBotParams{
+					Name: name,
+					Balance: pgtype.Numeric{
+						Int:   big.NewInt(0),
+						Exp:   0,
+						NaN:   false,
+						Valid: true,
+					},
+				})
+				if err != nil {
+					log.Printf("Failed to create bot: %v", err)
+					continue
+				}
+				log.Printf("Created bot: %s", name)
+			}
+		}
+
+		// Increase balance for bots with balance < 500
+		err = queries.IncreaseBalanceForLowBalanceBots(context.Background(), repository.IncreaseBalanceForLowBalanceBotsParams{
+			Balance: pgtype.Numeric{
+				Int:   big.NewInt(200),
+				Exp:   0,
+				NaN:   false,
+				Valid: true,
+			},
+			Balance_2: pgtype.Numeric{
+				Int:   big.NewInt(500),
+				Exp:   0,
+				NaN:   false,
+				Valid: true,
+			},
+		})
+		if err != nil {
+			return err
+		}
+
+		log.Println("Increased balance for low-balance bots")
+		return nil
+	}
 }

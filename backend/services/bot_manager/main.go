@@ -2,15 +2,30 @@ package main
 
 import (
 	"context"
+	"log"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/SomeSuperCoder/OnlineShop/internal"
 	"github.com/SomeSuperCoder/OnlineShop/internal/crons"
 	"github.com/hx/eon"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func main() {
+	// Load config
+	config := internal.LoadAppConfig()
+
+	// Initialize database connection pool once
+	pool, err := pgxpool.New(context.Background(), config.PostgresURL)
+	if err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
+	}
+	defer pool.Close()
+
+	log.Println("Database connection pool initialized")
+
 	// Create a context that listens for OS interrupt signals (like CTRL+C)
 	ctx, _ := signal.NotifyContext(
 		context.Background(),
@@ -23,14 +38,18 @@ func main() {
 
 	// Run bot manager every 10 seconds
 	scheduler.Schedule(ctx, time.Second, 10*time.Second, &eon.Job{
-		Runner: crons.BotManager,
+		Runner: crons.BotManager(pool, config),
 	})
 
 	// Run room starter every 1 second to check for rooms that need to start
 	scheduler.Schedule(ctx, time.Second, 1*time.Second, &eon.Job{
-		Runner: crons.RoomStarter,
+		Runner: crons.RoomStarter(pool),
 	})
+
+	log.Println("Cron jobs scheduled and running")
 
 	// Keep the application running until a signal is received
 	<-ctx.Done()
+
+	log.Println("Shutting down gracefully...")
 }
