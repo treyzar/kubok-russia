@@ -122,4 +122,14 @@ func MountRoutes(api huma.API, repo *repository.Queries, pool *pgxpool.Pool, red
 		Method:      "GET",
 		Path:        "/rooms/{room_id}/boosts",
 	}, roomHandler.ListRoomBoosts)
+	huma.Register(api, huma.Operation{
+		OperationID: "calc-boost-probability",
+		Method:      "GET",
+		Path:        "/rooms/{room_id}/boosts/calc/probability",
+	}, roomHandler.CalcProbability)
+	huma.Register(api, huma.Operation{
+		OperationID: "calc-boost-amount",
+		Method:      "GET",
+		Path:        "/rooms/{room_id}/boosts/calc/boost",
+	}, roomHandler.CalcBoost)
 }

@@ -16,6 +16,9 @@ api-test:
 test-api:
 	@bash tests/api/run.sh
 
+test-boost-calc:
+	@bash tests/boost_calc/run.sh
+
 build-dbs:
 	docker-compose -f db/docker-compose.yaml build
 

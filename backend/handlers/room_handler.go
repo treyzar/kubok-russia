@@ -2,9 +2,11 @@ package handlers
 
 import (
 	"context"
+	"math"
 	"time"
 
 	"github.com/SomeSuperCoder/OnlineShop/repository"
+	"github.com/danielgtaylor/huma/v2"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -348,5 +350,97 @@ func (h *RoomHandler) ListRoomBoosts(ctx context.Context, req *ListRoomBoostsReq
 			BoostedAt: b.BoostedAt,
 		}
 	}
+	return resp, nil
+}
+
+// --- boost calc ---
+
+type CalcProbabilityRequest struct {
+	RoomID      int32   `path:"room_id"`
+	UserID      int32   `query:"user_id"`
+	BoostAmount float64 `query:"boost_amount"`
+}
+
+type CalcProbabilityResponse struct {
+	Body struct {
+		Probability float64 `json:"probability"`
+	}
+}
+
+type CalcBoostRequest struct {
+	RoomID             int32   `path:"room_id"`
+	UserID             int32   `query:"user_id"`
+	DesiredProbability float64 `query:"desired_probability"`
+}
+
+type CalcBoostResponse struct {
+	Body struct {
+		BoostAmount int32 `json:"boost_amount"`
+	}
+}
+
+// roomCalcData fetches room + player stakes and returns the values needed for both formulas:
+// totalPlayerAmount = player's current total stake (entry + existing boost)
+// acc               = sum of all boosts in the room
+// poolBase          = players_needed * entry_cost  (the fixed entry pool)
+func (h *RoomHandler) roomCalcData(ctx context.Context, roomID int32, userID int32) (totalPlayerAmount, acc, poolBase float64, err error) {
+	room, err := h.Repo.GetRoom(ctx, repository.GetRoomParams{RoomID: roomID})
+	if err != nil {
+		return
+	}
+	poolBase = float64(room.PlayersNeeded) * float64(room.EntryCost)
+
+	stakes, err := h.Repo.GetPlayersWithStakes(ctx, repository.GetPlayersWithStakesParams{RoomID: roomID})
+	if err != nil {
+		return
+	}
+	for _, s := range stakes {
+		acc += float64(s.BoostAmount)
+		if s.UserID == userID {
+			totalPlayerAmount = float64(s.TotalStake)
+		}
+	}
+	return
+}
+
+// GET /rooms/{room_id}/boosts/calc/probability?user_id=X&boost_amount=Y
+// probability = 100 * (totalPlayerAmount + boost_amount) / (poolBase + acc + boost_amount)
+func (h *RoomHandler) CalcProbability(ctx context.Context, req *CalcProbabilityRequest) (*CalcProbabilityResponse, error) {
+	totalPlayerAmount, acc, poolBase, err := h.roomCalcData(ctx, req.RoomID, req.UserID)
+	if err != nil {
+		return nil, err
+	}
+
+	denom := poolBase + acc + req.BoostAmount
+	if denom == 0 {
+		denom = 1
+	}
+	prob := 100 * (totalPlayerAmount + req.BoostAmount) / denom
+
+	resp := &CalcProbabilityResponse{}
+	resp.Body.Probability = prob
+	return resp, nil
+}
+
+// GET /rooms/{room_id}/boosts/calc/boost?user_id=X&desired_probability=Y
+// boost_amount = ceil( (p*(poolBase+acc) - 100*totalPlayerAmount) / (100-p) )
+func (h *RoomHandler) CalcBoost(ctx context.Context, req *CalcBoostRequest) (*CalcBoostResponse, error) {
+	totalPlayerAmount, acc, poolBase, err := h.roomCalcData(ctx, req.RoomID, req.UserID)
+	if err != nil {
+		return nil, err
+	}
+
+	p := req.DesiredProbability
+	if p <= 0 || p >= 100 {
+		return nil, huma.Error400BadRequest("desired_probability must be between 0 and 100 (exclusive)", nil)
+	}
+
+	raw := (p*(poolBase+acc) - 100*totalPlayerAmount) / (100 - p)
+	if raw < 0 {
+		raw = 0
+	}
+
+	resp := &CalcBoostResponse{}
+	resp.Body.BoostAmount = int32(math.Ceil(raw))
 	return resp, nil
 }
