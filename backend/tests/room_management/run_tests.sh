@@ -1,85 +1,44 @@
-#!env bash
-
+#!/usr/bin/env bash
 set -e
 
-echo "=== Room Management Integration Tests ==="
-echo ""
-
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
-
-# Get the script directory
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 BACKEND_DIR="$SCRIPT_DIR/../.."
-
 cd "$BACKEND_DIR"
 
-echo "📦 Ensuring database is running..."
 make databases > /dev/null 2>&1 || true
 sleep 2
-
-echo "🔄 Running migrations..."
-cd "$BACKEND_DIR"
-# Run goose up to ensure all migrations are applied
 export $(cat .env | grep -v '^#' | xargs)
 goose -dir db/migrations postgres "$GOOSE_DBSTRING" up > /dev/null 2>&1 || true
 sqlc generate > /dev/null 2>&1
 
-echo "🚀 Starting services in background..."
-# Start services in background
 make serve > /tmp/services.log 2>&1 &
 SERVICES_PID=$!
 
-# Function to cleanup on exit
 cleanup() {
-    echo ""
-    echo "🧹 Cleaning up..."
-    if [ ! -z "$SERVICES_PID" ]; then
-        echo "Stopping services (PID: $SERVICES_PID)..."
-        kill $SERVICES_PID 2>/dev/null || true
-        # Kill all child processes
-        pkill -P $SERVICES_PID 2>/dev/null || true
-    fi
-    echo "Cleanup complete"
+    kill $SERVICES_PID 2>/dev/null || true
+    pkill -P $SERVICES_PID 2>/dev/null || true
 }
-
-# Register cleanup function
 trap cleanup EXIT INT TERM
 
-echo "⏳ Waiting for API server to be ready..."
 for i in $(seq 1 60); do
     if curl -sf http://localhost:8888/api/v1/hello > /dev/null 2>&1; then
-        echo "Server ready"
         break
     fi
     if [ $i -eq 60 ]; then
-        echo "❌ Server did not become ready in time"
+        echo "Server did not become ready in time"
+        echo "SUITE_RESULT::{\"suite\":\"Room Management\",\"passed\":0,\"failed\":1}"
         exit 1
     fi
     sleep 1
 done
 
-echo ""
-echo "🧪 Running integration tests..."
-echo ""
+OUTPUT=$(go run tests/room_management/main.go 2>&1)
+TEST_EXIT=$?
 
-# Run the tests from the backend directory so .env is found
-cd "$BACKEND_DIR"
-if go run tests/room_management/main.go; then
-    echo ""
-    echo -e "${GREEN}✅ All tests passed!${NC}"
-    echo ""
-    echo "Service logs (last 30 lines):"
-    tail -30 /tmp/services.log
-    exit 0
-else
-    echo ""
-    echo -e "${RED}❌ Some tests failed!${NC}"
-    echo ""
-    echo "Service logs (last 80 lines):"
-    tail -80 /tmp/services.log
-    exit 1
-fi
+echo "$OUTPUT"
+
+PASSED=$(echo "$OUTPUT" | grep -oP '(?<=Passed: )\d+' | tail -1 || echo 0)
+FAILED=$(echo "$OUTPUT" | grep -oP '(?<=Failed: )\d+' | tail -1 || echo 0)
+echo "SUITE_RESULT::{\"suite\":\"Room Management\",\"passed\":${PASSED:-0},\"failed\":${FAILED:-0}}"
+
+exit $TEST_EXIT

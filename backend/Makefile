@@ -1,6 +1,8 @@
 -include .env
 export
 
+# ── Dev ──────────────────────────────────────────────────────────────────────
+
 all: databases wait migrate serve
 
 serve:
@@ -10,20 +12,7 @@ serve:
 	go run services/room_manager/main.go & \
 	wait
 
-api-test:
-	@go run services/api/main.go
-
-test-api:
-	@bash tests/api/run.sh
-
-test-boost-calc:
-	@bash tests/boost_calc/run.sh
-
-test-websocket:
-	@bash tests/websocket/run.sh
-
-build-dbs:
-	docker-compose -f db/docker-compose.yaml build
+# ── Database ─────────────────────────────────────────────────────────────────
 
 databases:
 	docker-compose -f db/docker-compose.yaml up -d
@@ -35,14 +24,13 @@ migrate:
 	goose up
 	sqlc generate
 
+wait:
+	@sleep 3
+
+# ── Misc ─────────────────────────────────────────────────────────────────────
+
 mock:
 	go run mock/main.go
-
-recreate:
-	pg_dump $(GOOSE_DBSTRING) --data-only -t reviews -t users -t products -t votes > data.dump
-	goose reset
-	goose up
-	psql $(GOOSE_DBSTRING) < data.dump
 
 postgres:
 	psql $(GOOSE_DBSTRING)
@@ -50,6 +38,19 @@ postgres:
 redis:
 	redis-cli
 
-wait:
-	echo "Sleeping for 1 second..."
-	sleep 3
+# ── Tests ────────────────────────────────────────────────────────────────────
+
+test-api:
+	@bash tests/api/run.sh
+
+test-boost-calc:
+	@bash tests/boost_calc/run.sh
+
+test-websocket:
+	@bash tests/websocket/run.sh
+
+test-room-management:
+	@bash tests/room_management/run_tests.sh
+
+test-all:
+	@bash tests/run_all.sh
