@@ -11,7 +11,10 @@ serve:
 	wait
 
 api-test:
-	API_TEST=true go run services/api/main.go
+	@go run services/api/main.go
+
+test-api:
+	@bash tests/api/run.sh
 
 build-dbs:
 	docker-compose -f db/docker-compose.yaml build
@@ -44,4 +47,3 @@ redis:
 wait:
 	echo "Sleeping for 1 second..."
 	sleep 3
-
