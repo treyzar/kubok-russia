@@ -32,3 +32,18 @@ ORDER BY id ASC;
 UPDATE users SET balance = balance + $2
 WHERE id = $1 AND balance + $2 >= 0
 RETURNING *;
+
+-- name: IncreaseUserBalance :one
+UPDATE users SET balance = balance + $2
+WHERE id = $1 AND $2 >= 0
+RETURNING *;
+
+-- name: DecreaseUserBalance :one
+UPDATE users SET balance = balance - $2
+WHERE id = $1 AND balance >= $2 AND $2 >= 0
+RETURNING *;
+
+-- name: SetUserBalance :one
+UPDATE users SET balance = $2
+WHERE id = $1 AND $2 >= 0
+RETURNING *;

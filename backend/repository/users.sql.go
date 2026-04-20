@@ -68,6 +68,30 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 	return i, err
 }
 
+const decreaseUserBalance = `-- name: DecreaseUserBalance :one
+UPDATE users SET balance = balance - $2
+WHERE id = $1 AND balance >= $2 AND $2 >= 0
+RETURNING id, name, balance, created_at, bot
+`
+
+type DecreaseUserBalanceParams struct {
+	ID      int32 `json:"id"`
+	Balance int32 `json:"balance"`
+}
+
+func (q *Queries) DecreaseUserBalance(ctx context.Context, arg DecreaseUserBalanceParams) (User, error) {
+	row := q.db.QueryRow(ctx, decreaseUserBalance, arg.ID, arg.Balance)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Balance,
+		&i.CreatedAt,
+		&i.Bot,
+	)
+	return i, err
+}
+
 const deleteUser = `-- name: DeleteUser :exec
 DELETE FROM users
 WHERE id = $1
@@ -120,6 +144,30 @@ func (q *Queries) IncreaseBalanceForLowBalanceBots(ctx context.Context, arg Incr
 	return err
 }
 
+const increaseUserBalance = `-- name: IncreaseUserBalance :one
+UPDATE users SET balance = balance + $2
+WHERE id = $1 AND $2 >= 0
+RETURNING id, name, balance, created_at, bot
+`
+
+type IncreaseUserBalanceParams struct {
+	ID      int32 `json:"id"`
+	Balance int32 `json:"balance"`
+}
+
+func (q *Queries) IncreaseUserBalance(ctx context.Context, arg IncreaseUserBalanceParams) (User, error) {
+	row := q.db.QueryRow(ctx, increaseUserBalance, arg.ID, arg.Balance)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Balance,
+		&i.CreatedAt,
+		&i.Bot,
+	)
+	return i, err
+}
+
 const listUsers = `-- name: ListUsers :many
 SELECT id, name, balance, created_at, bot FROM users
 ORDER BY id ASC
@@ -149,6 +197,30 @@ func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const setUserBalance = `-- name: SetUserBalance :one
+UPDATE users SET balance = $2
+WHERE id = $1 AND $2 >= 0
+RETURNING id, name, balance, created_at, bot
+`
+
+type SetUserBalanceParams struct {
+	ID      int32 `json:"id"`
+	Balance int32 `json:"balance"`
+}
+
+func (q *Queries) SetUserBalance(ctx context.Context, arg SetUserBalanceParams) (User, error) {
+	row := q.db.QueryRow(ctx, setUserBalance, arg.ID, arg.Balance)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Balance,
+		&i.CreatedAt,
+		&i.Bot,
+	)
+	return i, err
 }
 
 const updateUserBalance = `-- name: UpdateUserBalance :one

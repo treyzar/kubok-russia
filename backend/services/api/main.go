@@ -80,6 +80,24 @@ func MountRoutes(api huma.API, r *gin.Engine, repo *repository.Queries, pool *pg
 		Path:        "/users/{id}/balance",
 	}, userHandler.UpdateBalance)
 
+	huma.Register(api, huma.Operation{
+		OperationID: "increase-user-balance",
+		Method:      "POST",
+		Path:        "/users/{id}/balance/increase",
+	}, userHandler.IncreaseBalance)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "decrease-user-balance",
+		Method:      "POST",
+		Path:        "/users/{id}/balance/decrease",
+	}, userHandler.DecreaseBalance)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "set-user-balance",
+		Method:      "PUT",
+		Path:        "/users/{id}/balance",
+	}, userHandler.SetBalance)
+
 	roomHandler := handlers.RoomHandler{Repo: repo, Pool: pool, PubSub: pubSub}
 	// rooms
 	huma.Register(api, huma.Operation{

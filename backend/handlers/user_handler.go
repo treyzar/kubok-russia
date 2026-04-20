@@ -156,3 +156,90 @@ func (h *UserHandler) UpdateBalance(ctx context.Context, req *UpdateBalanceReque
 	resp.Body.CreatedAt = user.CreatedAt
 	return resp, nil
 }
+
+// --- Increase balance ---
+
+type IncreaseBalanceRequest struct {
+	ID   int32 `path:"id"`
+	Body struct {
+		Amount int32 `json:"amount" minimum:"0"`
+	}
+}
+
+func (h *UserHandler) IncreaseBalance(ctx context.Context, req *IncreaseBalanceRequest) (*UserResponse, error) {
+	user, err := h.Repo.IncreaseUserBalance(ctx, repository.IncreaseUserBalanceParams{
+		ID:      req.ID,
+		Balance: req.Body.Amount,
+	})
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, huma.Error404NotFound("user not found or invalid amount", nil)
+		}
+		return nil, err
+	}
+
+	resp := &UserResponse{}
+	resp.Body.ID = user.ID
+	resp.Body.Name = user.Name
+	resp.Body.Balance = user.Balance
+	resp.Body.CreatedAt = user.CreatedAt
+	return resp, nil
+}
+
+// --- Decrease balance ---
+
+type DecreaseBalanceRequest struct {
+	ID   int32 `path:"id"`
+	Body struct {
+		Amount int32 `json:"amount" minimum:"0"`
+	}
+}
+
+func (h *UserHandler) DecreaseBalance(ctx context.Context, req *DecreaseBalanceRequest) (*UserResponse, error) {
+	user, err := h.Repo.DecreaseUserBalance(ctx, repository.DecreaseUserBalanceParams{
+		ID:      req.ID,
+		Balance: req.Body.Amount,
+	})
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, huma.Error422UnprocessableEntity("insufficient balance or invalid amount", nil)
+		}
+		return nil, err
+	}
+
+	resp := &UserResponse{}
+	resp.Body.ID = user.ID
+	resp.Body.Name = user.Name
+	resp.Body.Balance = user.Balance
+	resp.Body.CreatedAt = user.CreatedAt
+	return resp, nil
+}
+
+// --- Set balance ---
+
+type SetBalanceRequest struct {
+	ID   int32 `path:"id"`
+	Body struct {
+		Balance int32 `json:"balance" minimum:"0"`
+	}
+}
+
+func (h *UserHandler) SetBalance(ctx context.Context, req *SetBalanceRequest) (*UserResponse, error) {
+	user, err := h.Repo.SetUserBalance(ctx, repository.SetUserBalanceParams{
+		ID:      req.ID,
+		Balance: req.Body.Balance,
+	})
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, huma.Error404NotFound("user not found or invalid balance", nil)
+		}
+		return nil, err
+	}
+
+	resp := &UserResponse{}
+	resp.Body.ID = user.ID
+	resp.Body.Name = user.Name
+	resp.Body.Balance = user.Balance
+	resp.Body.CreatedAt = user.CreatedAt
+	return resp, nil
+}

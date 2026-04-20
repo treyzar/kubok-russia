@@ -37,8 +37,14 @@ func main() {
 		{"Test 4: Update balance (positive delta)", testUpdateBalancePositive},
 		{"Test 5: Update balance (negative delta)", testUpdateBalanceNegative},
 		{"Test 6: Update balance (underflow)", testUpdateBalanceUnderflow},
+		{"Test 6a: Increase balance", testIncreaseBalance},
+		{"Test 6b: Decrease balance", testDecreaseBalance},
+		{"Test 6c: Decrease balance (insufficient)", testDecreaseBalanceInsufficient},
+		{"Test 6d: Set balance", testSetBalance},
+		{"Test 6e: Set balance (negative)", testSetBalanceNegative},
 		// rooms
 		{"Test 7: Create room", testCreateRoom},
+		{"Test 7a: Reset balance for room tests", testResetBalanceForRoomTests},
 		{"Test 8: List rooms (no filter)", testListRooms},
 		{"Test 9: List rooms (filter by status)", testListRoomsByStatus},
 		{"Test 10: List rooms (filter by entry_cost)", testListRoomsByEntryCost},
@@ -278,7 +284,123 @@ func testUpdateBalanceUnderflow() error {
 	return nil
 }
 
+func testIncreaseBalance() error {
+	resp, data, err := do("POST", fmt.Sprintf("/users/%d/balance/increase", createdUserID), map[string]any{
+		"amount": 1000,
+	})
+	if err != nil {
+		return err
+	}
+	if err := mustStatus(resp, data, http.StatusOK); err != nil {
+		return err
+	}
+	var body struct {
+		Balance int32 `json:"balance"`
+	}
+	if err := parseBody(data, &body); err != nil {
+		return err
+	}
+	if body.Balance != 6000 {
+		return fmt.Errorf("expected balance 6000 after increase by 1000, got %d", body.Balance)
+	}
+	log.Printf("Balance after increase by 1000: %d", body.Balance)
+	return nil
+}
+
+func testDecreaseBalance() error {
+	resp, data, err := do("POST", fmt.Sprintf("/users/%d/balance/decrease", createdUserID), map[string]any{
+		"amount": 500,
+	})
+	if err != nil {
+		return err
+	}
+	if err := mustStatus(resp, data, http.StatusOK); err != nil {
+		return err
+	}
+	var body struct {
+		Balance int32 `json:"balance"`
+	}
+	if err := parseBody(data, &body); err != nil {
+		return err
+	}
+	if body.Balance != 5500 {
+		return fmt.Errorf("expected balance 5500 after decrease by 500, got %d", body.Balance)
+	}
+	log.Printf("Balance after decrease by 500: %d", body.Balance)
+	return nil
+}
+
+func testDecreaseBalanceInsufficient() error {
+	// Try to decrease more than current balance (5500)
+	resp, data, err := do("POST", fmt.Sprintf("/users/%d/balance/decrease", createdUserID), map[string]any{
+		"amount": 99999,
+	})
+	if err != nil {
+		return err
+	}
+	// Expect a 4xx — insufficient balance
+	if resp.StatusCode < 400 {
+		return fmt.Errorf("expected 4xx for insufficient balance, got %d: %s", resp.StatusCode, string(data))
+	}
+	log.Printf("Insufficient balance correctly rejected with status %d", resp.StatusCode)
+	return nil
+}
+
+func testSetBalance() error {
+	resp, data, err := do("PUT", fmt.Sprintf("/users/%d/balance", createdUserID), map[string]any{
+		"balance": 3000,
+	})
+	if err != nil {
+		return err
+	}
+	if err := mustStatus(resp, data, http.StatusOK); err != nil {
+		return err
+	}
+	var body struct {
+		Balance int32 `json:"balance"`
+	}
+	if err := parseBody(data, &body); err != nil {
+		return err
+	}
+	if body.Balance != 3000 {
+		return fmt.Errorf("expected balance 3000 after set, got %d", body.Balance)
+	}
+	log.Printf("Balance after set to 3000: %d", body.Balance)
+	return nil
+}
+
+func testSetBalanceNegative() error {
+	// Try to set negative balance
+	resp, data, err := do("PUT", fmt.Sprintf("/users/%d/balance", createdUserID), map[string]any{
+		"balance": -100,
+	})
+	if err != nil {
+		return err
+	}
+	// Expect a 4xx — negative balance not allowed
+	if resp.StatusCode < 400 {
+		return fmt.Errorf("expected 4xx for negative balance, got %d: %s", resp.StatusCode, string(data))
+	}
+	log.Printf("Negative balance correctly rejected with status %d", resp.StatusCode)
+	return nil
+}
+
 // --- rooms ---
+
+func testResetBalanceForRoomTests() error {
+	// Reset balance to 5000 for room tests
+	resp, data, err := do("PUT", fmt.Sprintf("/users/%d/balance", createdUserID), map[string]any{
+		"balance": 5000,
+	})
+	if err != nil {
+		return err
+	}
+	if err := mustStatus(resp, data, http.StatusOK); err != nil {
+		return err
+	}
+	log.Printf("Reset balance to 5000 for room tests")
+	return nil
+}
 
 func testCreateRoom() error {
 	resp, data, err := do("POST", "/rooms", map[string]any{
