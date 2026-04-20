@@ -1,0 +1,88 @@
+# Implementation Plan
+
+- [x] 1. Create database migrations for template and room settings
+  - [x] 1.1 Create migration to add new fields to room_templates table
+    - Add `round_duration_seconds INTEGER NOT NULL DEFAULT 30` column
+    - Add `start_delay_seconds INTEGER NOT NULL DEFAULT 60` column
+    - Add `game_type VARCHAR(20) NOT NULL DEFAULT 'train'` column
+    - Add CHECK constraint for `game_type IN ('train', 'fridge')`
+    - Add CHECK constraint for `round_duration_seconds BETWEEN 10 AND 3600`
+    - Add CHECK constraint for `start_delay_seconds BETWEEN 5 AND 600`
+    - _Requirements: 1.1, 1.2, 2.1, 2.2, 4.1, 4.2, 4.5_
+  - [x] 1.2 Create migration to add new fields to rooms table
+    - Add `round_duration_seconds INTEGER NOT NULL DEFAULT 30` column
+    - Add `start_delay_seconds INTEGER NOT NULL DEFAULT 60` column
+    - Add `game_type VARCHAR(20) NOT NULL DEFAULT 'train'` column
+    - Add same CHECK constraints as room_templates table
+    - _Requirements: 1.3, 2.3, 6.1_
+  - [x] 1.3 Apply migrations to database
+    - Run goose migrations
+    - Verify schema changes are applied correctly
+    - _Requirements: 1.1, 1.2, 2.1, 2.2, 4.1, 4.2_
+
+- [x] 2. Update SQL queries to support new fields
+  - [x] 2.1 Update template queries in backend/db/queries/templates.sql
+    - Modify `InsertTemplate` to accept round_duration_seconds, start_delay_seconds, game_type parameters
+    - Modify `UpdateTemplate` to accept round_duration_seconds, start_delay_seconds, game_type parameters
+    - _Requirements: 1.1, 1.2, 2.1, 2.2, 4.1, 4.2_
+  - [x] 2.2 Update room queries in backend/db/queries/rooms.sql
+    - Modify `InsertRoom` to accept round_duration_seconds, start_delay_seconds, game_type parameters
+    - Update `JoinRoomAndUpdateStatus` to use room's start_delay_seconds for calculating start_time
+    - Update `ListPlayingRoomsReadyToFinish` to use room's round_duration_seconds for determining expiration
+    - _Requirements: 1.3, 1.4, 2.3, 2.4, 6.1_
+  - [x] 2.3 Regenerate repository code with sqlc
+    - Run `cd backend && sqlc generate`
+    - Verify generated code includes new fields in RoomTemplate and Room structs
+    - _Requirements: 1.1, 1.2, 1.3, 2.1, 2.2, 2.3, 4.1, 4.2, 6.1_
+
+- [x] 3. Update handler layer with validation and new field support
+  - [x] 3.1 Update template_handler.go for template creation and updates
+    - Add new fields to request parsing (round_duration_seconds, start_delay_seconds, game_type)
+    - Implement validation for round_duration_seconds (10-3600)
+    - Implement validation for start_delay_seconds (5-600)
+    - Implement validation for game_type enum ("train", "fridge")
+    - Apply default values when fields are not provided
+    - Update InsertTemplate and UpdateTemplate calls with new parameters
+    - _Requirements: 1.1, 1.2, 2.1, 2.2, 4.1, 4.2, 4.3, 4.5_
+  - [x] 3.2 Update room_handler.go for room creation from templates
+    - Fetch template settings including new fields
+    - Copy round_duration_seconds, start_delay_seconds, game_type from template to room
+    - Update InsertRoom call with all template settings
+    - _Requirements: 1.3, 2.3, 6.1, 6.2_
+  - [x] 3.3 Update API response models to include new fields
+    - Ensure template list responses include round_duration_seconds, start_delay_seconds, game_type
+    - Ensure room responses include round_duration_seconds, start_delay_seconds, game_type
+    - _Requirements: 4.4, 6.1_
+
+- [x] 4. Verify cron jobs work with dynamic settings
+  - [x] 4.1 Review room_starter.go behavior
+    - Confirm it correctly reads start_time from rooms table
+    - Verify no hardcoded delay values exist in the cron logic
+    - _Requirements: 2.4_
+  - [x] 4.2 Review room_finisher.go behavior
+    - Confirm it uses ListPlayingRoomsReadyToFinish query
+    - Verify winner payout calculation uses room.WinnerPct
+    - _Requirements: 1.4, 3.3_
+
+- [x] 5. Integration testing and validation
+  - [x] 5.1 Test template creation with new fields
+    - Create template with custom round_duration_seconds, start_delay_seconds, game_type
+    - Verify template is stored correctly with all fields
+    - Test validation errors for out-of-range values
+    - Test validation errors for invalid game_type
+    - _Requirements: 1.1, 2.1, 4.1, 4.3_
+  - [x] 5.2 Test room creation from template
+    - Create room from template with custom settings
+    - Verify all settings are copied to room record
+    - Verify room inherits round_duration_seconds, start_delay_seconds, game_type
+    - _Requirements: 1.3, 2.3, 6.1, 6.2_
+  - [x] 5.3 Test room lifecycle with custom timing
+    - Join room and verify start_time uses custom start_delay_seconds
+    - Verify room transitions to playing after custom delay
+    - Verify room finishes after custom round_duration_seconds
+    - Verify winner receives correct percentage based on winner_pct
+    - _Requirements: 1.4, 2.4, 3.3_
+  - [x] 5.4 Test backward compatibility
+    - Create template without providing optional fields
+    - Verify default values are applied (30s round, 60s delay, "train" type)
+    - _Requirements: 1.5, 2.5, 4.5_
