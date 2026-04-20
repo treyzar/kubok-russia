@@ -161,16 +161,42 @@ type UpdateTemplateRequest struct {
 		Name                 string `json:"name" minLength:"1" maxLength:"255"`
 		PlayersNeeded        int32  `json:"players_needed" minimum:"1"`
 		EntryCost            int32  `json:"entry_cost" minimum:"0"`
-		WinnerPct            int32  `json:"winner_pct" minimum:"1" maximum:"99"`
-		RoundDurationSeconds int32  `json:"round_duration_seconds" minimum:"10" maximum:"3600"`
-		StartDelaySeconds    int32  `json:"start_delay_seconds" minimum:"5" maximum:"600"`
-		GameType             string `json:"game_type"`
+		WinnerPct            *int32 `json:"winner_pct,omitempty" minimum:"1" maximum:"99"`
+		RoundDurationSeconds *int32 `json:"round_duration_seconds,omitempty" minimum:"10" maximum:"3600"`
+		StartDelaySeconds    *int32 `json:"start_delay_seconds,omitempty" minimum:"5" maximum:"600"`
+		GameType             string `json:"game_type,omitempty"`
 	}
 }
 
 func (h *TemplateHandler) Update(ctx context.Context, req *UpdateTemplateRequest) (*TemplateResponse, error) {
-	if req.Body.GameType != "train" && req.Body.GameType != "fridge" {
-		return nil, huma.Error400BadRequest("game_type must be one of: train, fridge", nil)
+	// Get existing template to use as defaults
+	existing, err := h.Repo.GetTemplate(ctx, repository.GetTemplateParams{TemplateID: req.TemplateID})
+	if err != nil {
+		return nil, err
+	}
+
+	// Use existing values as defaults, override if provided
+	winnerPct := existing.WinnerPct
+	if req.Body.WinnerPct != nil {
+		winnerPct = *req.Body.WinnerPct
+	}
+
+	roundDurationSeconds := existing.RoundDurationSeconds
+	if req.Body.RoundDurationSeconds != nil {
+		roundDurationSeconds = *req.Body.RoundDurationSeconds
+	}
+
+	startDelaySeconds := existing.StartDelaySeconds
+	if req.Body.StartDelaySeconds != nil {
+		startDelaySeconds = *req.Body.StartDelaySeconds
+	}
+
+	gameType := existing.GameType
+	if req.Body.GameType != "" {
+		if req.Body.GameType != "train" && req.Body.GameType != "fridge" {
+			return nil, huma.Error400BadRequest("game_type must be one of: train, fridge", nil)
+		}
+		gameType = req.Body.GameType
 	}
 
 	t, err := h.Repo.UpdateTemplate(ctx, repository.UpdateTemplateParams{
@@ -178,10 +204,10 @@ func (h *TemplateHandler) Update(ctx context.Context, req *UpdateTemplateRequest
 		Name:                 req.Body.Name,
 		PlayersNeeded:        req.Body.PlayersNeeded,
 		EntryCost:            req.Body.EntryCost,
-		WinnerPct:            req.Body.WinnerPct,
-		RoundDurationSeconds: req.Body.RoundDurationSeconds,
-		StartDelaySeconds:    req.Body.StartDelaySeconds,
-		GameType:             req.Body.GameType,
+		WinnerPct:            winnerPct,
+		RoundDurationSeconds: roundDurationSeconds,
+		StartDelaySeconds:    startDelaySeconds,
+		GameType:             gameType,
 	})
 	if err != nil {
 		return nil, catchUniqueNameViolation(err)

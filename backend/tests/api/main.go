@@ -911,13 +911,10 @@ func testGetTemplate() error {
 
 func testUpdateTemplate() error {
 	resp, data, err := do("PUT", fmt.Sprintf("/room-templates/%d", createdTplID), map[string]any{
-		"name":                   "TestTemplateUpdated",
-		"players_needed":         5,
-		"entry_cost":             250,
-		"winner_pct":             70,
-		"round_duration_seconds": 30,
-		"start_delay_seconds":    60,
-		"game_type":              "train",
+		"name":           "TestTemplateUpdated",
+		"players_needed": 5,
+		"entry_cost":     250,
+		"winner_pct":     70,
 	})
 	if err != nil {
 		return err
