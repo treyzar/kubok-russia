@@ -48,13 +48,13 @@ current_player_count AS (
     SELECT COUNT(*) as count FROM room_players WHERE room_id = $1
 ),
 inserted AS (
-    INSERT INTO room_players (room_id, user_id, places)
-    SELECT $1, $2, $3
+    INSERT INTO room_players (room_id, user_id)
+    SELECT $1, $2
     WHERE (SELECT balance FROM user_balance) >= (SELECT entry_cost FROM room_info)
       AND NOT EXISTS (SELECT 1 FROM room_players WHERE room_id = $1 AND user_id = $2)
       AND (SELECT status FROM room_info) IN ('new', 'starting_soon')
       AND (SELECT count FROM current_player_count) < (SELECT players_needed FROM room_info)
-    RETURNING room_id, user_id, places, joined_at
+    RETURNING room_id, user_id, joined_at
 ),
 balance_update AS (
     UPDATE users
@@ -85,13 +85,13 @@ current_player_count AS (
     SELECT COUNT(*) as count FROM room_players WHERE room_id = $1
 ),
 inserted AS (
-    INSERT INTO room_players (room_id, user_id, places)
-    SELECT $1, $2, $3
+    INSERT INTO room_players (room_id, user_id)
+    SELECT $1, $2
     WHERE (SELECT balance FROM user_balance) >= (SELECT entry_cost FROM room_info)
       AND NOT EXISTS (SELECT 1 FROM room_players WHERE room_id = $1 AND user_id = $2)
       AND (SELECT status FROM room_info) IN ('new', 'starting_soon')
       AND (SELECT count FROM current_player_count) < (SELECT players_needed FROM room_info)
-    RETURNING room_id, user_id, places, joined_at
+    RETURNING room_id, user_id, joined_at
 ),
 balance_update AS (
     UPDATE users
@@ -123,11 +123,16 @@ RETURNING *;
 WITH room_info AS (
     SELECT entry_cost, status FROM rooms WHERE rooms.room_id = $1
 ),
+deleted_places AS (
+    DELETE FROM room_places
+    WHERE room_places.room_id = $1 AND room_places.user_id = $2
+    RETURNING room_id, user_id
+),
 deleted AS (
     DELETE FROM room_players
-    WHERE room_id = $1 AND user_id = $2
+    WHERE room_players.room_id = $1 AND room_players.user_id = $2
       AND (SELECT status FROM room_info) IN ('new', 'starting_soon')
-    RETURNING room_id, user_id, places, joined_at
+    RETURNING room_id, user_id, joined_at
 ),
 balance_refund AS (
     UPDATE users
@@ -147,11 +152,16 @@ SELECT * FROM deleted;
 WITH room_info AS (
     SELECT entry_cost, status FROM rooms WHERE rooms.room_id = $1
 ),
+deleted_places AS (
+    DELETE FROM room_places
+    WHERE room_places.room_id = $1 AND room_places.user_id = $2
+    RETURNING room_id, user_id
+),
 deleted AS (
     DELETE FROM room_players
     WHERE room_players.room_id = $1 AND room_players.user_id = $2
       AND (SELECT status FROM room_info) IN ('new', 'starting_soon')
-    RETURNING room_id, user_id, places, joined_at
+    RETURNING room_id, user_id, joined_at
 ),
 balance_refund AS (
     UPDATE users
@@ -176,9 +186,16 @@ WHERE rooms.room_id = $1
 RETURNING *;
 
 -- name: ListRoomPlayers :many
-SELECT * FROM room_players
-WHERE room_id = $1
-ORDER BY joined_at ASC;
+SELECT 
+    rp.room_id,
+    rp.user_id,
+    rp.joined_at,
+    COALESCE(COUNT(rpl.place_index), 1) AS places
+FROM room_players rp
+LEFT JOIN room_places rpl ON rpl.room_id = rp.room_id AND rpl.user_id = rp.user_id
+WHERE rp.room_id = $1
+GROUP BY rp.room_id, rp.user_id, rp.joined_at
+ORDER BY rp.joined_at ASC;
 
 -- name: InsertRoomWin :one
 WITH room_info AS (
@@ -248,14 +265,14 @@ current_player_count AS (
     SELECT COUNT(*) as count FROM room_players WHERE room_id = $1
 ),
 inserted AS (
-    INSERT INTO room_players (room_id, user_id, places)
-    SELECT $1, $2, $3
+    INSERT INTO room_players (room_id, user_id)
+    SELECT $1, $2
     WHERE (SELECT balance FROM user_info) >= (SELECT entry_cost FROM room_info)
       AND (SELECT bot FROM user_info) = true
       AND NOT EXISTS (SELECT 1 FROM room_players WHERE room_id = $1 AND user_id = $2)
       AND (SELECT status FROM room_info) IN ('new', 'starting_soon', 'playing')
       AND (SELECT count FROM current_player_count) < (SELECT players_needed FROM room_info)
-    RETURNING room_id, user_id, places, joined_at
+    RETURNING room_id, user_id, joined_at
 ),
 balance_update AS (
     UPDATE users
@@ -296,14 +313,16 @@ WHERE status = 'playing'
 -- name: GetPlayersWithStakes :many
 SELECT
     rp.user_id,
-    rp.places,
-    COALESCE(rp.places, 1) * r.entry_cost AS stake,
+    COALESCE(COUNT(rpl.place_index), 1) AS places,
+    COALESCE(COUNT(rpl.place_index), 1) * r.entry_cost AS stake,
     COALESCE(rb.amount, 0) AS boost_amount,
-    COALESCE(rp.places, 1) * r.entry_cost + COALESCE(rb.amount, 0) AS total_stake
+    COALESCE(COUNT(rpl.place_index), 1) * r.entry_cost + COALESCE(rb.amount, 0) AS total_stake
 FROM room_players rp
 JOIN rooms r ON r.room_id = rp.room_id
+LEFT JOIN room_places rpl ON rpl.room_id = rp.room_id AND rpl.user_id = rp.user_id
 LEFT JOIN room_boosts rb ON rb.room_id = rp.room_id AND rb.user_id = rp.user_id
-WHERE rp.room_id = $1;
+WHERE rp.room_id = $1
+GROUP BY rp.user_id, r.entry_cost, rb.amount;
 
 -- name: FinishRoomAndAwardWinner :one
 WITH finish_room AS (
@@ -363,3 +382,22 @@ insert_win AS (
     RETURNING room_id, user_id, prize, won_at
 )
 SELECT * FROM insert_win;
+
+-- name: InsertRoomPlace :one
+INSERT INTO room_places (room_id, user_id, place_index)
+VALUES ($1, $2, $3)
+RETURNING *;
+
+-- name: GetNextPlaceIndex :one
+SELECT COALESCE(MAX(place_index), 0) + 1 AS next_index
+FROM room_places
+WHERE room_id = $1;
+
+-- name: CountUserPlacesInRoom :one
+SELECT COUNT(*) FROM room_places
+WHERE room_id = $1 AND user_id = $2;
+
+-- name: ListRoomPlacesByUser :many
+SELECT * FROM room_places
+WHERE room_id = $1 AND user_id = $2
+ORDER BY place_index ASC;

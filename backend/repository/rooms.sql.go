@@ -65,14 +65,14 @@ current_player_count AS (
     SELECT COUNT(*) as count FROM room_players WHERE room_id = $1
 ),
 inserted AS (
-    INSERT INTO room_players (room_id, user_id, places)
-    SELECT $1, $2, $3
+    INSERT INTO room_players (room_id, user_id)
+    SELECT $1, $2
     WHERE (SELECT balance FROM user_info) >= (SELECT entry_cost FROM room_info)
       AND (SELECT bot FROM user_info) = true
       AND NOT EXISTS (SELECT 1 FROM room_players WHERE room_id = $1 AND user_id = $2)
       AND (SELECT status FROM room_info) IN ('new', 'starting_soon', 'playing')
       AND (SELECT count FROM current_player_count) < (SELECT players_needed FROM room_info)
-    RETURNING room_id, user_id, places, joined_at
+    RETURNING room_id, user_id, joined_at
 ),
 balance_update AS (
     UPDATE users
@@ -86,24 +86,22 @@ jackpot_update AS (
     WHERE rooms.room_id = $1 AND EXISTS (SELECT 1 FROM inserted)
     RETURNING room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost, winner_pct, round_duration_seconds, start_delay_seconds, game_type
 )
-SELECT room_id, user_id, places, joined_at FROM inserted
+SELECT room_id, user_id, joined_at FROM inserted
 `
 
 type BotJoinRoomParams struct {
-	RoomID int32  `json:"room_id"`
-	ID     int32  `json:"id"`
-	Places *int32 `json:"places"`
+	RoomID int32 `json:"room_id"`
+	ID     int32 `json:"id"`
 }
 
 type BotJoinRoomRow struct {
 	RoomID   int32     `json:"room_id"`
 	UserID   int32     `json:"user_id"`
-	Places   *int32    `json:"places"`
 	JoinedAt time.Time `json:"joined_at"`
 }
 
 func (q *Queries) BotJoinRoom(ctx context.Context, arg BotJoinRoomParams) ([]BotJoinRoomRow, error) {
-	rows, err := q.db.Query(ctx, botJoinRoom, arg.RoomID, arg.ID, arg.Places)
+	rows, err := q.db.Query(ctx, botJoinRoom, arg.RoomID, arg.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -111,12 +109,7 @@ func (q *Queries) BotJoinRoom(ctx context.Context, arg BotJoinRoomParams) ([]Bot
 	items := []BotJoinRoomRow{}
 	for rows.Next() {
 		var i BotJoinRoomRow
-		if err := rows.Scan(
-			&i.RoomID,
-			&i.UserID,
-			&i.Places,
-			&i.JoinedAt,
-		); err != nil {
+		if err := rows.Scan(&i.RoomID, &i.UserID, &i.JoinedAt); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -138,6 +131,23 @@ type CountRoomPlayersParams struct {
 
 func (q *Queries) CountRoomPlayers(ctx context.Context, arg CountRoomPlayersParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countRoomPlayers, arg.RoomID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countUserPlacesInRoom = `-- name: CountUserPlacesInRoom :one
+SELECT COUNT(*) FROM room_places
+WHERE room_id = $1 AND user_id = $2
+`
+
+type CountUserPlacesInRoomParams struct {
+	RoomID int32 `json:"room_id"`
+	UserID int32 `json:"user_id"`
+}
+
+func (q *Queries) CountUserPlacesInRoom(ctx context.Context, arg CountUserPlacesInRoomParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countUserPlacesInRoom, arg.RoomID, arg.UserID)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -333,17 +343,36 @@ func (q *Queries) GetBotsWithMinBalance(ctx context.Context, arg GetBotsWithMinB
 	return items, nil
 }
 
+const getNextPlaceIndex = `-- name: GetNextPlaceIndex :one
+SELECT COALESCE(MAX(place_index), 0) + 1 AS next_index
+FROM room_places
+WHERE room_id = $1
+`
+
+type GetNextPlaceIndexParams struct {
+	RoomID int32 `json:"room_id"`
+}
+
+func (q *Queries) GetNextPlaceIndex(ctx context.Context, arg GetNextPlaceIndexParams) (int32, error) {
+	row := q.db.QueryRow(ctx, getNextPlaceIndex, arg.RoomID)
+	var next_index int32
+	err := row.Scan(&next_index)
+	return next_index, err
+}
+
 const getPlayersWithStakes = `-- name: GetPlayersWithStakes :many
 SELECT
     rp.user_id,
-    rp.places,
-    COALESCE(rp.places, 1) * r.entry_cost AS stake,
+    COALESCE(COUNT(rpl.place_index), 1) AS places,
+    COALESCE(COUNT(rpl.place_index), 1) * r.entry_cost AS stake,
     COALESCE(rb.amount, 0) AS boost_amount,
-    COALESCE(rp.places, 1) * r.entry_cost + COALESCE(rb.amount, 0) AS total_stake
+    COALESCE(COUNT(rpl.place_index), 1) * r.entry_cost + COALESCE(rb.amount, 0) AS total_stake
 FROM room_players rp
 JOIN rooms r ON r.room_id = rp.room_id
+LEFT JOIN room_places rpl ON rpl.room_id = rp.room_id AND rpl.user_id = rp.user_id
 LEFT JOIN room_boosts rb ON rb.room_id = rp.room_id AND rb.user_id = rp.user_id
 WHERE rp.room_id = $1
+GROUP BY rp.user_id, r.entry_cost, rb.amount
 `
 
 type GetPlayersWithStakesParams struct {
@@ -351,11 +380,11 @@ type GetPlayersWithStakesParams struct {
 }
 
 type GetPlayersWithStakesRow struct {
-	UserID      int32  `json:"user_id"`
-	Places      *int32 `json:"places"`
-	Stake       int32  `json:"stake"`
-	BoostAmount int32  `json:"boost_amount"`
-	TotalStake  int32  `json:"total_stake"`
+	UserID      int32       `json:"user_id"`
+	Places      interface{} `json:"places"`
+	Stake       int32       `json:"stake"`
+	BoostAmount int32       `json:"boost_amount"`
+	TotalStake  int32       `json:"total_stake"`
 }
 
 func (q *Queries) GetPlayersWithStakes(ctx context.Context, arg GetPlayersWithStakesParams) ([]GetPlayersWithStakesRow, error) {
@@ -536,6 +565,30 @@ func (q *Queries) InsertRoomBoost(ctx context.Context, arg InsertRoomBoostParams
 	return i, err
 }
 
+const insertRoomPlace = `-- name: InsertRoomPlace :one
+INSERT INTO room_places (room_id, user_id, place_index)
+VALUES ($1, $2, $3)
+RETURNING room_id, user_id, place_index, created_at
+`
+
+type InsertRoomPlaceParams struct {
+	RoomID     int32 `json:"room_id"`
+	UserID     int32 `json:"user_id"`
+	PlaceIndex int32 `json:"place_index"`
+}
+
+func (q *Queries) InsertRoomPlace(ctx context.Context, arg InsertRoomPlaceParams) (RoomPlace, error) {
+	row := q.db.QueryRow(ctx, insertRoomPlace, arg.RoomID, arg.UserID, arg.PlaceIndex)
+	var i RoomPlace
+	err := row.Scan(
+		&i.RoomID,
+		&i.UserID,
+		&i.PlaceIndex,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const insertRoomWin = `-- name: InsertRoomWin :one
 WITH room_info AS (
     SELECT status, jackpot FROM rooms WHERE rooms.room_id = $1
@@ -591,13 +644,13 @@ current_player_count AS (
     SELECT COUNT(*) as count FROM room_players WHERE room_id = $1
 ),
 inserted AS (
-    INSERT INTO room_players (room_id, user_id, places)
-    SELECT $1, $2, $3
+    INSERT INTO room_players (room_id, user_id)
+    SELECT $1, $2
     WHERE (SELECT balance FROM user_balance) >= (SELECT entry_cost FROM room_info)
       AND NOT EXISTS (SELECT 1 FROM room_players WHERE room_id = $1 AND user_id = $2)
       AND (SELECT status FROM room_info) IN ('new', 'starting_soon')
       AND (SELECT count FROM current_player_count) < (SELECT players_needed FROM room_info)
-    RETURNING room_id, user_id, places, joined_at
+    RETURNING room_id, user_id, joined_at
 ),
 balance_update AS (
     UPDATE users
@@ -611,31 +664,24 @@ jackpot_update AS (
     WHERE rooms.room_id = $1 AND EXISTS (SELECT 1 FROM inserted)
     RETURNING room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost, winner_pct, round_duration_seconds, start_delay_seconds, game_type
 )
-SELECT room_id, user_id, places, joined_at FROM inserted
+SELECT room_id, user_id, joined_at FROM inserted
 `
 
 type JoinRoomParams struct {
-	RoomID int32  `json:"room_id"`
-	ID     int32  `json:"id"`
-	Places *int32 `json:"places"`
+	RoomID int32 `json:"room_id"`
+	ID     int32 `json:"id"`
 }
 
 type JoinRoomRow struct {
 	RoomID   int32     `json:"room_id"`
 	UserID   int32     `json:"user_id"`
-	Places   *int32    `json:"places"`
 	JoinedAt time.Time `json:"joined_at"`
 }
 
 func (q *Queries) JoinRoom(ctx context.Context, arg JoinRoomParams) (JoinRoomRow, error) {
-	row := q.db.QueryRow(ctx, joinRoom, arg.RoomID, arg.ID, arg.Places)
+	row := q.db.QueryRow(ctx, joinRoom, arg.RoomID, arg.ID)
 	var i JoinRoomRow
-	err := row.Scan(
-		&i.RoomID,
-		&i.UserID,
-		&i.Places,
-		&i.JoinedAt,
-	)
+	err := row.Scan(&i.RoomID, &i.UserID, &i.JoinedAt)
 	return i, err
 }
 
@@ -650,13 +696,13 @@ current_player_count AS (
     SELECT COUNT(*) as count FROM room_players WHERE room_id = $1
 ),
 inserted AS (
-    INSERT INTO room_players (room_id, user_id, places)
-    SELECT $1, $2, $3
+    INSERT INTO room_players (room_id, user_id)
+    SELECT $1, $2
     WHERE (SELECT balance FROM user_balance) >= (SELECT entry_cost FROM room_info)
       AND NOT EXISTS (SELECT 1 FROM room_players WHERE room_id = $1 AND user_id = $2)
       AND (SELECT status FROM room_info) IN ('new', 'starting_soon')
       AND (SELECT count FROM current_player_count) < (SELECT players_needed FROM room_info)
-    RETURNING room_id, user_id, places, joined_at
+    RETURNING room_id, user_id, joined_at
 ),
 balance_update AS (
     UPDATE users
@@ -686,13 +732,12 @@ RETURNING room_id, jackpot, start_time, status, players_needed, created_at, upda
 `
 
 type JoinRoomAndUpdateStatusParams struct {
-	RoomID int32  `json:"room_id"`
-	ID     int32  `json:"id"`
-	Places *int32 `json:"places"`
+	RoomID int32 `json:"room_id"`
+	ID     int32 `json:"id"`
 }
 
 func (q *Queries) JoinRoomAndUpdateStatus(ctx context.Context, arg JoinRoomAndUpdateStatusParams) (Room, error) {
-	row := q.db.QueryRow(ctx, joinRoomAndUpdateStatus, arg.RoomID, arg.ID, arg.Places)
+	row := q.db.QueryRow(ctx, joinRoomAndUpdateStatus, arg.RoomID, arg.ID)
 	var i Room
 	err := row.Scan(
 		&i.RoomID,
@@ -715,11 +760,16 @@ const leaveRoom = `-- name: LeaveRoom :one
 WITH room_info AS (
     SELECT entry_cost, status FROM rooms WHERE rooms.room_id = $1
 ),
+deleted_places AS (
+    DELETE FROM room_places
+    WHERE room_places.room_id = $1 AND room_places.user_id = $2
+    RETURNING room_id, user_id
+),
 deleted AS (
     DELETE FROM room_players
-    WHERE room_id = $1 AND user_id = $2
+    WHERE room_players.room_id = $1 AND room_players.user_id = $2
       AND (SELECT status FROM room_info) IN ('new', 'starting_soon')
-    RETURNING room_id, user_id, places, joined_at
+    RETURNING room_id, user_id, joined_at
 ),
 balance_refund AS (
     UPDATE users
@@ -733,7 +783,7 @@ jackpot_update AS (
     WHERE rooms.room_id = $1 AND EXISTS (SELECT 1 FROM deleted)
     RETURNING room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost, winner_pct, round_duration_seconds, start_delay_seconds, game_type
 )
-SELECT room_id, user_id, places, joined_at FROM deleted
+SELECT room_id, user_id, joined_at FROM deleted
 `
 
 type LeaveRoomParams struct {
@@ -744,19 +794,13 @@ type LeaveRoomParams struct {
 type LeaveRoomRow struct {
 	RoomID   int32     `json:"room_id"`
 	UserID   int32     `json:"user_id"`
-	Places   *int32    `json:"places"`
 	JoinedAt time.Time `json:"joined_at"`
 }
 
 func (q *Queries) LeaveRoom(ctx context.Context, arg LeaveRoomParams) (LeaveRoomRow, error) {
 	row := q.db.QueryRow(ctx, leaveRoom, arg.RoomID, arg.UserID)
 	var i LeaveRoomRow
-	err := row.Scan(
-		&i.RoomID,
-		&i.UserID,
-		&i.Places,
-		&i.JoinedAt,
-	)
+	err := row.Scan(&i.RoomID, &i.UserID, &i.JoinedAt)
 	return i, err
 }
 
@@ -764,11 +808,16 @@ const leaveRoomAndUpdateStatus = `-- name: LeaveRoomAndUpdateStatus :one
 WITH room_info AS (
     SELECT entry_cost, status FROM rooms WHERE rooms.room_id = $1
 ),
+deleted_places AS (
+    DELETE FROM room_places
+    WHERE room_places.room_id = $1 AND room_places.user_id = $2
+    RETURNING room_id, user_id
+),
 deleted AS (
     DELETE FROM room_players
     WHERE room_players.room_id = $1 AND room_players.user_id = $2
       AND (SELECT status FROM room_info) IN ('new', 'starting_soon')
-    RETURNING room_id, user_id, places, joined_at
+    RETURNING room_id, user_id, joined_at
 ),
 balance_refund AS (
     UPDATE users
@@ -893,30 +942,80 @@ func (q *Queries) ListRoomBoosts(ctx context.Context, arg ListRoomBoostsParams) 
 	return items, nil
 }
 
+const listRoomPlacesByUser = `-- name: ListRoomPlacesByUser :many
+SELECT room_id, user_id, place_index, created_at FROM room_places
+WHERE room_id = $1 AND user_id = $2
+ORDER BY place_index ASC
+`
+
+type ListRoomPlacesByUserParams struct {
+	RoomID int32 `json:"room_id"`
+	UserID int32 `json:"user_id"`
+}
+
+func (q *Queries) ListRoomPlacesByUser(ctx context.Context, arg ListRoomPlacesByUserParams) ([]RoomPlace, error) {
+	rows, err := q.db.Query(ctx, listRoomPlacesByUser, arg.RoomID, arg.UserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RoomPlace{}
+	for rows.Next() {
+		var i RoomPlace
+		if err := rows.Scan(
+			&i.RoomID,
+			&i.UserID,
+			&i.PlaceIndex,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRoomPlayers = `-- name: ListRoomPlayers :many
-SELECT room_id, user_id, places, joined_at FROM room_players
-WHERE room_id = $1
-ORDER BY joined_at ASC
+SELECT 
+    rp.room_id,
+    rp.user_id,
+    rp.joined_at,
+    COALESCE(COUNT(rpl.place_index), 1) AS places
+FROM room_players rp
+LEFT JOIN room_places rpl ON rpl.room_id = rp.room_id AND rpl.user_id = rp.user_id
+WHERE rp.room_id = $1
+GROUP BY rp.room_id, rp.user_id, rp.joined_at
+ORDER BY rp.joined_at ASC
 `
 
 type ListRoomPlayersParams struct {
 	RoomID int32 `json:"room_id"`
 }
 
-func (q *Queries) ListRoomPlayers(ctx context.Context, arg ListRoomPlayersParams) ([]RoomPlayer, error) {
+type ListRoomPlayersRow struct {
+	RoomID   int32       `json:"room_id"`
+	UserID   int32       `json:"user_id"`
+	JoinedAt time.Time   `json:"joined_at"`
+	Places   interface{} `json:"places"`
+}
+
+func (q *Queries) ListRoomPlayers(ctx context.Context, arg ListRoomPlayersParams) ([]ListRoomPlayersRow, error) {
 	rows, err := q.db.Query(ctx, listRoomPlayers, arg.RoomID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []RoomPlayer{}
+	items := []ListRoomPlayersRow{}
 	for rows.Next() {
-		var i RoomPlayer
+		var i ListRoomPlayersRow
 		if err := rows.Scan(
 			&i.RoomID,
 			&i.UserID,
-			&i.Places,
 			&i.JoinedAt,
+			&i.Places,
 		); err != nil {
 			return nil, err
 		}

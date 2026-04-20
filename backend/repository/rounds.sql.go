@@ -7,6 +7,7 @@ package repository
 
 import (
 	"context"
+	"time"
 )
 
 const getFinishedRoom = `-- name: GetFinishedRoom :one
@@ -74,24 +75,38 @@ func (q *Queries) GetRoundBoosts(ctx context.Context, arg GetRoundBoostsParams) 
 }
 
 const getRoundPlayers = `-- name: GetRoundPlayers :many
-SELECT room_id, user_id, places, joined_at FROM room_players
-WHERE room_id = $1
-ORDER BY joined_at ASC
+SELECT 
+    rp.room_id, 
+    rp.user_id, 
+    COUNT(rpl.place_index)::INTEGER AS places, 
+    rp.joined_at 
+FROM room_players rp
+LEFT JOIN room_places rpl ON rp.room_id = rpl.room_id AND rp.user_id = rpl.user_id
+WHERE rp.room_id = $1
+GROUP BY rp.room_id, rp.user_id, rp.joined_at
+ORDER BY rp.joined_at ASC
 `
 
 type GetRoundPlayersParams struct {
 	RoomID int32 `json:"room_id"`
 }
 
-func (q *Queries) GetRoundPlayers(ctx context.Context, arg GetRoundPlayersParams) ([]RoomPlayer, error) {
+type GetRoundPlayersRow struct {
+	RoomID   int32     `json:"room_id"`
+	UserID   int32     `json:"user_id"`
+	Places   int32     `json:"places"`
+	JoinedAt time.Time `json:"joined_at"`
+}
+
+func (q *Queries) GetRoundPlayers(ctx context.Context, arg GetRoundPlayersParams) ([]GetRoundPlayersRow, error) {
 	rows, err := q.db.Query(ctx, getRoundPlayers, arg.RoomID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []RoomPlayer{}
+	items := []GetRoundPlayersRow{}
 	for rows.Next() {
-		var i RoomPlayer
+		var i GetRoundPlayersRow
 		if err := rows.Scan(
 			&i.RoomID,
 			&i.UserID,

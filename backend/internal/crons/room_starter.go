@@ -116,10 +116,10 @@ func RoomStarter(pool *pgxpool.Pool, pubSub *redisclient.PubSub) func(*eon.Conte
 			// Add bots to the room
 			addedBots := 0
 			for _, bot := range bots {
+				// Join the room (this updates room_players, user balance, and room jackpot)
 				rows, err := txQueries.BotJoinRoom(context.Background(), repository.BotJoinRoomParams{
 					RoomID: room.RoomID,
 					ID:     bot.ID,
-					Places: nil,
 				})
 				if err != nil {
 					log.Printf("[RoomStarter] ❌ Failed to add bot %s (ID: %d) to room %d: %v", bot.Name, bot.ID, room.RoomID, err)
@@ -131,8 +131,31 @@ func RoomStarter(pool *pgxpool.Pool, pubSub *redisclient.PubSub) func(*eon.Conte
 					tx.Rollback(context.Background())
 					goto nextRoom
 				}
+
+				// Get next available place_index for the room
+				nextPlaceIndex, err := txQueries.GetNextPlaceIndex(context.Background(), repository.GetNextPlaceIndexParams{
+					RoomID: room.RoomID,
+				})
+				if err != nil {
+					log.Printf("[RoomStarter] ❌ Failed to get next place index for bot %s (ID: %d) in room %d: %v", bot.Name, bot.ID, room.RoomID, err)
+					tx.Rollback(context.Background())
+					goto nextRoom
+				}
+
+				// Insert a single place record for the bot (bots join with 1 place by default)
+				_, err = txQueries.InsertRoomPlace(context.Background(), repository.InsertRoomPlaceParams{
+					RoomID:     room.RoomID,
+					UserID:     bot.ID,
+					PlaceIndex: nextPlaceIndex,
+				})
+				if err != nil {
+					log.Printf("[RoomStarter] ❌ Failed to insert place for bot %s (ID: %d) in room %d: %v", bot.Name, bot.ID, room.RoomID, err)
+					tx.Rollback(context.Background())
+					goto nextRoom
+				}
+
 				addedBots++
-				log.Printf("[RoomStarter] ✅ Added bot %s to room %d", bot.Name, room.RoomID)
+				log.Printf("[RoomStarter] ✅ Added bot %s to room %d with place index %d", bot.Name, room.RoomID, nextPlaceIndex)
 			}
 
 			// Verify we added all needed bots

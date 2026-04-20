@@ -52,5 +52,8 @@ test-websocket:
 test-room-management:
 	@bash tests/room_management/run_tests.sh
 
+test-room-places:
+	@bash tests/room_places/run.sh
+
 test-all:
 	@bash tests/run_all.sh

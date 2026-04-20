@@ -126,11 +126,11 @@ func testUserJoinRoom() error {
 			Time:  time.Now().Add(5 * time.Minute),
 			Valid: true,
 		},
-		Status:        "new",
-		PlayersNeeded: 3,
-		EntryCost:     100,
-		WinnerPct:     80,
-		GameType:      "train",
+		Status:               "new",
+		PlayersNeeded:        3,
+		EntryCost:            100,
+		WinnerPct:            80,
+		GameType:             "train",
 		RoundDurationSeconds: 30,
 		StartDelaySeconds:    60,
 	})
@@ -152,7 +152,6 @@ func testUserJoinRoom() error {
 	result, err := queries.JoinRoomAndUpdateStatus(context.Background(), repository.JoinRoomAndUpdateStatusParams{
 		RoomID: room.RoomID,
 		ID:     user1.ID,
-		Places: nil,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to join room: %v", err)
@@ -202,7 +201,6 @@ func testInsufficientBalance() error {
 	_, err = queries.JoinRoomAndUpdateStatus(context.Background(), repository.JoinRoomAndUpdateStatusParams{
 		RoomID: room.RoomID,
 		ID:     user2.ID,
-		Places: nil,
 	})
 
 	// Should succeed but return empty result (no join happened)
@@ -249,7 +247,6 @@ func testDuplicateJoin() error {
 	_, err = queries.JoinRoomAndUpdateStatus(context.Background(), repository.JoinRoomAndUpdateStatusParams{
 		RoomID: room.RoomID,
 		ID:     user1.ID,
-		Places: nil,
 	})
 
 	// Should not deduct balance again
@@ -275,11 +272,11 @@ func testFullRoom() error {
 			Time:  time.Now().Add(5 * time.Minute),
 			Valid: true,
 		},
-		Status:        "new",
-		PlayersNeeded: 1,
-		EntryCost:     100,
-		WinnerPct:     80,
-		GameType:      "train",
+		Status:               "new",
+		PlayersNeeded:        1,
+		EntryCost:            100,
+		WinnerPct:            80,
+		GameType:             "train",
 		RoundDurationSeconds: 30,
 		StartDelaySeconds:    60,
 	})
@@ -305,7 +302,6 @@ func testFullRoom() error {
 	_, err = queries.JoinRoomAndUpdateStatus(context.Background(), repository.JoinRoomAndUpdateStatusParams{
 		RoomID: room.RoomID,
 		ID:     user1.ID,
-		Places: nil,
 	})
 	if err != nil {
 		return err
@@ -315,7 +311,6 @@ func testFullRoom() error {
 	_, err = queries.JoinRoomAndUpdateStatus(context.Background(), repository.JoinRoomAndUpdateStatusParams{
 		RoomID: room.RoomID,
 		ID:     user3.ID,
-		Places: nil,
 	})
 
 	// Check user3 is not in room
@@ -434,11 +429,11 @@ func testRoomAutoStart() error {
 			Time:  time.Now().Add(-2 * time.Second),
 			Valid: true,
 		},
-		Status:        "starting_soon",
-		PlayersNeeded: 2,
-		EntryCost:     100,
-		WinnerPct:     80,
-		GameType:      "train",
+		Status:               "starting_soon",
+		PlayersNeeded:        2,
+		EntryCost:            100,
+		WinnerPct:            80,
+		GameType:             "train",
 		RoundDurationSeconds: 30,
 		StartDelaySeconds:    60,
 	})
@@ -574,13 +569,13 @@ func testCannotBoostNonPlaying() error {
 				Time:  time.Now().Add(5 * time.Minute),
 				Valid: true,
 			},
-			Status:        "new",
-			PlayersNeeded: 3,
-			EntryCost:     100,
-			WinnerPct:     80,
-		GameType:      "train",
-		RoundDurationSeconds: 30,
-		StartDelaySeconds:    60,
+			Status:               "new",
+			PlayersNeeded:        3,
+			EntryCost:            100,
+			WinnerPct:            80,
+			GameType:             "train",
+			RoundDurationSeconds: 30,
+			StartDelaySeconds:    60,
 		})
 		if err != nil {
 			return err
@@ -623,11 +618,11 @@ func testDeclareWinner() error {
 			Time:  time.Now().Add(-5 * time.Minute),
 			Valid: true,
 		},
-		Status:        "finished",
-		PlayersNeeded: 2,
-		EntryCost:     100,
-		WinnerPct:     80,
-		GameType:      "train",
+		Status:               "finished",
+		PlayersNeeded:        2,
+		EntryCost:            100,
+		WinnerPct:            80,
+		GameType:             "train",
 		RoundDurationSeconds: 30,
 		StartDelaySeconds:    60,
 	})
@@ -676,11 +671,11 @@ func testRoomAutoFinish() error {
 			Time:  time.Now().Add(-31 * time.Second),
 			Valid: true,
 		},
-		Status:        "playing",
-		PlayersNeeded: 2,
-		EntryCost:     100,
-		WinnerPct:     80,
-		GameType:      "train",
+		Status:               "playing",
+		PlayersNeeded:        2,
+		EntryCost:            100,
+		WinnerPct:            80,
+		GameType:             "train",
 		RoundDurationSeconds: 30,
 		StartDelaySeconds:    60,
 	})
@@ -703,10 +698,27 @@ func testRoomAutoFinish() error {
 		rows, err := queries.BotJoinRoom(context.Background(), repository.BotJoinRoomParams{
 			RoomID: room.RoomID,
 			ID:     bot.ID,
-			Places: nil,
 		})
 		if err != nil || len(rows) == 0 {
 			return fmt.Errorf("failed to add bot %d to room: %v", bot.ID, err)
+		}
+
+		// Get next available place_index for the room
+		nextPlaceIndex, err := queries.GetNextPlaceIndex(context.Background(), repository.GetNextPlaceIndexParams{
+			RoomID: room.RoomID,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to get next place index for bot %d: %v", bot.ID, err)
+		}
+
+		// Insert a single place record for the bot (bots join with 1 place by default)
+		_, err = queries.InsertRoomPlace(context.Background(), repository.InsertRoomPlaceParams{
+			RoomID:     room.RoomID,
+			UserID:     bot.ID,
+			PlaceIndex: nextPlaceIndex,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to insert place for bot %d: %v", bot.ID, err)
 		}
 	}
 
@@ -778,11 +790,11 @@ func testWinnerPctPrizeCalculation() error {
 			Time:  time.Now().Add(-31 * time.Second),
 			Valid: true,
 		},
-		Status:        "playing",
-		PlayersNeeded: playersNeeded,
-		EntryCost:     entryCost,
-		WinnerPct:     customPct,
-		GameType:      "train",
+		Status:               "playing",
+		PlayersNeeded:        playersNeeded,
+		EntryCost:            entryCost,
+		WinnerPct:            customPct,
+		GameType:             "train",
 		RoundDurationSeconds: 30,
 		StartDelaySeconds:    60,
 	})
@@ -812,10 +824,27 @@ func testWinnerPctPrizeCalculation() error {
 		rows, err := queries.BotJoinRoom(context.Background(), repository.BotJoinRoomParams{
 			RoomID: room.RoomID,
 			ID:     bot.ID,
-			Places: nil,
 		})
 		if err != nil || len(rows) == 0 {
 			return fmt.Errorf("failed to add bot %d: %v", bot.ID, err)
+		}
+
+		// Get next available place_index for the room
+		nextPlaceIndex, err := queries.GetNextPlaceIndex(context.Background(), repository.GetNextPlaceIndexParams{
+			RoomID: room.RoomID,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to get next place index for bot %d: %v", bot.ID, err)
+		}
+
+		// Insert a single place record for the bot (bots join with 1 place by default)
+		_, err = queries.InsertRoomPlace(context.Background(), repository.InsertRoomPlaceParams{
+			RoomID:     room.RoomID,
+			UserID:     bot.ID,
+			PlaceIndex: nextPlaceIndex,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to insert place for bot %d: %v", bot.ID, err)
 		}
 	}
 
@@ -877,11 +906,11 @@ func testExternalRNGFallback() error {
 			Time:  time.Now().Add(5 * time.Minute),
 			Valid: true,
 		},
-		Status:        "new",
-		PlayersNeeded: 2,
-		EntryCost:     0,
-		WinnerPct:     80,
-		GameType:      "train",
+		Status:               "new",
+		PlayersNeeded:        2,
+		EntryCost:            0,
+		WinnerPct:            80,
+		GameType:             "train",
 		RoundDurationSeconds: 30,
 		StartDelaySeconds:    60,
 	})
@@ -892,7 +921,6 @@ func testExternalRNGFallback() error {
 	_, err = queries.JoinRoomAndUpdateStatus(context.Background(), repository.JoinRoomAndUpdateStatusParams{
 		RoomID: room.RoomID,
 		ID:     user1.ID,
-		Places: nil,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to join room: %v", err)
@@ -964,11 +992,11 @@ func testBoostUniquenessDB() error {
 			Time:  time.Now().Add(5 * time.Minute),
 			Valid: true,
 		},
-		Status:        "playing",
-		PlayersNeeded: 2,
-		EntryCost:     0,
-		WinnerPct:     80,
-		GameType:      "train",
+		Status:               "playing",
+		PlayersNeeded:        2,
+		EntryCost:            0,
+		WinnerPct:            80,
+		GameType:             "train",
 		RoundDurationSeconds: 30,
 		StartDelaySeconds:    60,
 	})

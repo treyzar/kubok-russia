@@ -387,14 +387,56 @@ func (h *RoomHandler) JoinRoom(ctx context.Context, req *JoinRoomRequest) (*Room
 		}
 	}
 
-	updatedRoom, err := h.Repo.JoinRoomAndUpdateStatus(ctx, repository.JoinRoomAndUpdateStatusParams{
+	// Determine number of places (default to 1 if not specified)
+	places := int32(1)
+	if req.Body.Places != nil && *req.Body.Places > 0 {
+		places = *req.Body.Places
+	}
+
+	// Start transaction for atomic operations
+	tx, err := h.Pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	// Create queries with transaction
+	txRepo := h.Repo.WithTx(tx)
+
+	// Join room (this updates room_players, user balance, and room jackpot)
+	updatedRoom, err := txRepo.JoinRoomAndUpdateStatus(ctx, repository.JoinRoomAndUpdateStatusParams{
 		RoomID: req.RoomID,
 		ID:     req.Body.UserID,
-		Places: req.Body.Places,
 	})
 	if err != nil {
 		return nil, err
 	}
+
+	// Get next available place_index for the room
+	nextPlaceIndex, err := txRepo.GetNextPlaceIndex(ctx, repository.GetNextPlaceIndexParams{
+		RoomID: req.RoomID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Insert individual place records with sequential indices
+	for i := int32(0); i < places; i++ {
+		_, err := txRepo.InsertRoomPlace(ctx, repository.InsertRoomPlaceParams{
+			RoomID:     req.RoomID,
+			UserID:     req.Body.UserID,
+			PlaceIndex: nextPlaceIndex + i,
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Commit transaction
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+
 	item := roomToItem(updatedRoom)
 	h.publishRoomSnapshot(ctx, item)
 	return roomItemToResponse(item), nil
@@ -422,10 +464,19 @@ func (h *RoomHandler) ListRoomPlayers(ctx context.Context, req *ListRoomPlayersR
 	resp := &ListRoomPlayersResponse{}
 	resp.Body.Players = make([]roomPlayerItem, len(players))
 	for i, p := range players {
+		// Convert interface{} to int32 for places count
+		var places int32 = 1 // default to 1
+		if p.Places != nil {
+			// The query returns BIGINT from COUNT, which maps to int64
+			if placesInt64, ok := p.Places.(int64); ok {
+				places = int32(placesInt64)
+			}
+		}
+
 		resp.Body.Players[i] = roomPlayerItem{
 			RoomID:   p.RoomID,
 			UserID:   p.UserID,
-			Places:   p.Places,
+			Places:   &places,
 			JoinedAt: p.JoinedAt,
 		}
 	}

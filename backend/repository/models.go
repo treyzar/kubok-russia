@@ -143,10 +143,16 @@ type RoomBoost struct {
 	BoostedAt time.Time `json:"boosted_at"`
 }
 
+type RoomPlace struct {
+	RoomID     int32     `json:"room_id"`
+	UserID     int32     `json:"user_id"`
+	PlaceIndex int32     `json:"place_index"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
 type RoomPlayer struct {
 	RoomID   int32     `json:"room_id"`
 	UserID   int32     `json:"user_id"`
-	Places   *int32    `json:"places"`
 	JoinedAt time.Time `json:"joined_at"`
 }
 
