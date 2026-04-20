@@ -17,6 +17,18 @@ type AuthRecord = AuthUser & {
 
 const STORAGE_KEY = 'kubok26.mock-auth.user'
 
+function getStorage(): Storage | null {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  try {
+    return window.localStorage
+  } catch {
+    return null
+  }
+}
+
 const MOCK_USERS: AuthRecord[] = [
   {
     id: 'vip-arina',
@@ -81,7 +93,11 @@ function normalizePhone(phone: string): string {
   return digits
 }
 
-export function loginWithMock(login: string, password: string, method: AuthLoginMethod): AuthUser | null {
+export function loginWithMock(
+  login: string,
+  password: string,
+  method: AuthLoginMethod = 'email',
+): AuthUser | null {
   const normalizedLogin = login.trim().toLowerCase()
 
   const foundUser = MOCK_USERS.find((user) => {
@@ -101,12 +117,14 @@ export function loginWithMock(login: string, password: string, method: AuthLogin
   }
 
   const authUser = toUser(foundUser)
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(authUser))
+  const storage = getStorage()
+  storage?.setItem(STORAGE_KEY, JSON.stringify(authUser))
   return authUser
 }
 
 export function getStoredUser(): AuthUser | null {
-  const rawValue = localStorage.getItem(STORAGE_KEY)
+  const storage = getStorage()
+  const rawValue = storage?.getItem(STORAGE_KEY)
 
   if (!rawValue) {
     return null
@@ -115,13 +133,14 @@ export function getStoredUser(): AuthUser | null {
   try {
     return JSON.parse(rawValue) as AuthUser
   } catch {
-    localStorage.removeItem(STORAGE_KEY)
+    storage?.removeItem(STORAGE_KEY)
     return null
   }
 }
 
 export function logoutMock(): void {
-  localStorage.removeItem(STORAGE_KEY)
+  const storage = getStorage()
+  storage?.removeItem(STORAGE_KEY)
 }
 
 export function getMockPassword(username: string): string | null {

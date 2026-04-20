@@ -1,0 +1,263 @@
+<h2>Первая секция лендинга</h2>
+<p class="subtitle">Три близких направления для экрана неавторизованного пользователя. Серые блоки показывают места под ваши будущие изображения.</p>
+
+<div class="section">
+  <div class="options">
+    <div class="option" data-choice="a" onclick="toggleSelect(this)">
+      <div class="letter">A</div>
+      <div class="content">
+        <h3>Максимально близко к референсу</h3>
+        <p>Тот же тёмный постерный экран, навбар сверху, крупный текст слева, высокий визуальный блок справа. Рекомендую как базу.</p>
+      </div>
+    </div>
+    <div class="option" data-choice="b" onclick="toggleSelect(this)">
+      <div class="letter">B</div>
+      <div class="content">
+        <h3>Близко к референсу, но чуть чище</h3>
+        <p>Те же пропорции, но более аккуратные отступы и немного сильнее акцент на бренде проекта.</p>
+      </div>
+    </div>
+    <div class="option" data-choice="c" onclick="toggleSelect(this)">
+      <div class="letter">C</div>
+      <div class="content">
+        <h3>Адаптивный сдвиг</h3>
+        <p>Секция остаётся похожей, но правая визуальная часть становится менее доминирующей и лучше схлопывается на планшете.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .hero-cards {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 18px;
+    margin-top: 18px;
+  }
+  .hero-card {
+    background: #121212;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 22px;
+    overflow: hidden;
+    box-shadow: 0 18px 44px rgba(0,0,0,0.28);
+    cursor: pointer;
+  }
+  .hero-card.selected {
+    outline: 2px solid #8f3dff;
+    outline-offset: 3px;
+  }
+  .hero-head {
+    height: 56px;
+    background: #1d1d1d;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 18px;
+    color: #f6f6f6;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+  }
+  .hero-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+  }
+  .hero-logo {
+    width: 24px;
+    height: 24px;
+    border-radius: 999px;
+    background: #b9ff5a;
+  }
+  .hero-nav {
+    display: flex;
+    gap: 10px;
+  }
+  .hero-nav span,
+  .hero-login {
+    height: 12px;
+    border-radius: 999px;
+    background: #5d5d5d;
+    display: inline-block;
+  }
+  .hero-nav span:nth-child(1) { width: 48px; }
+  .hero-nav span:nth-child(2) { width: 58px; }
+  .hero-nav span:nth-child(3) { width: 72px; }
+  .hero-login {
+    width: 74px;
+    height: 28px;
+    background: linear-gradient(135deg, #7f2dff, #a114ff);
+  }
+  .hero-body {
+    display: grid;
+    grid-template-columns: 1.08fr 0.92fr;
+    min-height: 430px;
+  }
+  .hero-copy {
+    padding: 44px 32px 32px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: white;
+  }
+  .hero-kicker {
+    width: 180px;
+    height: 18px;
+    background: #b9ff5a;
+    border-radius: 999px;
+    margin-bottom: 18px;
+  }
+  .hero-badge {
+    width: 72px;
+    height: 72px;
+    border-radius: 18px;
+    background: #949494;
+    margin-bottom: 26px;
+  }
+  .hero-title {
+    width: 82%;
+    height: 104px;
+    background: #efefef;
+    border-radius: 18px;
+    margin-bottom: 28px;
+  }
+  .hero-rule {
+    width: 100%;
+    height: 1px;
+    background: rgba(255,255,255,0.14);
+    margin-bottom: 26px;
+  }
+  .hero-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .hero-actions span {
+    display: block;
+    height: 46px;
+    border-radius: 12px;
+  }
+  .hero-actions span:first-child {
+    background: linear-gradient(135deg, #7b2cff, #c400ff);
+  }
+  .hero-actions span:last-child {
+    background: rgba(209, 59, 143, 0.14);
+    border: 1px solid rgba(209, 59, 143, 0.75);
+  }
+  .hero-visual {
+    background: #1a1a1a;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 30px 18px 0;
+  }
+  .visual-a,
+  .visual-b,
+  .visual-c {
+    width: 100%;
+    max-width: 280px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 8px;
+  }
+  .visual-a span,
+  .visual-b span,
+  .visual-c span {
+    display: block;
+    background: #6b6b6b;
+    border-radius: 8px 8px 0 0;
+  }
+  .visual-a span:nth-child(1) { width: 46%; height: 350px; }
+  .visual-a span:nth-child(2) { width: 54%; height: 380px; }
+  .visual-b span:nth-child(1) { width: 40%; height: 320px; }
+  .visual-b span:nth-child(2) { width: 58%; height: 360px; }
+  .visual-c span:nth-child(1) { width: 36%; height: 280px; }
+  .visual-c span:nth-child(2) { width: 52%; height: 320px; }
+  .hero-note {
+    padding: 14px 16px 18px;
+    color: #cfcfcf;
+    font-size: 13px;
+    line-height: 1.45;
+    background: #161616;
+    border-top: 1px solid rgba(255,255,255,0.08);
+  }
+  @media (max-width: 1100px) {
+    .hero-cards {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+
+<div class="hero-cards">
+  <div class="hero-card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="hero-head">
+      <div class="hero-brand"><span class="hero-logo"></span> КУБОК РОССИИ</div>
+      <div style="display:flex;align-items:center;gap:14px">
+        <div class="hero-nav"><span></span><span></span><span></span></div>
+        <span class="hero-login"></span>
+      </div>
+    </div>
+    <div class="hero-body">
+      <div class="hero-copy">
+        <div class="hero-kicker"></div>
+        <div class="hero-badge"></div>
+        <div class="hero-title"></div>
+        <div class="hero-rule"></div>
+        <div class="hero-actions"><span></span><span></span></div>
+      </div>
+      <div class="hero-visual">
+        <div class="visual-a"><span></span><span></span></div>
+      </div>
+    </div>
+    <div class="hero-note">Практически прямое воспроизведение структуры референса под ваш бренд и будущие картинки.</div>
+  </div>
+
+  <div class="hero-card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="hero-head">
+      <div class="hero-brand"><span class="hero-logo"></span> КУБОК РОССИИ</div>
+      <div style="display:flex;align-items:center;gap:14px">
+        <div class="hero-nav"><span></span><span></span><span></span></div>
+        <span class="hero-login"></span>
+      </div>
+    </div>
+    <div class="hero-body">
+      <div class="hero-copy" style="padding-top:36px">
+        <div class="hero-kicker" style="width:200px"></div>
+        <div class="hero-badge" style="width:80px;height:80px"></div>
+        <div class="hero-title" style="width:78%;height:92px"></div>
+        <div class="hero-rule"></div>
+        <div class="hero-actions"><span></span><span></span></div>
+      </div>
+      <div class="hero-visual">
+        <div class="visual-b"><span></span><span></span></div>
+      </div>
+    </div>
+    <div class="hero-note">Чуть более собранная типографика и отступы, но силуэт секции остаётся очень близким к оригиналу.</div>
+  </div>
+
+  <div class="hero-card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="hero-head">
+      <div class="hero-brand"><span class="hero-logo"></span> КУБОК РОССИИ</div>
+      <div style="display:flex;align-items:center;gap:14px">
+        <div class="hero-nav"><span></span><span></span><span></span></div>
+        <span class="hero-login"></span>
+      </div>
+    </div>
+    <div class="hero-body">
+      <div class="hero-copy" style="padding-top:34px">
+        <div class="hero-kicker" style="width:160px"></div>
+        <div class="hero-badge" style="width:66px;height:66px"></div>
+        <div class="hero-title" style="width:76%;height:88px"></div>
+        <div class="hero-rule"></div>
+        <div class="hero-actions"><span></span><span></span></div>
+      </div>
+      <div class="hero-visual">
+        <div class="visual-c"><span></span><span></span></div>
+      </div>
+    </div>
+    <div class="hero-note">Более гибкий адаптив, но уже немного дальше от референса по доминированию правой картинки.</div>
+  </div>
+</div>
