@@ -9,6 +9,29 @@ type AuthLandingHeroProps = {
 export function AuthLandingHero({ onEnterLogin }: AuthLandingHeroProps) {
   const navItems = ['Об игре', 'Билеты', 'Архив тиражей']
   const animatedButtonBase = 'hero-btn'
+  const winners = [
+    {
+      id: '932100',
+      name: 'Денис Клещев',
+      region: 'Москва',
+      prize: '5 064 410 ₽',
+      avatarPosition: '17% 30%',
+    },
+    {
+      id: '730503',
+      name: 'Юрий Штофа',
+      region: 'Курганская область',
+      prize: '4 843 700 ₽',
+      avatarPosition: '49% 31%',
+    },
+    {
+      id: '276019',
+      name: 'Амир Леванов',
+      region: 'Республика Алтай',
+      prize: '4 909 000 ₽',
+      avatarPosition: '80% 32%',
+    },
+  ]
 
   return (
     <main className="min-h-screen w-full bg-[#0D0E12] text-[#F3F3F3]">
@@ -106,6 +129,229 @@ export function AuthLandingHero({ onEnterLogin }: AuthLandingHeroProps) {
               src="/dev-assets/big_fridge.svg"
             />
             <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(9,11,16,0.18)_0%,rgba(9,11,16,0)_42%)]" />
+          </div>
+        </section>
+
+        <section className="border-b border-[#232833] bg-[#0D0E12] px-4 py-10 sm:px-6 sm:py-12 lg:px-12 lg:py-14">
+          <div className="mx-auto w-full max-w-[1280px]">
+            <h2 className="text-[clamp(2.25rem,4.9vw,3.55rem)] leading-[1.06] font-semibold text-[#F3F3F3]">
+              Открываешь холодильник, а там...
+            </h2>
+
+            <div className="mt-8 space-y-8 sm:mt-10 sm:space-y-9 lg:mt-12 lg:space-y-10">
+              <article className="grid items-center gap-6 lg:grid-cols-[49%_51%] lg:gap-9">
+                <img
+                  alt="Шаг 1: карточка с людьми"
+                  className="w-full rounded-[16px] object-cover"
+                  src="/dev-assets/images/card_with_peoples.svg"
+                />
+
+                <div>
+                  <p className="text-[clamp(2rem,4.1vw,3.1rem)] leading-none font-semibold text-[#A8EA58] uppercase">Шаг 1</p>
+                  <p className="mt-3 max-w-[30ch] text-[clamp(1.18rem,2.15vw,1.62rem)] leading-[1.32] font-medium text-[#F1F1F2]">
+                    Создай своё лобби или войди в игру к другим участникам, ты будешь соревноваться с ними. Каждый из вас
+                    отдаст одинаковую сумму в банк
+                  </p>
+                  <Button
+                    className="mt-6 h-[42px] rounded-[8px] border border-[#272B34] !bg-[#111319] px-4 text-[16px] font-medium text-[#ECEDEF] opacity-85"
+                    disabled
+                    type="button"
+                    variant="outline"
+                  >
+                    Заглушка
+                  </Button>
+                </div>
+              </article>
+
+              <article className="grid items-center gap-6 lg:grid-cols-[49%_51%] lg:gap-9">
+                <div className="order-2 lg:order-1">
+                  <p className="text-[clamp(2rem,4.1vw,3.1rem)] leading-none font-semibold text-[#A8EA58] uppercase">Шаг 2</p>
+                  <p className="mt-3 max-w-[30ch] text-[clamp(1.18rem,2.15vw,1.62rem)] leading-[1.32] font-medium text-[#F1F1F2]">
+                    Отметь ту часть холодильника, которая тебе приглянулась, там будет лежать ваш приз. При желании ты
+                    можешь дать больше денег нашему Кубику, за это он может увеличить вам лот! Но ваши соперники также
+                    могут сделать это!
+                  </p>
+                </div>
+
+                <img
+                  alt="Шаг 2: карточка с маскотом"
+                  className="order-1 w-full rounded-[16px] object-cover lg:order-2"
+                  src="/dev-assets/images/card_with_mascot.svg"
+                />
+              </article>
+
+              <article className="grid items-center gap-6 lg:grid-cols-[49%_51%] lg:gap-9">
+                <img
+                  alt="Шаг 3: карточка с продуктами"
+                  className="w-full rounded-[16px] object-cover"
+                  src="/dev-assets/card_with_products.svg"
+                />
+
+                <div>
+                  <p className="text-[clamp(2rem,4.1vw,3.1rem)] leading-none font-semibold text-[#A8EA58] uppercase">Шаг 3</p>
+                  <p className="mt-3 max-w-[30ch] text-[clamp(1.18rem,2.15vw,1.62rem)] leading-[1.32] font-medium text-[#F1F1F2]">
+                    Дверцы открываются, а за ними... ваши призы, в сумме равные всем банку! Но не забывайте, если на один
+                    предмет положили глаз несколько игроков, то вы разделите его поровну между вами
+                  </p>
+                  <Button
+                    className="mt-6 h-[42px] rounded-[8px] bg-[#EF2A92] px-6 text-[16px] font-medium text-[#F7F7F8] opacity-90 hover:bg-[#EF2A92]"
+                    disabled
+                    type="button"
+                  >
+                    Заглушка
+                  </Button>
+                </div>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section className="border-b border-[#232833] bg-[#101318] px-5 py-9 sm:px-6 lg:px-7 lg:py-8">
+          <div className="mx-auto w-full max-w-[1320px]">
+            <h2 className="text-[clamp(2.35rem,4.5vw,3.35rem)] leading-[1.04] font-semibold text-[#F4F4F5]">
+              Присоединяйся к чемпионам!
+            </h2>
+
+            <div className="mx-auto mt-1.5 h-[4px] w-[16px] rounded-full bg-[#EE2B9A]" />
+
+            <div className="mt-6 grid gap-2.5 lg:grid-cols-2 lg:gap-2.5">
+              <article className="relative rounded-[18px] bg-[#ABE362] px-6 pt-6 pb-5 sm:px-7 lg:min-h-[338px]">
+                <div className="grid grid-cols-[1fr_auto] items-start gap-4">
+                  <div>
+                    <p className="text-[43px] leading-none font-semibold text-[#EDF6E7]">1/6</p>
+
+                    <p className="mt-5 text-[17px] leading-none font-semibold text-[#191E25]">Сумма выигрыша</p>
+                    <p className="mt-1.5 text-[42px] leading-none font-semibold text-[#F2F7ED]">2 896 700 ₽</p>
+
+                    <p className="mt-5 text-[17px] leading-none font-semibold text-[#191E25]">Сумма общего банка</p>
+                    <p className="mt-1.5 text-[42px] leading-none font-semibold text-[#F2F7ED]">5 000 000 ₽</p>
+
+                    <p className="mt-5 text-[17px] leading-none font-semibold text-[#10141C]">Результаты игры</p>
+                    <p className="mt-1.5 text-[41px] leading-none font-semibold text-[#090D14]">№310001</p>
+                  </div>
+
+                  <img
+                    alt="Холодильник с блоками"
+                    className="w-[172px] object-contain"
+                    src="/dev-assets/images/fridge_with_blocks.svg"
+                  />
+                </div>
+
+                <div className="mt-6 flex items-center gap-3">
+                  <button
+                    aria-label="Предыдущий результат"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[#F1F4EA] text-[22px] font-semibold leading-none text-[#242730]"
+                    disabled
+                    type="button"
+                  >
+                    ←
+                  </button>
+                  <button
+                    aria-label="Следующий результат"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[#F1F4EA] text-[22px] font-semibold leading-none text-[#242730]"
+                    disabled
+                    type="button"
+                  >
+                    →
+                  </button>
+                </div>
+              </article>
+
+              <article className="relative rounded-[18px] bg-[#ABE362] px-6 pt-6 pb-5 sm:px-7 lg:min-h-[338px]">
+                <h3 className="text-[17px] leading-none font-semibold text-[#12171D]">Победители</h3>
+
+                <div className="mt-7 space-y-6">
+                  {winners.map((winner) => (
+                    <div className="grid grid-cols-[auto_1fr_auto] items-center gap-3.5" key={winner.id}>
+                      <div className="h-11 w-11 overflow-hidden rounded-full border border-[#D53395]/35 bg-[#F43A9E]">
+                        <img
+                          alt={winner.name}
+                          className="h-full w-full object-cover"
+                          src="/dev-assets/images/card_with_peoples.svg"
+                          style={{ objectPosition: winner.avatarPosition }}
+                        />
+                      </div>
+
+                      <div className="min-w-0">
+                        <p className="truncate text-[17px] leading-none font-semibold text-[#11161D]">{winner.name}</p>
+                        <p className="mt-1 truncate text-[16px] leading-none font-medium text-[#4D573E]">{winner.region}</p>
+                      </div>
+
+                      <div className="text-right">
+                        <p className="text-[15px] leading-none font-semibold text-[#4B5344]">Игра №{winner.id}</p>
+                        <p className="mt-1 text-[15px] leading-none font-semibold text-[#10161E]">
+                          {winner.prize}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-6 flex items-center gap-3">
+                  <button
+                    aria-label="Предыдущие победители"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[#F1F4EA] text-[22px] font-semibold leading-none text-[#242730]"
+                    disabled
+                    type="button"
+                  >
+                    ←
+                  </button>
+                  <button
+                    aria-label="Следующие победители"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[#F1F4EA] text-[22px] font-semibold leading-none text-[#242730]"
+                    disabled
+                    type="button"
+                  >
+                    →
+                  </button>
+                </div>
+              </article>
+            </div>
+
+            <div className="mx-auto mt-3 h-[4px] w-[16px] rounded-full bg-[#EE2B9A]" />
+          </div>
+        </section>
+
+        <section className="border-b border-[#232833] bg-[#11141B] px-4 py-10 sm:px-6 sm:py-12 lg:px-12 lg:py-14">
+          <div className="mx-auto grid w-full max-w-[1280px] items-center gap-8 lg:grid-cols-[45%_55%] lg:gap-10">
+            <div className="relative h-[320px] sm:h-[360px] lg:h-[382px]">
+              <div className="pointer-events-none absolute left-[6%] top-[63%] h-[240px] w-[240px] -translate-y-1/2 rounded-full bg-[#A2C8FF]/20 blur-[54px]" />
+              <div className="pointer-events-none absolute left-[37%] top-[32%] h-[260px] w-[260px] -translate-y-1/2 rounded-full bg-[#BFD8FF]/24 blur-[58px]" />
+
+              <img
+                alt="Кубик маскот 1"
+                className="absolute left-[7%] top-[57%] w-[138px] -translate-y-1/2 object-contain sm:w-[156px] lg:w-[174px]"
+                src="/dev-assets/images/mascot_1.svg"
+              />
+              <img
+                alt="Кубик маскот 2"
+                className="absolute left-[40%] top-[18%] w-[142px] object-contain sm:w-[160px] lg:w-[182px]"
+                src="/dev-assets/images/mascot_2.svg"
+              />
+            </div>
+
+            <div className="lg:pr-1">
+              <h2 className="max-w-[11ch] text-[clamp(2.25rem,4.3vw,3.25rem)] leading-[1.03] font-semibold text-[#F3F3F3]">
+                Раскрой свой талант предугадывания
+              </h2>
+
+              <div className="mt-6 rounded-[14px] border border-[#313744] px-4 py-4 sm:px-6 sm:py-5">
+                <p className="text-[clamp(1.9rem,2.7vw,2.05rem)] leading-[1.22] font-medium text-[#ECEEF1]">
+                  Постарайся выбрать именно то, что не возьмут твои соперники!
+                </p>
+                <p className="mt-4 text-[clamp(1.9rem,2.7vw,2.05rem)] leading-[1.22] font-medium text-[#ECEEF1]">
+                  Иначе придется поделить выигрыш с ними.
+                </p>
+              </div>
+
+              <Button
+                className="mt-7 h-[50px] min-w-[250px] rounded-[10px] bg-gradient-to-r from-[#7D28F2] to-[#6320D8] px-8 text-[33px] font-medium text-white hover:from-[#8F3BFA] hover:to-[#722CE8]"
+                onClick={onEnterLogin}
+                type="button"
+              >
+                Войти в игру | от 1 ₽
+              </Button>
+            </div>
           </div>
         </section>
       </div>
