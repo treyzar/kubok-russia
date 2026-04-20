@@ -10,7 +10,7 @@ import (
 )
 
 const getFinishedRoom = `-- name: GetFinishedRoom :one
-SELECT room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost, winner_pct FROM rooms
+SELECT room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost, winner_pct, round_duration_seconds, start_delay_seconds, game_type FROM rooms
 WHERE room_id = $1 AND status = 'finished'
 `
 
@@ -31,6 +31,9 @@ func (q *Queries) GetFinishedRoom(ctx context.Context, arg GetFinishedRoomParams
 		&i.UpdatedAt,
 		&i.EntryCost,
 		&i.WinnerPct,
+		&i.RoundDurationSeconds,
+		&i.StartDelaySeconds,
+		&i.GameType,
 	)
 	return i, err
 }
@@ -127,7 +130,7 @@ func (q *Queries) GetRoundWinner(ctx context.Context, arg GetRoundWinnerParams) 
 }
 
 const listFinishedRooms = `-- name: ListFinishedRooms :many
-SELECT room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost, winner_pct FROM rooms
+SELECT room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost, winner_pct, round_duration_seconds, start_delay_seconds, game_type FROM rooms
 WHERE status = 'finished'
 ORDER BY created_at DESC
 `
@@ -151,6 +154,9 @@ func (q *Queries) ListFinishedRooms(ctx context.Context) ([]Room, error) {
 			&i.UpdatedAt,
 			&i.EntryCost,
 			&i.WinnerPct,
+			&i.RoundDurationSeconds,
+			&i.StartDelaySeconds,
+			&i.GameType,
 		); err != nil {
 			return nil, err
 		}

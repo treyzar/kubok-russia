@@ -16,6 +16,7 @@ SUITES=(
     "WebSocket|tests/websocket/run.sh"
     "Room Management|tests/room_management/run_tests.sh"
     "Fair Rooms|tests/fair_rooms/run.sh"
+    "Template Settings|tests/template_settings/run.sh"
 )
 
 declare -a RESULTS   # "suite|passed|failed|status"

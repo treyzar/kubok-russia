@@ -122,15 +122,18 @@ type FairRoom struct {
 }
 
 type Room struct {
-	RoomID        int32              `json:"room_id"`
-	Jackpot       int32              `json:"jackpot"`
-	StartTime     pgtype.Timestamptz `json:"start_time"`
-	Status        string             `json:"status"`
-	PlayersNeeded int32              `json:"players_needed"`
-	CreatedAt     time.Time          `json:"created_at"`
-	UpdatedAt     time.Time          `json:"updated_at"`
-	EntryCost     int32              `json:"entry_cost"`
-	WinnerPct     int32              `json:"winner_pct"`
+	RoomID               int32              `json:"room_id"`
+	Jackpot              int32              `json:"jackpot"`
+	StartTime            pgtype.Timestamptz `json:"start_time"`
+	Status               string             `json:"status"`
+	PlayersNeeded        int32              `json:"players_needed"`
+	CreatedAt            time.Time          `json:"created_at"`
+	UpdatedAt            time.Time          `json:"updated_at"`
+	EntryCost            int32              `json:"entry_cost"`
+	WinnerPct            int32              `json:"winner_pct"`
+	RoundDurationSeconds int32              `json:"round_duration_seconds"`
+	StartDelaySeconds    int32              `json:"start_delay_seconds"`
+	GameType             string             `json:"game_type"`
 }
 
 type RoomBoost struct {
@@ -148,13 +151,16 @@ type RoomPlayer struct {
 }
 
 type RoomTemplate struct {
-	TemplateID    int32     `json:"template_id"`
-	Name          string    `json:"name"`
-	PlayersNeeded int32     `json:"players_needed"`
-	EntryCost     int32     `json:"entry_cost"`
-	WinnerPct     int32     `json:"winner_pct"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	TemplateID           int32     `json:"template_id"`
+	Name                 string    `json:"name"`
+	PlayersNeeded        int32     `json:"players_needed"`
+	EntryCost            int32     `json:"entry_cost"`
+	WinnerPct            int32     `json:"winner_pct"`
+	CreatedAt            time.Time `json:"created_at"`
+	UpdatedAt            time.Time `json:"updated_at"`
+	RoundDurationSeconds int32     `json:"round_duration_seconds"`
+	StartDelaySeconds    int32     `json:"start_delay_seconds"`
+	GameType             string    `json:"game_type"`
 }
 
 type RoomWinner struct {

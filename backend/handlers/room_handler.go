@@ -42,15 +42,18 @@ func (h *RoomHandler) publishRoomSnapshot(ctx context.Context, item roomItem) {
 
 type RoomResponse struct {
 	Body struct {
-		RoomID        int32      `json:"room_id"`
-		Jackpot       int32      `json:"jackpot"`
-		StartTime     *time.Time `json:"start_time,omitempty"`
-		Status        string     `json:"status"`
-		PlayersNeeded int32      `json:"players_needed"`
-		EntryCost     int32      `json:"entry_cost"`
-		WinnerPct     int32      `json:"winner_pct"`
-		CreatedAt     time.Time  `json:"created_at"`
-		UpdatedAt     time.Time  `json:"updated_at"`
+		RoomID               int32      `json:"room_id"`
+		Jackpot              int32      `json:"jackpot"`
+		StartTime            *time.Time `json:"start_time,omitempty"`
+		Status               string     `json:"status"`
+		PlayersNeeded        int32      `json:"players_needed"`
+		EntryCost            int32      `json:"entry_cost"`
+		WinnerPct            int32      `json:"winner_pct"`
+		RoundDurationSeconds int32      `json:"round_duration_seconds"`
+		StartDelaySeconds    int32      `json:"start_delay_seconds"`
+		GameType             string     `json:"game_type"`
+		CreatedAt            time.Time  `json:"created_at"`
+		UpdatedAt            time.Time  `json:"updated_at"`
 	}
 }
 
@@ -76,12 +79,16 @@ type RoomBoostResponse struct {
 
 type CreateRoomRequest struct {
 	Body struct {
-		Jackpot       int32      `json:"jackpot"`
-		StartTime     *time.Time `json:"start_time,omitempty"`
-		Status        string     `json:"status" enum:"new,starting_soon,playing"`
-		PlayersNeeded int32      `json:"players_needed" minimum:"1"`
-		EntryCost     int32      `json:"entry_cost" minimum:"0"`
-		WinnerPct     *int32     `json:"winner_pct,omitempty" minimum:"1" maximum:"99"`
+		TemplateID           *int32     `json:"template_id,omitempty"`
+		Jackpot              int32      `json:"jackpot"`
+		StartTime            *time.Time `json:"start_time,omitempty"`
+		Status               string     `json:"status" enum:"new,starting_soon,playing"`
+		PlayersNeeded        int32      `json:"players_needed" minimum:"1"`
+		EntryCost            int32      `json:"entry_cost" minimum:"0"`
+		WinnerPct            *int32     `json:"winner_pct,omitempty" minimum:"1" maximum:"99"`
+		RoundDurationSeconds *int32     `json:"round_duration_seconds,omitempty" minimum:"10" maximum:"3600"`
+		StartDelaySeconds    *int32     `json:"start_delay_seconds,omitempty" minimum:"5" maximum:"600"`
+		GameType             string     `json:"game_type,omitempty"`
 	}
 }
 
@@ -100,15 +107,18 @@ type ListRoomsRequest struct {
 }
 
 type roomItem struct {
-	RoomID        int32      `json:"room_id"`
-	Jackpot       int32      `json:"jackpot"`
-	StartTime     *time.Time `json:"start_time,omitempty"`
-	Status        string     `json:"status"`
-	PlayersNeeded int32      `json:"players_needed"`
-	EntryCost     int32      `json:"entry_cost"`
-	WinnerPct     int32      `json:"winner_pct"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
+	RoomID               int32      `json:"room_id"`
+	Jackpot              int32      `json:"jackpot"`
+	StartTime            *time.Time `json:"start_time,omitempty"`
+	Status               string     `json:"status"`
+	PlayersNeeded        int32      `json:"players_needed"`
+	EntryCost            int32      `json:"entry_cost"`
+	WinnerPct            int32      `json:"winner_pct"`
+	RoundDurationSeconds int32      `json:"round_duration_seconds"`
+	StartDelaySeconds    int32      `json:"start_delay_seconds"`
+	GameType             string     `json:"game_type"`
+	CreatedAt            time.Time  `json:"created_at"`
+	UpdatedAt            time.Time  `json:"updated_at"`
 }
 
 type GetRoomRequest struct {
@@ -117,14 +127,17 @@ type GetRoomRequest struct {
 
 func roomToItem(r repository.Room) roomItem {
 	item := roomItem{
-		RoomID:        r.RoomID,
-		Jackpot:       r.Jackpot,
-		Status:        r.Status,
-		PlayersNeeded: r.PlayersNeeded,
-		EntryCost:     r.EntryCost,
-		WinnerPct:     r.WinnerPct,
-		CreatedAt:     r.CreatedAt,
-		UpdatedAt:     r.UpdatedAt,
+		RoomID:               r.RoomID,
+		Jackpot:              r.Jackpot,
+		Status:               r.Status,
+		PlayersNeeded:        r.PlayersNeeded,
+		EntryCost:            r.EntryCost,
+		WinnerPct:            r.WinnerPct,
+		RoundDurationSeconds: r.RoundDurationSeconds,
+		StartDelaySeconds:    r.StartDelaySeconds,
+		GameType:             r.GameType,
+		CreatedAt:            r.CreatedAt,
+		UpdatedAt:            r.UpdatedAt,
 	}
 	if r.StartTime.Valid {
 		item.StartTime = &r.StartTime.Time
@@ -141,6 +154,9 @@ func roomItemToResponse(item roomItem) *RoomResponse {
 	resp.Body.PlayersNeeded = item.PlayersNeeded
 	resp.Body.EntryCost = item.EntryCost
 	resp.Body.WinnerPct = item.WinnerPct
+	resp.Body.RoundDurationSeconds = item.RoundDurationSeconds
+	resp.Body.StartDelaySeconds = item.StartDelaySeconds
+	resp.Body.GameType = item.GameType
 	resp.Body.CreatedAt = item.CreatedAt
 	resp.Body.UpdatedAt = item.UpdatedAt
 	return resp
@@ -152,18 +168,56 @@ func (h *RoomHandler) Create(ctx context.Context, req *CreateRoomRequest) (*Room
 		startTime = pgtype.Timestamptz{Time: *req.Body.StartTime, Valid: true}
 	}
 
-	winnerPct := int32(80)
-	if req.Body.WinnerPct != nil {
-		winnerPct = *req.Body.WinnerPct
+	var winnerPct, roundDurationSeconds, startDelaySeconds int32
+	var gameType string
+
+	// If template_id is provided, fetch template settings
+	if req.Body.TemplateID != nil {
+		template, err := h.Repo.GetTemplate(ctx, repository.GetTemplateParams{TemplateID: *req.Body.TemplateID})
+		if err != nil {
+			return nil, err
+		}
+		// Copy settings from template
+		winnerPct = template.WinnerPct
+		roundDurationSeconds = template.RoundDurationSeconds
+		startDelaySeconds = template.StartDelaySeconds
+		gameType = template.GameType
+	} else {
+		// Use provided values or defaults
+		winnerPct = int32(80)
+		if req.Body.WinnerPct != nil {
+			winnerPct = *req.Body.WinnerPct
+		}
+
+		roundDurationSeconds = int32(30)
+		if req.Body.RoundDurationSeconds != nil {
+			roundDurationSeconds = *req.Body.RoundDurationSeconds
+		}
+
+		startDelaySeconds = int32(60)
+		if req.Body.StartDelaySeconds != nil {
+			startDelaySeconds = *req.Body.StartDelaySeconds
+		}
+
+		gameType = "train"
+		if req.Body.GameType != "" {
+			if req.Body.GameType != "train" && req.Body.GameType != "fridge" {
+				return nil, huma.Error400BadRequest("game_type must be one of: train, fridge", nil)
+			}
+			gameType = req.Body.GameType
+		}
 	}
 
 	room, err := h.Repo.InsertRoom(ctx, repository.InsertRoomParams{
-		Jackpot:       req.Body.Jackpot,
-		StartTime:     startTime,
-		Status:        req.Body.Status,
-		PlayersNeeded: req.Body.PlayersNeeded,
-		EntryCost:     req.Body.EntryCost,
-		WinnerPct:     winnerPct,
+		Jackpot:              req.Body.Jackpot,
+		StartTime:            startTime,
+		Status:               req.Body.Status,
+		PlayersNeeded:        req.Body.PlayersNeeded,
+		EntryCost:            req.Body.EntryCost,
+		WinnerPct:            winnerPct,
+		RoundDurationSeconds: roundDurationSeconds,
+		StartDelaySeconds:    startDelaySeconds,
+		GameType:             gameType,
 	})
 	if err != nil {
 		return nil, err

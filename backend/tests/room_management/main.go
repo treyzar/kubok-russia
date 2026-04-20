@@ -130,6 +130,9 @@ func testUserJoinRoom() error {
 		PlayersNeeded: 3,
 		EntryCost:     100,
 		WinnerPct:     80,
+		GameType:      "train",
+		RoundDurationSeconds: 30,
+		StartDelaySeconds:    60,
 	})
 
 	// Get user1
@@ -276,6 +279,9 @@ func testFullRoom() error {
 		PlayersNeeded: 1,
 		EntryCost:     100,
 		WinnerPct:     80,
+		GameType:      "train",
+		RoundDurationSeconds: 30,
+		StartDelaySeconds:    60,
 	})
 	if err != nil {
 		return err
@@ -432,6 +438,9 @@ func testRoomAutoStart() error {
 		PlayersNeeded: 2,
 		EntryCost:     100,
 		WinnerPct:     80,
+		GameType:      "train",
+		RoundDurationSeconds: 30,
+		StartDelaySeconds:    60,
 	})
 	if err != nil {
 		return err
@@ -569,6 +578,9 @@ func testCannotBoostNonPlaying() error {
 			PlayersNeeded: 3,
 			EntryCost:     100,
 			WinnerPct:     80,
+		GameType:      "train",
+		RoundDurationSeconds: 30,
+		StartDelaySeconds:    60,
 		})
 		if err != nil {
 			return err
@@ -615,6 +627,9 @@ func testDeclareWinner() error {
 		PlayersNeeded: 2,
 		EntryCost:     100,
 		WinnerPct:     80,
+		GameType:      "train",
+		RoundDurationSeconds: 30,
+		StartDelaySeconds:    60,
 	})
 	if err != nil {
 		return err
@@ -665,6 +680,9 @@ func testRoomAutoFinish() error {
 		PlayersNeeded: 2,
 		EntryCost:     100,
 		WinnerPct:     80,
+		GameType:      "train",
+		RoundDurationSeconds: 30,
+		StartDelaySeconds:    60,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create room: %v", err)
@@ -764,6 +782,9 @@ func testWinnerPctPrizeCalculation() error {
 		PlayersNeeded: playersNeeded,
 		EntryCost:     entryCost,
 		WinnerPct:     customPct,
+		GameType:      "train",
+		RoundDurationSeconds: 30,
+		StartDelaySeconds:    60,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create room: %v", err)
@@ -860,6 +881,9 @@ func testExternalRNGFallback() error {
 		PlayersNeeded: 2,
 		EntryCost:     0,
 		WinnerPct:     80,
+		GameType:      "train",
+		RoundDurationSeconds: 30,
+		StartDelaySeconds:    60,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create room: %v", err)
@@ -944,6 +968,9 @@ func testBoostUniquenessDB() error {
 		PlayersNeeded: 2,
 		EntryCost:     0,
 		WinnerPct:     80,
+		GameType:      "train",
+		RoundDurationSeconds: 30,
+		StartDelaySeconds:    60,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create playing room: %v", err)

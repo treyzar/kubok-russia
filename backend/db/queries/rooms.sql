@@ -1,6 +1,6 @@
 -- name: InsertRoom :one
-INSERT INTO rooms (jackpot, start_time, status, players_needed, entry_cost, winner_pct)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO rooms (jackpot, start_time, status, players_needed, entry_cost, winner_pct, round_duration_seconds, start_delay_seconds, game_type)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 RETURNING *;
 
 -- name: DeleteRoom :exec
@@ -76,7 +76,7 @@ WHERE room_id = $1;
 
 -- name: JoinRoomAndUpdateStatus :one
 WITH room_info AS (
-    SELECT entry_cost, status, players_needed FROM rooms WHERE rooms.room_id = $1
+    SELECT entry_cost, status, players_needed, start_delay_seconds FROM rooms WHERE rooms.room_id = $1
 ),
 user_balance AS (
     SELECT balance FROM users WHERE users.id = $2
@@ -108,7 +108,7 @@ SET status = CASE
     ELSE status
 END,
 start_time = CASE
-    WHEN (SELECT status FROM room_info) = 'new' AND (SELECT count FROM current_player_count) = 0 AND EXISTS (SELECT 1 FROM inserted) THEN CURRENT_TIMESTAMP + INTERVAL '1 minute'
+    WHEN (SELECT status FROM room_info) = 'new' AND (SELECT count FROM current_player_count) = 0 AND EXISTS (SELECT 1 FROM inserted) THEN CURRENT_TIMESTAMP + (SELECT start_delay_seconds FROM room_info) * INTERVAL '1 second'
     ELSE start_time
 END,
 jackpot = CASE
@@ -291,7 +291,7 @@ LIMIT $3;
 SELECT * FROM rooms
 WHERE status = 'playing'
   AND start_time IS NOT NULL
-  AND start_time + INTERVAL '30 seconds' <= CURRENT_TIMESTAMP;
+  AND start_time + (round_duration_seconds * INTERVAL '1 second') <= CURRENT_TIMESTAMP;
 
 -- name: GetPlayersWithStakes :many
 SELECT

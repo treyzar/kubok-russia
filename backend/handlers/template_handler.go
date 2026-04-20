@@ -19,13 +19,16 @@ type TemplateHandler struct {
 // --- shared response type ---
 
 type templateItem struct {
-	TemplateID    int32     `json:"template_id"`
-	Name          string    `json:"name"`
-	PlayersNeeded int32     `json:"players_needed"`
-	EntryCost     int32     `json:"entry_cost"`
-	WinnerPct     int32     `json:"winner_pct"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	TemplateID           int32     `json:"template_id"`
+	Name                 string    `json:"name"`
+	PlayersNeeded        int32     `json:"players_needed"`
+	EntryCost            int32     `json:"entry_cost"`
+	WinnerPct            int32     `json:"winner_pct"`
+	RoundDurationSeconds int32     `json:"round_duration_seconds"`
+	StartDelaySeconds    int32     `json:"start_delay_seconds"`
+	GameType             string    `json:"game_type"`
+	CreatedAt            time.Time `json:"created_at"`
+	UpdatedAt            time.Time `json:"updated_at"`
 }
 
 type TemplateResponse struct {
@@ -34,13 +37,16 @@ type TemplateResponse struct {
 
 func templateToItem(t repository.RoomTemplate) templateItem {
 	return templateItem{
-		TemplateID:    t.TemplateID,
-		Name:          t.Name,
-		PlayersNeeded: t.PlayersNeeded,
-		EntryCost:     t.EntryCost,
-		WinnerPct:     t.WinnerPct,
-		CreatedAt:     t.CreatedAt,
-		UpdatedAt:     t.UpdatedAt,
+		TemplateID:           t.TemplateID,
+		Name:                 t.Name,
+		PlayersNeeded:        t.PlayersNeeded,
+		EntryCost:            t.EntryCost,
+		WinnerPct:            t.WinnerPct,
+		RoundDurationSeconds: t.RoundDurationSeconds,
+		StartDelaySeconds:    t.StartDelaySeconds,
+		GameType:             t.GameType,
+		CreatedAt:            t.CreatedAt,
+		UpdatedAt:            t.UpdatedAt,
 	}
 }
 
@@ -56,10 +62,13 @@ func catchUniqueNameViolation(err error) error {
 
 type CreateTemplateRequest struct {
 	Body struct {
-		Name          string `json:"name" minLength:"1" maxLength:"255"`
-		PlayersNeeded int32  `json:"players_needed" minimum:"1"`
-		EntryCost     int32  `json:"entry_cost" minimum:"0"`
-		WinnerPct     *int32 `json:"winner_pct,omitempty" minimum:"1" maximum:"99"`
+		Name                 string `json:"name" minLength:"1" maxLength:"255"`
+		PlayersNeeded        int32  `json:"players_needed" minimum:"1"`
+		EntryCost            int32  `json:"entry_cost" minimum:"0"`
+		WinnerPct            *int32 `json:"winner_pct,omitempty" minimum:"1" maximum:"99"`
+		RoundDurationSeconds *int32 `json:"round_duration_seconds,omitempty" minimum:"10" maximum:"3600"`
+		StartDelaySeconds    *int32 `json:"start_delay_seconds,omitempty" minimum:"5" maximum:"600"`
+		GameType             string `json:"game_type,omitempty"`
 	}
 }
 
@@ -69,11 +78,32 @@ func (h *TemplateHandler) Create(ctx context.Context, req *CreateTemplateRequest
 		winnerPct = *req.Body.WinnerPct
 	}
 
+	roundDurationSeconds := int32(30)
+	if req.Body.RoundDurationSeconds != nil {
+		roundDurationSeconds = *req.Body.RoundDurationSeconds
+	}
+
+	startDelaySeconds := int32(60)
+	if req.Body.StartDelaySeconds != nil {
+		startDelaySeconds = *req.Body.StartDelaySeconds
+	}
+
+	gameType := "train"
+	if req.Body.GameType != "" {
+		if req.Body.GameType != "train" && req.Body.GameType != "fridge" {
+			return nil, huma.Error400BadRequest("game_type must be one of: train, fridge", nil)
+		}
+		gameType = req.Body.GameType
+	}
+
 	t, err := h.Repo.InsertTemplate(ctx, repository.InsertTemplateParams{
-		Name:          req.Body.Name,
-		PlayersNeeded: req.Body.PlayersNeeded,
-		EntryCost:     req.Body.EntryCost,
-		WinnerPct:     winnerPct,
+		Name:                 req.Body.Name,
+		PlayersNeeded:        req.Body.PlayersNeeded,
+		EntryCost:            req.Body.EntryCost,
+		WinnerPct:            winnerPct,
+		RoundDurationSeconds: roundDurationSeconds,
+		StartDelaySeconds:    startDelaySeconds,
+		GameType:             gameType,
 	})
 	if err != nil {
 		return nil, catchUniqueNameViolation(err)
@@ -128,20 +158,30 @@ func (h *TemplateHandler) Get(ctx context.Context, req *GetTemplateRequest) (*Te
 type UpdateTemplateRequest struct {
 	TemplateID int32 `path:"template_id"`
 	Body       struct {
-		Name          string `json:"name" minLength:"1" maxLength:"255"`
-		PlayersNeeded int32  `json:"players_needed" minimum:"1"`
-		EntryCost     int32  `json:"entry_cost" minimum:"0"`
-		WinnerPct     int32  `json:"winner_pct" minimum:"1" maximum:"99"`
+		Name                 string `json:"name" minLength:"1" maxLength:"255"`
+		PlayersNeeded        int32  `json:"players_needed" minimum:"1"`
+		EntryCost            int32  `json:"entry_cost" minimum:"0"`
+		WinnerPct            int32  `json:"winner_pct" minimum:"1" maximum:"99"`
+		RoundDurationSeconds int32  `json:"round_duration_seconds" minimum:"10" maximum:"3600"`
+		StartDelaySeconds    int32  `json:"start_delay_seconds" minimum:"5" maximum:"600"`
+		GameType             string `json:"game_type"`
 	}
 }
 
 func (h *TemplateHandler) Update(ctx context.Context, req *UpdateTemplateRequest) (*TemplateResponse, error) {
+	if req.Body.GameType != "train" && req.Body.GameType != "fridge" {
+		return nil, huma.Error400BadRequest("game_type must be one of: train, fridge", nil)
+	}
+
 	t, err := h.Repo.UpdateTemplate(ctx, repository.UpdateTemplateParams{
-		TemplateID:    req.TemplateID,
-		Name:          req.Body.Name,
-		PlayersNeeded: req.Body.PlayersNeeded,
-		EntryCost:     req.Body.EntryCost,
-		WinnerPct:     req.Body.WinnerPct,
+		TemplateID:           req.TemplateID,
+		Name:                 req.Body.Name,
+		PlayersNeeded:        req.Body.PlayersNeeded,
+		EntryCost:            req.Body.EntryCost,
+		WinnerPct:            req.Body.WinnerPct,
+		RoundDurationSeconds: req.Body.RoundDurationSeconds,
+		StartDelaySeconds:    req.Body.StartDelaySeconds,
+		GameType:             req.Body.GameType,
 	})
 	if err != nil {
 		return nil, catchUniqueNameViolation(err)

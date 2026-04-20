@@ -24,7 +24,7 @@ func (q *Queries) DeleteTemplate(ctx context.Context, arg DeleteTemplateParams) 
 }
 
 const getTemplate = `-- name: GetTemplate :one
-SELECT template_id, name, players_needed, entry_cost, winner_pct, created_at, updated_at FROM room_templates
+SELECT template_id, name, players_needed, entry_cost, winner_pct, created_at, updated_at, round_duration_seconds, start_delay_seconds, game_type FROM room_templates
 WHERE template_id = $1
 `
 
@@ -43,21 +43,27 @@ func (q *Queries) GetTemplate(ctx context.Context, arg GetTemplateParams) (RoomT
 		&i.WinnerPct,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.RoundDurationSeconds,
+		&i.StartDelaySeconds,
+		&i.GameType,
 	)
 	return i, err
 }
 
 const insertTemplate = `-- name: InsertTemplate :one
-INSERT INTO room_templates (name, players_needed, entry_cost, winner_pct)
-VALUES ($1, $2, $3, $4)
-RETURNING template_id, name, players_needed, entry_cost, winner_pct, created_at, updated_at
+INSERT INTO room_templates (name, players_needed, entry_cost, winner_pct, round_duration_seconds, start_delay_seconds, game_type)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING template_id, name, players_needed, entry_cost, winner_pct, created_at, updated_at, round_duration_seconds, start_delay_seconds, game_type
 `
 
 type InsertTemplateParams struct {
-	Name          string `json:"name"`
-	PlayersNeeded int32  `json:"players_needed"`
-	EntryCost     int32  `json:"entry_cost"`
-	WinnerPct     int32  `json:"winner_pct"`
+	Name                 string `json:"name"`
+	PlayersNeeded        int32  `json:"players_needed"`
+	EntryCost            int32  `json:"entry_cost"`
+	WinnerPct            int32  `json:"winner_pct"`
+	RoundDurationSeconds int32  `json:"round_duration_seconds"`
+	StartDelaySeconds    int32  `json:"start_delay_seconds"`
+	GameType             string `json:"game_type"`
 }
 
 func (q *Queries) InsertTemplate(ctx context.Context, arg InsertTemplateParams) (RoomTemplate, error) {
@@ -66,6 +72,9 @@ func (q *Queries) InsertTemplate(ctx context.Context, arg InsertTemplateParams) 
 		arg.PlayersNeeded,
 		arg.EntryCost,
 		arg.WinnerPct,
+		arg.RoundDurationSeconds,
+		arg.StartDelaySeconds,
+		arg.GameType,
 	)
 	var i RoomTemplate
 	err := row.Scan(
@@ -76,12 +85,15 @@ func (q *Queries) InsertTemplate(ctx context.Context, arg InsertTemplateParams) 
 		&i.WinnerPct,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.RoundDurationSeconds,
+		&i.StartDelaySeconds,
+		&i.GameType,
 	)
 	return i, err
 }
 
 const listTemplates = `-- name: ListTemplates :many
-SELECT template_id, name, players_needed, entry_cost, winner_pct, created_at, updated_at FROM room_templates
+SELECT template_id, name, players_needed, entry_cost, winner_pct, created_at, updated_at, round_duration_seconds, start_delay_seconds, game_type FROM room_templates
 ORDER BY created_at DESC
 `
 
@@ -102,6 +114,9 @@ func (q *Queries) ListTemplates(ctx context.Context) ([]RoomTemplate, error) {
 			&i.WinnerPct,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.RoundDurationSeconds,
+			&i.StartDelaySeconds,
+			&i.GameType,
 		); err != nil {
 			return nil, err
 		}
@@ -119,17 +134,23 @@ SET name = $2,
     players_needed = $3,
     entry_cost = $4,
     winner_pct = $5,
+    round_duration_seconds = $6,
+    start_delay_seconds = $7,
+    game_type = $8,
     updated_at = CURRENT_TIMESTAMP
 WHERE template_id = $1
-RETURNING template_id, name, players_needed, entry_cost, winner_pct, created_at, updated_at
+RETURNING template_id, name, players_needed, entry_cost, winner_pct, created_at, updated_at, round_duration_seconds, start_delay_seconds, game_type
 `
 
 type UpdateTemplateParams struct {
-	TemplateID    int32  `json:"template_id"`
-	Name          string `json:"name"`
-	PlayersNeeded int32  `json:"players_needed"`
-	EntryCost     int32  `json:"entry_cost"`
-	WinnerPct     int32  `json:"winner_pct"`
+	TemplateID           int32  `json:"template_id"`
+	Name                 string `json:"name"`
+	PlayersNeeded        int32  `json:"players_needed"`
+	EntryCost            int32  `json:"entry_cost"`
+	WinnerPct            int32  `json:"winner_pct"`
+	RoundDurationSeconds int32  `json:"round_duration_seconds"`
+	StartDelaySeconds    int32  `json:"start_delay_seconds"`
+	GameType             string `json:"game_type"`
 }
 
 func (q *Queries) UpdateTemplate(ctx context.Context, arg UpdateTemplateParams) (RoomTemplate, error) {
@@ -139,6 +160,9 @@ func (q *Queries) UpdateTemplate(ctx context.Context, arg UpdateTemplateParams) 
 		arg.PlayersNeeded,
 		arg.EntryCost,
 		arg.WinnerPct,
+		arg.RoundDurationSeconds,
+		arg.StartDelaySeconds,
+		arg.GameType,
 	)
 	var i RoomTemplate
 	err := row.Scan(
@@ -149,6 +173,9 @@ func (q *Queries) UpdateTemplate(ctx context.Context, arg UpdateTemplateParams) 
 		&i.WinnerPct,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.RoundDurationSeconds,
+		&i.StartDelaySeconds,
+		&i.GameType,
 	)
 	return i, err
 }
