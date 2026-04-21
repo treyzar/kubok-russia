@@ -103,7 +103,7 @@ func RoomStarter(pool *pgxpool.Pool, publisher *events.EventPublisher) func(*eon
 
 			addedBots := 0
 			for _, bot := range bots {
-				rows, err := txQueries.BotJoinRoom(context.Background(), repository.BotJoinRoomParams{
+				joined, err := txQueries.BotJoinRoom(context.Background(), repository.BotJoinRoomParams{
 					RoomID: room.RoomID,
 					ID:     bot.ID,
 				})
@@ -112,7 +112,7 @@ func RoomStarter(pool *pgxpool.Pool, publisher *events.EventPublisher) func(*eon
 					tx.Rollback(context.Background())
 					goto nextRoom
 				}
-				if len(rows) == 0 {
+				if !joined {
 					log.Printf("[RoomStarter] Bot %d failed to join room %d", bot.ID, room.RoomID)
 					tx.Rollback(context.Background())
 					goto nextRoom
@@ -134,6 +134,17 @@ func RoomStarter(pool *pgxpool.Pool, publisher *events.EventPublisher) func(*eon
 				})
 				if err != nil {
 					log.Printf("[RoomStarter] Failed to insert place for bot %d in room %d: %v", bot.ID, room.RoomID, err)
+					tx.Rollback(context.Background())
+					goto nextRoom
+				}
+
+				_, err = txQueries.InsertRoomPlayer(context.Background(), repository.InsertRoomPlayerParams{
+					RoomID:  room.RoomID,
+					UserID:  bot.ID,
+					PlaceID: nextPlaceIndex,
+				})
+				if err != nil {
+					log.Printf("[RoomStarter] Failed to insert room_player for bot %d in room %d: %v", bot.ID, room.RoomID, err)
 					tx.Rollback(context.Background())
 					goto nextRoom
 				}

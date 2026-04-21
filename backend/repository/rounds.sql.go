@@ -90,7 +90,7 @@ SELECT
         json_agg(
             DISTINCT jsonb_build_object(
                 'user_id', rp.user_id,
-                'places', (SELECT COUNT(*)::INTEGER FROM room_places WHERE room_id = r.room_id AND user_id = rp.user_id),
+                'places', (SELECT COUNT(rp2.place_id)::INTEGER FROM room_players rp2 WHERE rp2.room_id = r.room_id AND rp2.user_id = rp.user_id),
                 'joined_at', rp.joined_at
             )
         ) FILTER (WHERE rp.user_id IS NOT NULL),
@@ -162,13 +162,12 @@ const getRoundPlayers = `-- name: GetRoundPlayers :many
 SELECT 
     rp.room_id, 
     rp.user_id, 
-    COUNT(rpl.place_index)::INTEGER AS places, 
-    rp.joined_at 
+    COUNT(rp.place_id)::INTEGER AS places, 
+    MIN(rp.joined_at) AS joined_at
 FROM room_players rp
-LEFT JOIN room_places rpl ON rp.room_id = rpl.room_id AND rp.user_id = rpl.user_id
 WHERE rp.room_id = $1
-GROUP BY rp.room_id, rp.user_id, rp.joined_at
-ORDER BY rp.joined_at ASC
+GROUP BY rp.room_id, rp.user_id
+ORDER BY MIN(rp.joined_at) ASC
 `
 
 type GetRoundPlayersParams struct {

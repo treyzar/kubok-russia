@@ -411,6 +411,7 @@ func (h *RoomHandler) JoinRoom(ctx context.Context, req *JoinRoomRequest) (*Room
 	updatedRoom, err := txRepo.JoinRoomAndUpdateStatus(ctx, repository.JoinRoomAndUpdateStatusParams{
 		RoomID: req.RoomID,
 		ID:     req.Body.UserID,
+		Places: places,
 	})
 	if err != nil {
 		return nil, err
@@ -424,12 +425,21 @@ func (h *RoomHandler) JoinRoom(ctx context.Context, req *JoinRoomRequest) (*Room
 		return nil, err
 	}
 
-	// Insert individual place records with sequential indices
+	// Insert individual place records with sequential indices, then link via room_players
 	for i := int32(0); i < places; i++ {
+		placeIndex := nextPlaceIndex + i
 		_, err := txRepo.InsertRoomPlace(ctx, repository.InsertRoomPlaceParams{
 			RoomID:     req.RoomID,
 			UserID:     req.Body.UserID,
-			PlaceIndex: nextPlaceIndex + i,
+			PlaceIndex: placeIndex,
+		})
+		if err != nil {
+			return nil, err
+		}
+		_, err = txRepo.InsertRoomPlayer(ctx, repository.InsertRoomPlayerParams{
+			RoomID:  req.RoomID,
+			UserID:  req.Body.UserID,
+			PlaceID: placeIndex,
 		})
 		if err != nil {
 			return nil, err
@@ -474,15 +484,7 @@ func (h *RoomHandler) ListRoomPlayers(ctx context.Context, req *ListRoomPlayersR
 	resp := &ListRoomPlayersResponse{}
 	resp.Body.Players = make([]roomPlayerItem, len(players))
 	for i, p := range players {
-		// Convert interface{} to int32 for places count
-		var places int32 = 1 // default to 1
-		if p.Places != nil {
-			// The query returns BIGINT from COUNT, which maps to int64
-			if placesInt64, ok := p.Places.(int64); ok {
-				places = int32(placesInt64)
-			}
-		}
-
+		places := int32(p.Places)
 		resp.Body.Players[i] = roomPlayerItem{
 			RoomID:   p.RoomID,
 			UserID:   p.UserID,
