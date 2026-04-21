@@ -21,6 +21,68 @@ var (
 	config  *internal.AppConfig
 )
 
+// Helper function to join a room with 1 place (mimics the disabled JoinRoomAndUpdateStatus)
+func joinRoomHelper(ctx context.Context, roomID, userID int32) (repository.Room, error) {
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return repository.Room{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	txRepo := queries.WithTx(tx)
+
+	// Get room info
+	room, err := txRepo.GetRoom(ctx, repository.GetRoomParams{RoomID: roomID})
+	if err != nil {
+		return repository.Room{}, err
+	}
+
+	// Deduct entry cost and add to jackpot
+	_, err = txRepo.AddMoneyToJackpot(ctx, repository.AddMoneyToJackpotParams{
+		RoomID:  roomID,
+		Jackpot: room.EntryCost,
+		ID:      userID,
+	})
+	if err != nil {
+		return repository.Room{}, err
+	}
+
+	// Get next place index
+	nextPlaceIndex, err := txRepo.GetNextPlaceIndex(ctx, repository.GetNextPlaceIndexParams{
+		RoomID: roomID,
+	})
+	if err != nil {
+		return repository.Room{}, err
+	}
+
+	// Insert place
+	_, err = txRepo.InsertRoomPlace(ctx, repository.InsertRoomPlaceParams{
+		RoomID:     roomID,
+		UserID:     userID,
+		PlaceIndex: nextPlaceIndex,
+	})
+	if err != nil {
+		return repository.Room{}, err
+	}
+
+	// Insert room_player
+	_, err = txRepo.InsertRoomPlayer(ctx, repository.InsertRoomPlayerParams{
+		RoomID:  roomID,
+		UserID:  userID,
+		PlaceID: nextPlaceIndex,
+	})
+	if err != nil {
+		return repository.Room{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return repository.Room{}, err
+	}
+
+	// Get updated room
+	return queries.GetRoom(ctx, repository.GetRoomParams{RoomID: roomID})
+}
+
 func main() {
 	log.Println("=== Room Management Integration Tests ===")
 
@@ -149,10 +211,7 @@ func testUserJoinRoom() error {
 	}
 
 	// User1 joins room
-	result, err := queries.JoinRoomAndUpdateStatus(context.Background(), repository.JoinRoomAndUpdateStatusParams{
-		RoomID: room.RoomID,
-		ID:     user1.ID,
-	})
+	result, err := joinRoomHelper(context.Background(), room.RoomID, user1.ID)
 	if err != nil {
 		return fmt.Errorf("failed to join room: %v", err)
 	}
@@ -198,10 +257,7 @@ func testInsufficientBalance() error {
 	room := rooms[0]
 
 	// Try to join with insufficient balance
-	_, err = queries.JoinRoomAndUpdateStatus(context.Background(), repository.JoinRoomAndUpdateStatusParams{
-		RoomID: room.RoomID,
-		ID:     user2.ID,
-	})
+	_, err = joinRoomHelper(context.Background(), room.RoomID, user2.ID)
 
 	// Should succeed but return empty result (no join happened)
 	// Check user is not in room
@@ -244,10 +300,7 @@ func testDuplicateJoin() error {
 	room := rooms[0]
 
 	// Try to join again
-	_, err = queries.JoinRoomAndUpdateStatus(context.Background(), repository.JoinRoomAndUpdateStatusParams{
-		RoomID: room.RoomID,
-		ID:     user1.ID,
-	})
+	_, err = joinRoomHelper(context.Background(), room.RoomID, user1.ID)
 
 	// Should not deduct balance again
 	updatedUser, err := queries.GetUser(context.Background(), repository.GetUserParams{ID: user1.ID})
@@ -299,19 +352,13 @@ func testFullRoom() error {
 	}
 
 	// User1 joins (fills the room)
-	_, err = queries.JoinRoomAndUpdateStatus(context.Background(), repository.JoinRoomAndUpdateStatusParams{
-		RoomID: room.RoomID,
-		ID:     user1.ID,
-	})
+	_, err = joinRoomHelper(context.Background(), room.RoomID, user1.ID)
 	if err != nil {
 		return err
 	}
 
 	// User3 tries to join full room
-	_, err = queries.JoinRoomAndUpdateStatus(context.Background(), repository.JoinRoomAndUpdateStatusParams{
-		RoomID: room.RoomID,
-		ID:     user3.ID,
-	})
+	_, err = joinRoomHelper(context.Background(), room.RoomID, user3.ID)
 
 	// Check user3 is not in room
 	players, err := queries.ListRoomPlayers(context.Background(), repository.ListRoomPlayersParams{
@@ -922,10 +969,7 @@ func testExternalRNGFallback() error {
 		return fmt.Errorf("failed to create room: %v", err)
 	}
 
-	_, err = queries.JoinRoomAndUpdateStatus(context.Background(), repository.JoinRoomAndUpdateStatusParams{
-		RoomID: room.RoomID,
-		ID:     user1.ID,
-	})
+	_, err = joinRoomHelper(context.Background(), room.RoomID, user1.ID)
 	if err != nil {
 		return fmt.Errorf("failed to join room: %v", err)
 	}

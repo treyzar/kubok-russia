@@ -407,11 +407,12 @@ func (h *RoomHandler) JoinRoom(ctx context.Context, req *JoinRoomRequest) (*Room
 	// Create queries with transaction
 	txRepo := h.Repo.WithTx(tx)
 
-	// Join room (this updates room_players, user balance, and room jackpot)
-	updatedRoom, err := txRepo.JoinRoomAndUpdateStatus(ctx, repository.JoinRoomAndUpdateStatusParams{
-		RoomID: req.RoomID,
-		ID:     req.Body.UserID,
-		Places: places,
+	// Deduct entry cost from user balance
+	totalCost := room.EntryCost * places
+	_, err = txRepo.AddMoneyToJackpot(ctx, repository.AddMoneyToJackpotParams{
+		RoomID:  req.RoomID,
+		Jackpot: totalCost,
+		ID:      req.Body.UserID,
 	})
 	if err != nil {
 		return nil, err
@@ -449,6 +450,42 @@ func (h *RoomHandler) JoinRoom(ctx context.Context, req *JoinRoomRequest) (*Room
 	// Commit transaction
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
+	}
+
+	// Get updated room after transaction
+	updatedRoom, err := h.Repo.GetRoom(ctx, repository.GetRoomParams{RoomID: req.RoomID})
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if this was the first player and update room status/start_time if needed
+	playerCount, err = h.Repo.CountRoomPlayers(ctx, repository.CountRoomPlayersParams{RoomID: req.RoomID})
+	if err != nil {
+		return nil, err
+	}
+
+	// If this is the first player and room is 'new', transition to 'starting_soon' and set start_time
+	if playerCount == 1 && updatedRoom.Status == "new" {
+		startTime := time.Now().Add(time.Duration(updatedRoom.StartDelaySeconds) * time.Second)
+		updatedRoom, err = h.Repo.SetRoomStatus(ctx, repository.SetRoomStatusParams{
+			RoomID: req.RoomID,
+			Status: "starting_soon",
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		// Update start_time using a direct query since SetRoomStatus doesn't handle it
+		_, err = h.Pool.Exec(ctx, "UPDATE rooms SET start_time = $1 WHERE room_id = $2", startTime, req.RoomID)
+		if err != nil {
+			return nil, err
+		}
+
+		// Get the room again to get the updated start_time
+		updatedRoom, err = h.Repo.GetRoom(ctx, repository.GetRoomParams{RoomID: req.RoomID})
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	item := roomToItem(updatedRoom)

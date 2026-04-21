@@ -163,7 +163,7 @@ SELECT
     rp.room_id, 
     rp.user_id, 
     COUNT(rp.place_id)::INTEGER AS places, 
-    MIN(rp.joined_at) AS joined_at
+    MIN(rp.joined_at)::TIMESTAMPTZ AS joined_at
 FROM room_players rp
 WHERE rp.room_id = $1
 GROUP BY rp.room_id, rp.user_id

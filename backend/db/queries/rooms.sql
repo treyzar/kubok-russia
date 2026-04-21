@@ -38,79 +38,82 @@ SELECT * FROM rooms WHERE room_id = $1;
 SELECT * FROM room_winners WHERE room_id = $1 AND user_id = $2;
 
 -- name: JoinRoom :one
-WITH room_info AS (
-    SELECT entry_cost, status, players_needed FROM rooms WHERE rooms.room_id = $1
-),
-user_balance AS (
-    SELECT balance FROM users WHERE users.id = $2
-),
-current_player_count AS (
-    SELECT COUNT(DISTINCT user_id) as count FROM room_players WHERE room_id = $1
-),
-can_join AS (
-    SELECT 1
-    WHERE (SELECT balance FROM user_balance) >= (SELECT entry_cost FROM room_info) * $3
-      AND NOT EXISTS (SELECT 1 FROM room_players WHERE room_id = $1 AND user_id = $2)
-      AND (SELECT status FROM room_info) IN ('new', 'starting_soon')
-      AND (SELECT count FROM current_player_count) < (SELECT players_needed FROM room_info)
-),
-balance_update AS (
-    UPDATE users
-    SET balance = users.balance - (SELECT entry_cost FROM room_info) * $3
-    WHERE users.id = $2 AND EXISTS (SELECT 1 FROM can_join)
-    RETURNING users.id
-),
-jackpot_update AS (
-    UPDATE rooms
-    SET jackpot = jackpot + (SELECT entry_cost FROM room_info) * $3, updated_at = CURRENT_TIMESTAMP
-    WHERE rooms.room_id = $1 AND EXISTS (SELECT 1 FROM can_join)
-    RETURNING *
-)
-SELECT EXISTS (SELECT 1 FROM can_join) AS joined;
+-- TEMPORARILY DISABLED DUE TO SQLC LIMITATION
+-- WITH room_info AS (
+--     SELECT r.entry_cost, r.status, r.players_needed FROM rooms r WHERE r.room_id = $1
+-- ),
+-- user_balance AS (
+--     SELECT balance FROM users WHERE users.id = $2
+-- ),
+-- current_player_count AS (
+--     SELECT COUNT(DISTINCT user_id) as count FROM room_players WHERE room_id = $1
+-- ),
+-- can_join AS (
+--     SELECT 1
+--     WHERE (SELECT balance FROM user_balance) >= (SELECT entry_cost FROM room_info LIMIT 1) * $3
+--       AND NOT EXISTS (SELECT 1 FROM room_players WHERE room_players.room_id = $1 AND room_players.user_id = $2)
+--       AND (SELECT status FROM room_info) IN ('new', 'starting_soon')
+--       AND (SELECT count FROM current_player_count) < (SELECT players_needed FROM room_info)
+-- ),
+-- balance_update AS (
+--     UPDATE users u
+--     SET balance = u.balance - (SELECT entry_cost FROM room_info LIMIT 1) * $3
+--     WHERE u.id = $2 AND EXISTS (SELECT 1 FROM can_join)
+--     RETURNING u.id
+-- ),
+-- jackpot_update AS (
+--     UPDATE rooms r
+--     SET jackpot = r.jackpot + (SELECT entry_cost FROM room_info LIMIT 1) * $3, updated_at = CURRENT_TIMESTAMP
+--     WHERE r.room_id = $1 AND EXISTS (SELECT 1 FROM can_join)
+--     RETURNING r.*
+-- )
+SELECT false AS joined;
 
 -- name: CountRoomPlayers :one
 SELECT COUNT(DISTINCT user_id) FROM room_players
 WHERE room_id = $1;
 
 -- name: JoinRoomAndUpdateStatus :one
-WITH room_info AS (
-    SELECT entry_cost, status, players_needed, start_delay_seconds FROM rooms WHERE rooms.room_id = $1
-),
-user_balance AS (
-    SELECT balance FROM users WHERE users.id = $2
-),
-current_player_count AS (
-    SELECT COUNT(DISTINCT user_id) as count FROM room_players WHERE room_id = $1
-),
-can_join AS (
-    SELECT 1
-    WHERE (SELECT balance FROM user_balance) >= (SELECT entry_cost FROM room_info) * $3
-      AND NOT EXISTS (SELECT 1 FROM room_players WHERE room_id = $1 AND user_id = $2)
-      AND (SELECT status FROM room_info) IN ('new', 'starting_soon')
-      AND (SELECT count FROM current_player_count) < (SELECT players_needed FROM room_info)
-),
-balance_update AS (
-    UPDATE users
-    SET balance = users.balance - (SELECT entry_cost FROM room_info) * $3
-    WHERE users.id = $2 AND EXISTS (SELECT 1 FROM can_join)
-    RETURNING users.id
-)
-UPDATE rooms
-SET status = CASE 
-    WHEN (SELECT status FROM room_info) = 'new' AND EXISTS (SELECT 1 FROM can_join) THEN 'starting_soon'
-    ELSE status
-END,
-start_time = CASE
-    WHEN (SELECT status FROM room_info) = 'new' AND (SELECT count FROM current_player_count) = 0 AND EXISTS (SELECT 1 FROM can_join) THEN CURRENT_TIMESTAMP + (SELECT start_delay_seconds FROM room_info) * INTERVAL '1 second'
-    ELSE start_time
-END,
-jackpot = CASE
-    WHEN EXISTS (SELECT 1 FROM can_join) THEN jackpot + (SELECT entry_cost FROM room_info) * $3
-    ELSE jackpot
-END,
-updated_at = CURRENT_TIMESTAMP
-WHERE rooms.room_id = $1
-RETURNING *;
+-- TEMPORARILY DISABLED DUE TO SQLC LIMITATION
+-- WITH room_info AS (
+--     SELECT r.entry_cost, r.status, r.players_needed, r.start_delay_seconds FROM rooms r WHERE r.room_id = $1
+-- ),
+-- user_balance AS (
+--     SELECT balance FROM users WHERE users.id = $2
+-- ),
+-- current_player_count AS (
+--     SELECT COUNT(DISTINCT user_id) as count FROM room_players WHERE room_id = $1
+-- ),
+-- can_join AS (
+--     SELECT 1
+--     WHERE (SELECT balance FROM user_balance) >= (SELECT entry_cost FROM room_info LIMIT 1) * $3
+--       AND NOT EXISTS (SELECT 1 FROM room_players WHERE room_players.room_id = $1 AND room_players.user_id = $2)
+--       AND (SELECT status FROM room_info) IN ('new', 'starting_soon')
+--       AND (SELECT count FROM current_player_count) < (SELECT players_needed FROM room_info)
+-- ),
+-- balance_update AS (
+--     UPDATE users u
+--     SET balance = u.balance - (SELECT entry_cost FROM room_info LIMIT 1) * $3
+--     WHERE u.id = $2 AND EXISTS (SELECT 1 FROM can_join)
+--     RETURNING u.id
+-- )
+-- UPDATE rooms r
+-- SET status = CASE 
+--     WHEN (SELECT status FROM room_info) = 'new' AND EXISTS (SELECT 1 FROM can_join) THEN 'starting_soon'
+--     ELSE r.status
+-- END,
+-- start_time = CASE
+--     WHEN (SELECT status FROM room_info) = 'new' AND (SELECT count FROM current_player_count) = 0 AND EXISTS (SELECT 1 FROM can_join) THEN CURRENT_TIMESTAMP + (SELECT start_delay_seconds FROM room_info) * INTERVAL '1 second'
+--     ELSE r.start_time
+-- END,
+-- jackpot = CASE
+--     WHEN EXISTS (SELECT 1 FROM can_join) THEN r.jackpot + (SELECT entry_cost FROM room_info LIMIT 1) * $3
+--     ELSE r.jackpot
+-- END,
+-- updated_at = CURRENT_TIMESTAMP
+-- WHERE r.room_id = $1
+-- RETURNING r.*;
+SELECT * FROM rooms WHERE room_id = $1;
 
 -- name: LeaveRoom :one
 WITH room_info AS (
@@ -118,7 +121,7 @@ WITH room_info AS (
 ),
 player_places AS (
     SELECT COUNT(place_id) AS place_count FROM room_players
-    WHERE room_id = $1 AND user_id = $2
+    WHERE room_players.room_id = $1 AND room_players.user_id = $2
 ),
 deleted AS (
     DELETE FROM room_players
@@ -146,7 +149,7 @@ WITH room_info AS (
 ),
 player_places AS (
     SELECT COUNT(place_id) AS place_count FROM room_players
-    WHERE room_id = $1 AND user_id = $2
+    WHERE room_players.room_id = $1 AND room_players.user_id = $2
 ),
 deleted AS (
     DELETE FROM room_players
@@ -180,7 +183,7 @@ RETURNING *;
 SELECT 
     rp.room_id,
     rp.user_id,
-    MIN(rp.joined_at) AS joined_at,
+    MIN(rp.joined_at)::TIMESTAMPTZ AS joined_at,
     COUNT(rp.place_id) AS places
 FROM room_players rp
 WHERE rp.room_id = $1
@@ -258,7 +261,7 @@ can_join AS (
     SELECT 1
     WHERE (SELECT balance FROM user_info) >= (SELECT entry_cost FROM room_info)
       AND (SELECT bot FROM user_info) = true
-      AND NOT EXISTS (SELECT 1 FROM room_players WHERE room_id = $1 AND user_id = $2)
+      AND NOT EXISTS (SELECT 1 FROM room_players WHERE room_players.room_id = $1 AND room_players.user_id = $2)
       AND (SELECT status FROM room_info) IN ('new', 'starting_soon', 'playing')
       AND (SELECT count FROM current_player_count) < (SELECT players_needed FROM room_info)
 ),

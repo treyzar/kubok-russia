@@ -153,8 +153,8 @@ type RoomPlace struct {
 type RoomPlayer struct {
 	RoomID   int32     `json:"room_id"`
 	UserID   int32     `json:"user_id"`
-	PlaceID  int32     `json:"place_id"`
 	JoinedAt time.Time `json:"joined_at"`
+	PlaceID  int32     `json:"place_id"`
 }
 
 type RoomTemplate struct {

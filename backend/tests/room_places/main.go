@@ -19,6 +19,72 @@ var (
 	config  *internal.AppConfig
 )
 
+// Helper function to join a room with specified number of places
+func joinRoomWithPlaces(ctx context.Context, roomID, userID, places int32) (repository.Room, error) {
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return repository.Room{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	txRepo := queries.WithTx(tx)
+
+	// Get room info
+	room, err := txRepo.GetRoom(ctx, repository.GetRoomParams{RoomID: roomID})
+	if err != nil {
+		return repository.Room{}, err
+	}
+
+	// Deduct entry cost * places and add to jackpot
+	totalCost := room.EntryCost * places
+	_, err = txRepo.AddMoneyToJackpot(ctx, repository.AddMoneyToJackpotParams{
+		RoomID:  roomID,
+		Jackpot: totalCost,
+		ID:      userID,
+	})
+	if err != nil {
+		return repository.Room{}, err
+	}
+
+	// Get next place index
+	nextPlaceIndex, err := txRepo.GetNextPlaceIndex(ctx, repository.GetNextPlaceIndexParams{
+		RoomID: roomID,
+	})
+	if err != nil {
+		return repository.Room{}, err
+	}
+
+	// Insert places
+	for i := int32(0); i < places; i++ {
+		placeIndex := nextPlaceIndex + i
+		_, err = txRepo.InsertRoomPlace(ctx, repository.InsertRoomPlaceParams{
+			RoomID:     roomID,
+			UserID:     userID,
+			PlaceIndex: placeIndex,
+		})
+		if err != nil {
+			return repository.Room{}, err
+		}
+
+		// Insert room_player for each place
+		_, err = txRepo.InsertRoomPlayer(ctx, repository.InsertRoomPlayerParams{
+			RoomID:  roomID,
+			UserID:  userID,
+			PlaceID: placeIndex,
+		})
+		if err != nil {
+			return repository.Room{}, err
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return repository.Room{}, err
+	}
+
+	// Get updated room
+	return queries.GetRoom(ctx, repository.GetRoomParams{RoomID: roomID})
+}
+
 func main() {
 	log.Println("=== Room Places Integration Tests ===")
 
@@ -145,40 +211,9 @@ func testJoinRoomSinglePlace() error {
 	}
 
 	// User1 joins room with 1 place
-	_, err = queries.JoinRoomAndUpdateStatus(context.Background(), repository.JoinRoomAndUpdateStatusParams{
-		RoomID: room.RoomID,
-		ID:     user1.ID,
-		Places: 1,
-	})
+	_, err = joinRoomWithPlaces(context.Background(), room.RoomID, user1.ID, 1)
 	if err != nil {
 		return fmt.Errorf("failed to join room: %v", err)
-	}
-
-	// Get next place index to insert 1 place
-	nextIndex, err := queries.GetNextPlaceIndex(context.Background(), repository.GetNextPlaceIndexParams{
-		RoomID: room.RoomID,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to get next place index: %v", err)
-	}
-
-	// Insert 1 place in room_places, then 1 row in room_players
-	place, err := queries.InsertRoomPlace(context.Background(), repository.InsertRoomPlaceParams{
-		RoomID:     room.RoomID,
-		UserID:     user1.ID,
-		PlaceIndex: nextIndex,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to insert place: %v", err)
-	}
-
-	_, err = queries.InsertRoomPlayer(context.Background(), repository.InsertRoomPlayerParams{
-		RoomID:  room.RoomID,
-		UserID:  user1.ID,
-		PlaceID: place.PlaceIndex,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to insert room_player: %v", err)
 	}
 
 	// Verify place was created with index 1
@@ -248,42 +283,9 @@ func testJoinRoomMultiplePlaces() error {
 	}
 
 	// User2 joins room
-	_, err = queries.JoinRoomAndUpdateStatus(context.Background(), repository.JoinRoomAndUpdateStatusParams{
-		RoomID: room.RoomID,
-		ID:     user2.ID,
-		Places: 3,
-	})
+	_, err = joinRoomWithPlaces(context.Background(), room.RoomID, user2.ID, 3)
 	if err != nil {
 		return fmt.Errorf("failed to join room: %v", err)
-	}
-
-	// Get next place index
-	nextIndex, err := queries.GetNextPlaceIndex(context.Background(), repository.GetNextPlaceIndexParams{
-		RoomID: room.RoomID,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to get next place index: %v", err)
-	}
-
-	// Insert 3 places for user2, with a room_players row per place
-	placesCount := int32(3)
-	for i := int32(0); i < placesCount; i++ {
-		place, err := queries.InsertRoomPlace(context.Background(), repository.InsertRoomPlaceParams{
-			RoomID:     room.RoomID,
-			UserID:     user2.ID,
-			PlaceIndex: nextIndex + i,
-		})
-		if err != nil {
-			return fmt.Errorf("failed to insert place %d: %v", i+1, err)
-		}
-		_, err = queries.InsertRoomPlayer(context.Background(), repository.InsertRoomPlayerParams{
-			RoomID:  room.RoomID,
-			UserID:  user2.ID,
-			PlaceID: place.PlaceIndex,
-		})
-		if err != nil {
-			return fmt.Errorf("failed to insert room_player for place %d: %v", i+1, err)
-		}
 	}
 
 	// Verify 3 places were created
@@ -349,39 +351,9 @@ func testSequentialPlaceIndices() error {
 	}
 
 	// User3 joins room
-	_, err = queries.JoinRoomAndUpdateStatus(context.Background(), repository.JoinRoomAndUpdateStatusParams{
-		RoomID: room.RoomID,
-		ID:     user3.ID,
-		Places: 2,
-	})
+	_, err = joinRoomWithPlaces(context.Background(), room.RoomID, user3.ID, 2)
 	if err != nil {
 		return fmt.Errorf("failed to join room: %v", err)
-	}
-
-	// Get next place index
-	nextIndex, err := queries.GetNextPlaceIndex(context.Background(), repository.GetNextPlaceIndexParams{
-		RoomID: room.RoomID,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to get next place index: %v", err)
-	}
-
-	// Insert 2 places for user3
-	placesCount := int32(2)
-	for i := int32(0); i < placesCount; i++ {
-		place, err := queries.InsertRoomPlace(context.Background(), repository.InsertRoomPlaceParams{
-			RoomID:     room.RoomID,
-			UserID:     user3.ID,
-			PlaceIndex: nextIndex + i,
-		})
-		if err != nil {
-			return fmt.Errorf("failed to insert place %d: %v", i+1, err)
-		}
-		queries.InsertRoomPlayer(context.Background(), repository.InsertRoomPlayerParams{
-			RoomID:  room.RoomID,
-			UserID:  user3.ID,
-			PlaceID: place.PlaceIndex,
-		})
 	}
 
 	// Verify sequential indices: user1 has 1, user2 has 2,3,4, user3 has 5,6
@@ -522,42 +494,9 @@ func testLeaveRoomCascade() error {
 	}
 
 	// User1 joins room
-	_, err = queries.JoinRoomAndUpdateStatus(context.Background(), repository.JoinRoomAndUpdateStatusParams{
-		RoomID: room.RoomID,
-		ID:     user1.ID,
-		Places: 4,
-	})
+	_, err = joinRoomWithPlaces(context.Background(), room.RoomID, user1.ID, 4)
 	if err != nil {
 		return fmt.Errorf("failed to join room: %v", err)
-	}
-
-	// Get next place index
-	nextIndex, err := queries.GetNextPlaceIndex(context.Background(), repository.GetNextPlaceIndexParams{
-		RoomID: room.RoomID,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to get next place index: %v", err)
-	}
-
-	// Insert 4 places for user1, with a room_players row per place
-	placesCount := int32(4)
-	for i := int32(0); i < placesCount; i++ {
-		place, err := queries.InsertRoomPlace(context.Background(), repository.InsertRoomPlaceParams{
-			RoomID:     room.RoomID,
-			UserID:     user1.ID,
-			PlaceIndex: nextIndex + i,
-		})
-		if err != nil {
-			return fmt.Errorf("failed to insert place %d: %v", i+1, err)
-		}
-		_, err = queries.InsertRoomPlayer(context.Background(), repository.InsertRoomPlayerParams{
-			RoomID:  room.RoomID,
-			UserID:  user1.ID,
-			PlaceID: place.PlaceIndex,
-		})
-		if err != nil {
-			return fmt.Errorf("failed to insert room_player for place %d: %v", i+1, err)
-		}
 	}
 
 	// Verify 4 places exist in room_places
@@ -669,59 +608,22 @@ func testStakeCalculations() error {
 
 	// Add users to room with different place counts
 	// User1: 2 places
-	_, err = queries.JoinRoomAndUpdateStatus(context.Background(), repository.JoinRoomAndUpdateStatusParams{
-		RoomID: room.RoomID,
-		ID:     user1.ID,
-		Places: 2,
-	})
+	_, err = joinRoomWithPlaces(context.Background(), room.RoomID, user1.ID, 2)
 	if err != nil {
 		return fmt.Errorf("failed to join user1: %v", err)
 	}
-	nextIndex, _ := queries.GetNextPlaceIndex(context.Background(), repository.GetNextPlaceIndexParams{RoomID: room.RoomID})
-	for i := int32(0); i < 2; i++ {
-		place, _ := queries.InsertRoomPlace(context.Background(), repository.InsertRoomPlaceParams{
-			RoomID: room.RoomID, UserID: user1.ID, PlaceIndex: nextIndex + i,
-		})
-		queries.InsertRoomPlayer(context.Background(), repository.InsertRoomPlayerParams{
-			RoomID: room.RoomID, UserID: user1.ID, PlaceID: place.PlaceIndex,
-		})
-	}
 
 	// User2: 3 places
-	_, err = queries.JoinRoomAndUpdateStatus(context.Background(), repository.JoinRoomAndUpdateStatusParams{
-		RoomID: room.RoomID,
-		ID:     user2.ID,
-		Places: 3,
-	})
+	_, err = joinRoomWithPlaces(context.Background(), room.RoomID, user2.ID, 3)
 	if err != nil {
 		return fmt.Errorf("failed to join user2: %v", err)
 	}
-	nextIndex, _ = queries.GetNextPlaceIndex(context.Background(), repository.GetNextPlaceIndexParams{RoomID: room.RoomID})
-	for i := int32(0); i < 3; i++ {
-		place, _ := queries.InsertRoomPlace(context.Background(), repository.InsertRoomPlaceParams{
-			RoomID: room.RoomID, UserID: user2.ID, PlaceIndex: nextIndex + i,
-		})
-		queries.InsertRoomPlayer(context.Background(), repository.InsertRoomPlayerParams{
-			RoomID: room.RoomID, UserID: user2.ID, PlaceID: place.PlaceIndex,
-		})
-	}
 
 	// User3: 1 place
-	_, err = queries.JoinRoomAndUpdateStatus(context.Background(), repository.JoinRoomAndUpdateStatusParams{
-		RoomID: room.RoomID,
-		ID:     user3.ID,
-		Places: 1,
-	})
+	_, err = joinRoomWithPlaces(context.Background(), room.RoomID, user3.ID, 1)
 	if err != nil {
 		return fmt.Errorf("failed to join user3: %v", err)
 	}
-	nextIndex, _ = queries.GetNextPlaceIndex(context.Background(), repository.GetNextPlaceIndexParams{RoomID: room.RoomID})
-	place, _ := queries.InsertRoomPlace(context.Background(), repository.InsertRoomPlaceParams{
-		RoomID: room.RoomID, UserID: user3.ID, PlaceIndex: nextIndex,
-	})
-	queries.InsertRoomPlayer(context.Background(), repository.InsertRoomPlayerParams{
-		RoomID: room.RoomID, UserID: user3.ID, PlaceID: place.PlaceIndex,
-	})
 
 	// Get players with stakes
 	players, err := queries.GetPlayersWithStakes(context.Background(), repository.GetPlayersWithStakesParams{
@@ -791,22 +693,9 @@ func testStakeCalculationsWithBoosts() error {
 	}
 
 	// User1 joins room with 2 places
-	_, err = queries.JoinRoomAndUpdateStatus(context.Background(), repository.JoinRoomAndUpdateStatusParams{
-		RoomID: room.RoomID,
-		ID:     user1.ID,
-		Places: 2,
-	})
+	_, err = joinRoomWithPlaces(context.Background(), room.RoomID, user1.ID, 2)
 	if err != nil {
 		return fmt.Errorf("failed to join user1: %v", err)
-	}
-	nextIndex, _ := queries.GetNextPlaceIndex(context.Background(), repository.GetNextPlaceIndexParams{RoomID: room.RoomID})
-	for i := int32(0); i < 2; i++ {
-		place, _ := queries.InsertRoomPlace(context.Background(), repository.InsertRoomPlaceParams{
-			RoomID: room.RoomID, UserID: user1.ID, PlaceIndex: nextIndex + i,
-		})
-		queries.InsertRoomPlayer(context.Background(), repository.InsertRoomPlayerParams{
-			RoomID: room.RoomID, UserID: user1.ID, PlaceID: place.PlaceIndex,
-		})
 	}
 
 	// Change room status to playing so we can add a boost
