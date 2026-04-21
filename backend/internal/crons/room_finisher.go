@@ -2,21 +2,17 @@ package crons
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"log"
 	"math/rand"
-	"net/http"
-	"time"
 
-	"github.com/SomeSuperCoder/OnlineShop/internal"
-	"github.com/SomeSuperCoder/OnlineShop/internal/redisclient"
+	"github.com/SomeSuperCoder/OnlineShop/internal/events"
+	"github.com/SomeSuperCoder/OnlineShop/internal/rng"
 	"github.com/SomeSuperCoder/OnlineShop/repository"
 	"github.com/hx/eon"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func RoomFinisher(pool *pgxpool.Pool, config *internal.AppConfig, pubSub *redisclient.PubSub) func(*eon.Context) error {
+func RoomFinisher(pool *pgxpool.Pool, publisher *events.EventPublisher, rngClient *rng.RNGClient) func(*eon.Context) error {
 	return func(ctx *eon.Context) error {
 		queries := repository.New(pool)
 
@@ -44,8 +40,8 @@ func RoomFinisher(pool *pgxpool.Pool, config *internal.AppConfig, pubSub *redisc
 				continue
 			}
 
-			// Select winner using configurable RNG
-			winnerID := selectWinner(players, room.Jackpot, config.RNGURL)
+			// Select winner using RNGClient (external with fallback)
+			winnerID := selectWinner(context.Background(), players, room.RoomID, rngClient)
 			if winnerID == 0 {
 				log.Printf("[RoomFinisher] ❌ Failed to select winner for room %d", room.RoomID)
 				continue
@@ -66,30 +62,17 @@ func RoomFinisher(pool *pgxpool.Pool, config *internal.AppConfig, pubSub *redisc
 			prize := room.Jackpot * room.WinnerPct / 100
 			log.Printf("[RoomFinisher] 🏆 Room %d finished! Winner: user %d, Prize: %d (%d%% of jackpot %d)", room.RoomID, result.UserID, prize, room.WinnerPct, room.Jackpot)
 
-			// Publish finished room snapshot
-			if pubSub != nil {
-				snapshot := map[string]interface{}{
-					"room_id":    room.RoomID,
-					"status":     "finished",
-					"jackpot":    room.Jackpot,
-					"winner_pct": room.WinnerPct,
-					"winner_id":  result.UserID,
-					"prize":      prize,
-					"updated_at": time.Now(),
-				}
-				if payload, err := json.Marshal(snapshot); err == nil {
-					pubSub.Publish(context.Background(), room.RoomID, payload)
-				}
-			}
+			// Publish game_finished event with winner and prize info
+			publisher.PublishGameFinished(context.Background(), room.RoomID, result.UserID, prize)
 		}
 
 		return nil
 	}
 }
 
-// selectWinner picks a winner by weighted probability.
-// When rngURL is set it calls the external RNG API; on any error it falls back to local math/rand.
-func selectWinner(players []repository.GetPlayersWithStakesRow, jackpot int32, rngURL string) int32 {
+// selectWinner picks a winner by weighted probability using the provided RNGClient.
+// The RNGClient handles external vs fallback RNG transparently and logs the source.
+func selectWinner(ctx context.Context, players []repository.GetPlayersWithStakesRow, roomID int32, rngClient *rng.RNGClient) int32 {
 	// Compute total stake across all players
 	var totalStake int32
 	for _, p := range players {
@@ -100,18 +83,10 @@ func selectWinner(players []repository.GetPlayersWithStakesRow, jackpot int32, r
 		return players[rand.Intn(len(players))].UserID
 	}
 
-	var roll int32
-
-	if rngURL != "" {
-		result, err := callExternalRNG(rngURL, totalStake)
-		if err != nil {
-			log.Printf("[RoomFinisher] ⚠️  External RNG failed (%v), falling back to local rand", err)
-			roll = rand.Int31n(totalStake)
-		} else {
-			roll = result
-		}
-	} else {
-		roll = rand.Int31n(totalStake)
+	roll, err := rngClient.SelectRandom(ctx, totalStake, roomID, int32(len(players)))
+	if err != nil {
+		log.Printf("[RoomFinisher] ❌ RNG error for room %d: %v", roomID, err)
+		return 0
 	}
 
 	// Walk cumulative weights to find the winner
@@ -124,31 +99,4 @@ func selectWinner(players []repository.GetPlayersWithStakesRow, jackpot int32, r
 	}
 
 	return players[len(players)-1].UserID
-}
-
-// callExternalRNG calls GET {rngURL}?max={max} and expects {"result": N} in [0, max).
-func callExternalRNG(rngURL string, max int32) (int32, error) {
-	url := fmt.Sprintf("%s?max=%d", rngURL, max)
-	resp, err := http.Get(url) //nolint:gosec
-	if err != nil {
-		return 0, fmt.Errorf("http get: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return 0, fmt.Errorf("unexpected status %d", resp.StatusCode)
-	}
-
-	var body struct {
-		Result int32 `json:"result"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		return 0, fmt.Errorf("decode response: %w", err)
-	}
-
-	if body.Result < 0 || body.Result >= max {
-		return 0, fmt.Errorf("result %d out of range [0, %d)", body.Result, max)
-	}
-
-	return body.Result, nil
 }

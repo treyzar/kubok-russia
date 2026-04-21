@@ -1,141 +1,185 @@
 # Implementation Plan
 
-- [x] 1. Database migrations and sqlc regeneration
-- [x] 1.1 Write migration 000006: add `winner_pct` column to `rooms` table
-  - Create `backend/db/migrations/000006_add_winner_pct_to_rooms.sql`
-  - Column: `winner_pct INTEGER NOT NULL DEFAULT 80 CHECK (winner_pct BETWEEN 1 AND 99)`
-  - _Requirements: 10.1_
-- [x] 1.2 Write migration 000007: enforce unique boost per user per room
-  - Create `backend/db/migrations/000007_unique_boost_per_user_room.sql`
-  - The existing `PRIMARY KEY (room_id, user_id)` already enforces uniqueness; migration is a no-op Up/Down confirming the constraint exists
-  - _Requirements: 4.1_
-- [x] 1.3 Write migration 000008: create `room_templates` table
-  - Create `backend/db/migrations/000008_create_room_templates.sql`
-  - Columns: `template_id SERIAL PK`, `name VARCHAR(255) UNIQUE NOT NULL`, `players_needed INTEGER NOT NULL`, `entry_cost INTEGER NOT NULL DEFAULT 100`, `winner_pct INTEGER NOT NULL DEFAULT 80`, `created_at`, `updated_at`
-  - _Requirements: 12.1_
-- [x] 1.4 Add new SQL queries for rooms: `ListRoomsFiltered`, `FinishRoomAndAwardWinnerPct`, update `InsertRoom` to include `winner_pct`
-  - Edit `backend/db/queries/rooms.sql`
-  - _Requirements: 2.1–2.5, 10.2–10.3_
-- [x] 1.5 Add new SQL query `UpdateUserBalance` to `backend/db/queries/users.sql`
-  - _Requirements: 7.1–7.2_
-- [x] 1.6 Create `backend/db/queries/rounds.sql` with `ListFinishedRooms` and `GetRoundDetail` queries
-  - `GetRoundDetail` joins rooms + room_players + room_boosts + room_winners
-  - _Requirements: 6.1–6.2_
-- [x] 1.7 Create `backend/db/queries/templates.sql` with full CRUD queries
-  - `InsertTemplate`, `ListTemplates`, `GetTemplate`, `UpdateTemplate`, `DeleteTemplate`
-  - _Requirements: 12.2–12.6_
-- [x] 1.8 Regenerate sqlc repository
-  - Run `sqlc generate` in `backend/`
-  - Verify generated files compile: `rooms.sql.go`, `users.sql.go`, `rounds.sql.go`, `templates.sql.go`, `models.go`
-  - _Requirements: all DB-touching requirements_
+- [x] 1. Create Event Publisher Service
+  - Create `internal/events/publisher.go` with EventPublisher struct and RoomEvent types
+  - Implement PublishPlayerJoined, PublishBoostApplied, PublishRoomStarting, PublishGameStarted, PublishGameFinished methods
+  - Add error logging for failed publish operations
+  - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6_
 
-- [x] 2. Redis pub/sub helper and config updates
-- [x] 2.1 Implement `backend/internal/redisclient/pubsub.go`
-  - `PubSub` struct wrapping `*redis.Client`
-  - `New(client *redis.Client) *PubSub`
-  - `Publish(ctx, roomID int32, payload []byte) error` — publishes to `room:{roomID}`
-  - `Subscribe(ctx, roomID int32) *redis.PubSub` — returns subscription handle
-  - _Requirements: 11.1–11.4_
-- [x] 2.2 Add `RNGURL string` field to `AppConfig` in `backend/internal/config.go`
-  - Tag: `` envconfig:"RNG_URL" `` (optional, no default)
-  - _Requirements: 9.4_
+- [x] 2. Integrate Event Publishing into Room Handlers
+- [x] 2.1 Add event publishing to JoinRoom handler
+  - Inject EventPublisher into RoomHandler struct
+  - Call PublishPlayerJoined after successful JoinRoomAndUpdateStatus
+  - Include countdown_seconds in event data when status is "starting_soon"
+  - _Requirements: 1.1, 1.6_
 
-- [x] 3. Update `room_finisher.go` for configurable winner_pct and external RNG
-- [x] 3.1 Add `selectWinner` function that accepts `rngURL string` and calls external API when set
-  - `GET {rngURL}?max={totalStake}` → expects `{"result": N}`
-  - On error: log and fall back to local `math/rand`
-  - _Requirements: 9.1–9.3_
-- [x] 3.2 Update `RoomFinisher` to accept `*internal.AppConfig`, use `config.RNGURL`, and call `FinishRoomAndAwardWinnerPct` with the room's `winner_pct`
-  - Update cron registration in `services/crons/main.go` to pass config
-  - _Requirements: 9.1–9.3, 10.3_
-- [x] 3.3 Update `room_starter.go` and `bot_manager.go` cron registrations to match any signature changes
-  - _Requirements: 10.3_
-
-- [x] 4. User handler additions
-- [x] 4.1 Add `List` method to `UserHandler` — calls `repo.ListUsers`, returns array of user objects
-  - _Requirements: 8.1_
-- [x] 4.2 Add `UpdateBalance` method to `UserHandler` — `PATCH /users/{id}/balance` with `delta` body field
-  - Call `repo.UpdateUserBalance`; if no row returned (balance would go negative), return HTTP 422
-  - _Requirements: 7.1–7.2_
-
-- [x] 5. Room handler additions and updates
-- [x] 5.1 Update `roomItem` and `RoomResponse` structs to include `winner_pct int32`
-  - Update `roomToItem` and `roomItemToResponse` helpers
-  - Update `Create` handler to accept and pass `winner_pct` to `InsertRoom`
-  - _Requirements: 10.2, 10.4_
-- [x] 5.2 Update `List` handler to accept optional query params and call `ListRoomsFiltered`
-  - Add `ListRoomsRequest` struct with `Status *string`, `EntryCost *int32`, `PlayersNeeded *int32`, `SortBy *string`, `SortOrder *string` query fields
-  - _Requirements: 2.1–2.5_
-- [x] 5.3 Add `Validate` method to `RoomHandler` — `POST /rooms/validate`
-  - Pure computation: compute `prize_fund`, `organiser_cut`, `player_roi`, accumulate `warnings`
-  - _Requirements: 3.1–3.6_
-- [x] 5.4 Update `JoinRoom` handler with pre-checks before calling atomic SQL
-  - Pre-check: room status, player count vs capacity, user balance, user not already in room
-  - Return HTTP 402 / 409 with descriptive messages
-  - _Requirements: 5.1–5.3_
-- [x] 5.5 Update `BoostRoom` handler with pre-checks before calling atomic SQL
-  - Pre-check: user balance >= amount (HTTP 402), no existing boost for this user+room (HTTP 409)
-  - Catch pgx unique-violation error `23505` as fallback for duplicate boost
-  - _Requirements: 4.2–4.3, 5.4_
-
-- [x] 6. New handlers: rounds and templates
-- [x] 6.1 Create `backend/handlers/round_handler.go` with `RoundHandler`
-  - `List` method: `GET /rounds` — calls `ListFinishedRooms`, assembles `RoundDetail` per room
-  - `Get` method: `GET /rounds/{room_id}` — calls `GetRoundDetail`, returns 404 if not finished
-  - _Requirements: 6.1–6.3_
-- [x] 6.2 Create `backend/handlers/template_handler.go` with `TemplateHandler`
-  - `Create`, `List`, `Get`, `Update`, `Delete` methods
-  - Catch unique-name violation and return HTTP 409
-  - _Requirements: 12.2–12.7_
-
-- [x] 7. WebSocket handler
-- [x] 7.1 Add `github.com/gorilla/websocket` to `go.mod` / `go.sum`
-  - Run `go get github.com/gorilla/websocket` in `backend/`
-  - _Requirements: 1.1_
-- [x] 7.2 Create `backend/handlers/ws_handler.go` with `WSHandler`
-  - Upgrade HTTP to WebSocket using gorilla
-  - Subscribe to Redis channel `room:{room_id}` via `redisclient.PubSub.Subscribe`
-  - Goroutine: read from Redis PubSub → write JSON to WS client
-  - Set 30-second ping/pong keepalive; on disconnect close subscription
-  - _Requirements: 1.1–1.4_
-- [x] 7.3 Update publish calls: after `JoinRoom`, `LeaveRoom`, `BoostRoom` succeed, publish updated room snapshot to Redis
-  - Call `pubSub.Publish(ctx, roomID, roomJSON)` in each handler
-  - Also publish from `room_finisher.go` and `room_starter.go` after status transitions
+- [x] 2.2 Add event publishing to BoostRoom handler
+  - Call PublishBoostApplied after successful InsertRoomBoost
   - _Requirements: 1.2_
 
-- [x] 8. Register all new routes in `MountRoutes`
-- [x] 8.1 Register `GET /users` (list users) and `PATCH /users/{id}/balance` in `services/api/main.go`
-  - _Requirements: 8.1–8.2, 7.1_
-- [x] 8.2 Register `POST /rooms/validate` in `services/api/main.go`
-  - _Requirements: 3.1_
-- [x] 8.3 Register `GET /rounds` and `GET /rounds/{room_id}` in `services/api/main.go`
-  - _Requirements: 6.1–6.2_
-- [x] 8.4 Register room template CRUD routes in `services/api/main.go`
-  - `POST /room-templates`, `GET /room-templates`, `GET /room-templates/{template_id}`, `PUT /room-templates/{template_id}`, `DELETE /room-templates/{template_id}`
-  - _Requirements: 12.2–12.6_
-- [x] 8.5 Register WebSocket route on raw Gin router (not Huma) in `services/api/main.go`
-  - `r.GET("/api/v1/rooms/:room_id/ws", wsHandler.Handle)`
-  - Pass `PubSub` instance to `WSHandler`
-  - _Requirements: 1.1_
+- [x] 3. Integrate Event Publishing into Room Manager Crons
+- [x] 3.1 Add event publishing to RoomStarter
+  - Inject EventPublisher into RoomStarter function
+  - Publish "room_starting" event when room transitions to starting_soon
+  - Publish "game_started" event when room transitions to playing
+  - _Requirements: 1.3, 1.4_
 
-- [x] 9. Update and extend test suites
-- [x] 9.1 Extend `backend/tests/api/main.go` with new test cases
-  - Test list users (`GET /users`)
-  - Test update balance (`PATCH /users/{id}/balance`) — positive delta, negative delta, underflow
-  - Test room filtering by status, entry_cost, players_needed
-  - Test room configurator (`POST /rooms/validate`) — valid config, config with warnings
-  - Test round history (`GET /rounds`, `GET /rounds/{room_id}`)
-  - Test template CRUD
-  - Test boost duplicate rejection (HTTP 409)
-  - Test join with insufficient balance (HTTP 402)
-  - Test join full room (HTTP 409)
-  - _Requirements: 2, 3, 4, 5, 6, 7, 8, 12_
-- [x] 9.2 Extend `backend/tests/room_management/main.go` with new test cases
-  - Test `winner_pct` is stored and used in prize calculation
-  - Test external RNG fallback (set `RNG_URL` to an invalid URL, verify fallback works)
-  - Test boost uniqueness at DB level
-  - _Requirements: 4, 9, 10_
-- [x] 9.3 Create `backend/tests/websocket/main.go` — WebSocket integration test
-  - Connect WS client to `/api/v1/rooms/{room_id}/ws`
-  - Trigger a join via REST, assert WS message arrives within 2 seconds
-  - _Requirements: 1.1–1.3_
+- [x] 3.2 Enhance RoomFinisher event publishing
+  - Update existing publishRoomSnapshot call to use new PublishGameFinished method
+  - Include winner_id and prize in event data
+  - _Requirements: 1.5_
+
+- [x] 4. Verify Room Filtering Implementation
+- [x] 4.1 Review ListRoomsFiltered SQL query
+  - Verify query in `db/queries/rooms.sql` handles empty filters correctly
+  - Verify sort_by field validation prevents SQL injection
+  - Run sqlc generate if query needs updates
+  - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6_
+
+- [x] 4.2 Verify ListRooms handler implementation
+  - Confirm handler in `handlers/room_handler.go` properly maps query parameters
+  - Test with various filter combinations
+  - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6_
+
+- [x] 5. Enhance Room Configuration Validation
+- [x] 5.1 Create economic validator service
+  - Create `internal/validator/economic.go` with EconomicValidator struct
+  - Implement ValidateRoomConfig method with all validation rules
+  - Calculate player win probability (1 / players_needed)
+  - Add warnings for low ROI, low margin, extreme winner_pct, low win probability
+  - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
+
+- [x] 5.2 Enhance Validate handler
+  - Inject EconomicValidator into RoomHandler
+  - Update Validate method to use EconomicValidator
+  - Add player win probability to response
+  - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
+
+- [x] 6. Improve Boost Constraint Error Handling
+  - Update BoostRoom handler error message to "You have already boosted this room"
+  - Ensure both pre-check and DB constraint violation return same message
+  - Verify HTTP 409 status code is returned
+  - _Requirements: 4.1, 4.2, 4.3_
+
+- [x] 7. Enhance Insufficient Balance Error Handling
+- [x] 7.1 Create InsufficientBalanceError type
+  - Define struct with message, required, current_balance, shortfall fields
+  - _Requirements: 5.5_
+
+- [x] 7.2 Update JoinRoom balance error
+  - Replace generic error with detailed InsufficientBalanceError
+  - Include required amount, current balance, and shortfall
+  - Ensure HTTP 402 status code with message "Insufficient balance for entry"
+  - _Requirements: 5.1, 5.3, 5.5_
+
+- [x] 7.3 Update BoostRoom balance error
+  - Replace generic error with detailed InsufficientBalanceError
+  - Include required amount, current balance, and shortfall
+  - Ensure HTTP 402 status code with message "Insufficient balance for boost"
+  - _Requirements: 5.2, 5.4, 5.5_
+
+- [x] 8. Implement Comprehensive Round History
+- [x] 8.1 Create GetRoundDetails SQL query
+  - Add query to `db/queries/rounds.sql` with LEFT JOINs
+  - Aggregate players, boosts, and winner data using json_agg
+  - Include room_places count for each player
+  - Run sqlc generate to create Go code
+  - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5_
+
+- [x] 8.2 Create GetRoundDetails handler
+  - Add GetRoundDetailsRequest and GetRoundDetailsResponse types to `handlers/round_handler.go`
+  - Implement handler method that calls repository query
+  - Parse JSON aggregated data into structured response
+  - Register route in `services/api/main.go`
+  - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5_
+
+- [x] 9. Implement External RNG Integration
+- [x] 9.1 Create RNG client service
+  - Create `internal/rng/client.go` with RNGClient struct
+  - Implement NewRNGClient constructor that reads RNG_URL from config
+  - Implement SelectRandom method with external call and fallback
+  - Implement callExternalRNG with context, timeout, and parameter passing
+  - Implement fallbackRandom using math/rand
+  - Add request parameters: max, room_id, player_count
+  - Validate response is in range [0, max)
+  - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5, 7.6_
+
+- [x] 9.2 Integrate RNG client into RoomFinisher
+  - Refactor selectWinner function to use RNGClient
+  - Pass RNGClient instance to RoomFinisher cron
+  - Remove duplicate callExternalRNG code from room_finisher.go
+  - Add logging for RNG source (external vs fallback)
+  - _Requirements: 7.2, 7.3, 7.4_
+
+- [x] 9.3 Add RNG_URL configuration
+  - Add RNG_URL field to AppConfig struct in `internal/config.go`
+  - Document RNG_URL in backend README configuration section
+  - _Requirements: 7.1_
+
+- [x] 10. Update API Service Main
+- [x] 10.1 Initialize EventPublisher
+  - Create EventPublisher instance in services/api/main.go
+  - Inject into RoomHandler constructor
+  - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5_
+
+- [x] 10.2 Initialize EconomicValidator
+  - Create EconomicValidator instance in services/api/main.go
+  - Inject into RoomHandler constructor
+  - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
+
+- [x] 10.3 Register new round history endpoint
+  - Register GET /rounds/{room_id}/details route
+  - Map to GetRoundDetails handler
+  - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5_
+
+- [x] 11. Update Room Manager Service
+- [x] 11.1 Initialize EventPublisher for crons
+  - Create EventPublisher instance in services/room_manager/main.go
+  - Pass to RoomStarter and RoomFinisher functions
+  - _Requirements: 1.3, 1.4, 1.5_
+
+- [x] 11.2 Initialize RNG client
+  - Create RNGClient instance in services/room_manager/main.go
+  - Pass to RoomFinisher function
+  - _Requirements: 7.1, 7.2, 7.3, 7.4_
+
+- [x] 12. Create Integration Tests
+- [x] 12.1 Add event publishing tests
+  - Create test script in tests/websocket/ to verify events
+  - Test player_joined, boost_applied, room_starting, game_started, game_finished events
+  - Verify countdown_seconds in room_starting events
+  - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6_
+
+- [x] 12.2 Add room filtering tests
+  - Extend tests/api/run.sh with filtering test cases
+  - Test each filter parameter individually
+  - Test combined filters
+  - Test sorting by different fields
+  - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6_
+
+- [x] 12.3 Add validation tests
+  - Add test cases for room configuration validation
+  - Verify warnings are generated correctly
+  - Test edge cases (zero values, extreme percentages)
+  - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
+
+- [x] 12.4 Add error handling tests
+  - Test insufficient balance for join and boost
+  - Test duplicate boost attempt
+  - Verify error response structure and status codes
+  - _Requirements: 4.1, 4.2, 4.3, 5.1, 5.2, 5.3, 5.4, 5.5_
+
+- [x] 12.5 Add round history tests
+  - Create complete round with players, boosts, and winner
+  - Call GetRoundDetails endpoint
+  - Verify all data is returned correctly
+  - Test with missing data (no boosts, no winner)
+  - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5_
+
+- [x] 12.6 Add RNG integration tests
+  - Create mock RNG service for testing
+  - Test successful external RNG call
+  - Test fallback on timeout
+  - Test fallback on invalid response
+  - Verify range validation
+  - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5, 7.6_

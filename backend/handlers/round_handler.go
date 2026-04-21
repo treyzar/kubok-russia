@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/SomeSuperCoder/OnlineShop/repository"
@@ -137,5 +138,112 @@ func (h *RoundHandler) Get(ctx context.Context, req *GetRoundRequest) (*GetRound
 
 	resp := &GetRoundResponse{}
 	resp.Body = detail
+	return resp, nil
+}
+
+// --- GetRoundDetails types ---
+
+type RoundPlayerDetail struct {
+	UserID   int32     `json:"user_id"`
+	Places   int32     `json:"places"`
+	JoinedAt time.Time `json:"joined_at"`
+}
+
+type RoundBoostDetail struct {
+	UserID    int32     `json:"user_id"`
+	Amount    int32     `json:"amount"`
+	BoostedAt time.Time `json:"boosted_at"`
+}
+
+type RoundWinnerDetail struct {
+	UserID int32     `json:"user_id"`
+	Prize  int32     `json:"prize"`
+	WonAt  time.Time `json:"won_at"`
+}
+
+type GetRoundDetailsRequest struct {
+	RoomID int32 `path:"room_id"`
+}
+
+type GetRoundDetailsResponse struct {
+	Body struct {
+		RoomID        int32               `json:"room_id"`
+		Jackpot       int32               `json:"jackpot"`
+		EntryCost     int32               `json:"entry_cost"`
+		WinnerPct     int32               `json:"winner_pct"`
+		PlayersNeeded int32               `json:"players_needed"`
+		Status        string              `json:"status"`
+		CreatedAt     time.Time           `json:"created_at"`
+		StartTime     *time.Time          `json:"start_time,omitempty"`
+		Players       []RoundPlayerDetail `json:"players"`
+		Boosts        []RoundBoostDetail  `json:"boosts"`
+		Winner        *RoundWinnerDetail  `json:"winner,omitempty"`
+	}
+}
+
+// GET /rounds/{room_id}/details
+func (h *RoundHandler) GetDetails(ctx context.Context, req *GetRoundDetailsRequest) (*GetRoundDetailsResponse, error) {
+	row, err := h.Repo.GetRoundDetails(ctx, repository.GetRoundDetailsParams{RoomID: req.RoomID})
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, huma.Error404NotFound("round not found", nil)
+		}
+		return nil, err
+	}
+
+	resp := &GetRoundDetailsResponse{}
+	resp.Body.RoomID = row.RoomID
+	resp.Body.Jackpot = row.Jackpot
+	resp.Body.EntryCost = row.EntryCost
+	resp.Body.WinnerPct = row.WinnerPct
+	resp.Body.PlayersNeeded = row.PlayersNeeded
+	resp.Body.Status = row.Status
+	resp.Body.CreatedAt = row.CreatedAt
+	if row.StartTime.Valid {
+		t := row.StartTime.Time
+		resp.Body.StartTime = &t
+	}
+
+	// Parse JSON-aggregated players
+	if row.Players != nil {
+		playersJSON, err := json.Marshal(row.Players)
+		if err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(playersJSON, &resp.Body.Players); err != nil {
+			return nil, err
+		}
+	}
+	if resp.Body.Players == nil {
+		resp.Body.Players = []RoundPlayerDetail{}
+	}
+
+	// Parse JSON-aggregated boosts
+	if row.Boosts != nil {
+		boostsJSON, err := json.Marshal(row.Boosts)
+		if err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(boostsJSON, &resp.Body.Boosts); err != nil {
+			return nil, err
+		}
+	}
+	if resp.Body.Boosts == nil {
+		resp.Body.Boosts = []RoundBoostDetail{}
+	}
+
+	// Parse JSON winner (nullable)
+	if row.Winner != nil {
+		winnerJSON, err := json.Marshal(row.Winner)
+		if err != nil {
+			return nil, err
+		}
+		var winner RoundWinnerDetail
+		if err := json.Unmarshal(winnerJSON, &winner); err != nil {
+			return nil, err
+		}
+		resp.Body.Winner = &winner
+	}
+
 	return resp, nil
 }

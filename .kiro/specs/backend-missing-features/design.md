@@ -1,284 +1,518 @@
-# Design Document — Backend Missing Features
+# Design Document
 
 ## Overview
 
-This document describes the technical design for implementing all 12 requirements from the requirements document. The implementation targets the existing Go backend (`github.com/SomeSuperCoder/OnlineShop`) using Gin + Huma v2, PostgreSQL via sqlc, Redis via go-redis/v9, and gorilla/websocket for WebSocket support.
-
-The guiding principle is **minimal invasive change**: existing routes, SQL queries, and generated repository code are preserved wherever possible. New SQL queries are added to `.sql` files and the repository is regenerated with sqlc. New handlers are added to the `handlers/` package. New routes are registered in `MountRoutes`.
-
----
+This document describes the design for implementing missing and incomplete features in the OnlineShop lottery room platform backend. The implementation will enhance the existing system with real-time event broadcasting, advanced room filtering, economic validation, improved error handling, comprehensive audit logging, and external RNG integration.
 
 ## Architecture
 
+The implementation follows the existing clean architecture pattern with three layers:
+
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    HTTP / WebSocket                      │
-│  GET /rooms?filters   POST /rooms/validate              │
-│  PATCH /users/:id/balance   GET /users                  │
-│  GET /rounds   GET /rounds/:id                          │
-│  GET /room-templates (CRUD)                             │
-│  GET /rooms/:id/ws  ──────────────────────────────────┐ │
-└──────────────────────────────────────────────────────┐│ │
-                                                       ││ │
-┌──────────────────────────────────────────────────────┼┼─┤
-│  handlers/                                           ││ │
-│  ├── room_handler.go   (List w/ filters, Validate,   ││ │
-│  │                      JoinRoom w/ pre-checks,      ││ │
-│  │                      BoostRoom w/ pre-checks)     ││ │
-│  ├── user_handler.go   (List, UpdateBalance)         ││ │
-│  ├── round_handler.go  (List, Get)                   ││ │
-│  ├── template_handler.go (CRUD)                      ││ │
-│  └── ws_handler.go     (WebSocket upgrade + relay) ──┘│ │
-└───────────────────────────────────────────────────────┘ │
-                                                          │
-┌─────────────────────────────────────────────────────────┤
-│  internal/                                              │
-│  ├── config.go         (+RNG_URL field)                 │
-│  ├── redisclient/                                       │
-│  │   └── pubsub.go     (Publish / Subscribe helpers)   │
-│  └── crons/                                            │
-│      └── room_finisher.go  (use winner_pct, ext RNG)   │
-└─────────────────────────────────────────────────────────┤
-                                                          │
-┌─────────────────────────────────────────────────────────┤
-│  repository/  (sqlc-generated)                          │
-│  ├── rooms.sql.go      (+ListRoomsFiltered,             │
-│  │                       +FinishRoomAndAwardWinnerPct,  │
-│  │                       +GetRoomForJoinCheck)          │
-│  ├── users.sql.go      (+UpdateUserBalance)             │
-│  ├── rounds.sql.go     (+ListRounds, +GetRound)         │
-│  └── templates.sql.go  (+CRUD queries)                  │
-└─────────────────────────────────────────────────────────┤
-                                                          │
-┌─────────────────────────────────────────────────────────┤
-│  db/                                                    │
-│  ├── migrations/                                        │
-│  │   ├── 000006_add_winner_pct_to_rooms.sql             │
-│  │   ├── 000007_unique_boost_per_user_room.sql          │
-│  │   └── 000008_create_room_templates.sql               │
-│  └── queries/                                           │
-│      ├── rooms.sql     (+ListRoomsFiltered,             │
-│      │                   +FinishRoomAndAwardWinnerPct)  │
-│      ├── users.sql     (+UpdateUserBalance)             │
-│      ├── rounds.sql    (new file)                       │
-│      └── templates.sql (new file)                       │
-└─────────────────────────────────────────────────────────┘
+Handler Layer (HTTP/WebSocket)
+    ↓
+Service Layer (Business Logic)
+    ↓
+Repository Layer (Data Access)
 ```
 
----
+All new features will integrate with the existing microservices architecture:
+- API Service: HTTP endpoints and WebSocket connections
+- Room Manager: Cron jobs for room lifecycle management
+- Bot Manager: Automated bot management (no changes needed)
 
 ## Components and Interfaces
 
-### 1. Redis Pub/Sub Helper (`internal/redisclient/pubsub.go`)
+### 1. Real-Time Event Broadcasting
 
+#### Event Publisher Service
+
+A centralized event publishing mechanism that integrates with existing Redis pub/sub infrastructure.
+
+**Location**: `backend/internal/events/publisher.go`
+
+**Interface**:
 ```go
-type PubSub struct { client *redis.Client }
+type EventPublisher struct {
+    pubSub *redisclient.PubSub
+}
 
-func New(client *redis.Client) *PubSub
-func (p *PubSub) Publish(ctx context.Context, roomID int32, payload []byte) error
-func (p *PubSub) Subscribe(ctx context.Context, roomID int32) *redis.PubSub
-func channelName(roomID int32) string  // returns "room:{roomID}"
+type RoomEvent struct {
+    Type      string      `json:"type"`
+    RoomID    int32       `json:"room_id"`
+    Timestamp time.Time   `json:"timestamp"`
+    Data      interface{} `json:"data"`
+}
+
+func (p *EventPublisher) PublishPlayerJoined(ctx context.Context, roomID, userID int32, places int32) error
+func (p *EventPublisher) PublishBoostApplied(ctx context.Context, roomID, userID, amount int32) error
+func (p *EventPublisher) PublishRoomStarting(ctx context.Context, roomID int32, startTime time.Time) error
+func (p *EventPublisher) PublishGameStarted(ctx context.Context, roomID int32) error
+func (p *EventPublisher) PublishGameFinished(ctx context.Context, roomID, winnerID, prize int32) error
 ```
 
-The `PubSub` struct is instantiated once in `main.go` and passed to handlers and crons that need to broadcast.
+**Integration Points**:
+- `handlers/room_handler.go`: Call event publisher after successful JoinRoom, BoostRoom operations
+- `internal/crons/room_starter.go`: Publish "room_starting" and "game_started" events
+- `internal/crons/room_finisher.go`: Publish "game_finished" event (already partially implemented)
 
-### 2. WebSocket Handler (`handlers/ws_handler.go`)
-
-Uses `github.com/gorilla/websocket`. The WebSocket endpoint is registered on the raw Gin router (not through Huma, since Huma does not support WebSocket upgrades) as `GET /api/v1/rooms/:room_id/ws`.
-
+**Event Payload Structure**:
+```json
+{
+  "type": "player_joined|boost_applied|room_starting|game_started|game_finished",
+  "room_id": 123,
+  "timestamp": "2026-04-21T10:30:00Z",
+  "data": {
+    // Event-specific data
+    "user_id": 456,
+    "countdown_seconds": 60  // For room_starting events
+  }
+}
 ```
-Client connects → gorilla upgrades → goroutine subscribes to Redis channel
-→ loop: receive from Redis PubSub → write to WS client
-→ on disconnect: close subscription, exit goroutine
+
+### 2. Room Filtering and Sorting
+
+#### Enhanced Repository Query
+
+**Location**: `backend/db/queries/rooms.sql`
+
+**New Query**: `ListRoomsFiltered` (already exists, needs verification)
+
+The existing query uses dynamic SQL with conditional WHERE clauses. The implementation should validate:
+- Empty string/zero values are treated as "no filter"
+- Sort field validation to prevent SQL injection
+- Proper indexing on filtered columns
+
+**Handler Enhancement**:
+The existing `ListRoomsRequest` struct already includes filter parameters. Implementation is complete but needs testing.
+
+### 3. Room Configuration Validation
+
+#### Economic Validator Service
+
+**Location**: `backend/internal/validator/economic.go`
+
+**Interface**:
+```go
+type EconomicValidator struct{}
+
+type ValidationResult struct {
+    PrizeFund    int32
+    OrganiserCut int32
+    PlayerROI    float64
+    PlayerWinProb float64
+    Warnings     []string
+    IsViable     bool
+}
+
+func (v *EconomicValidator) ValidateRoomConfig(
+    playersNeeded int32,
+    entryCost int32,
+    winnerPct int32,
+) *ValidationResult
 ```
 
-A ping/pong keepalive is set with a 30-second write deadline to detect dead connections.
+**Validation Rules**:
+- Player ROI < 1.5: Warning "Prize fund may be unattractive to players"
+- Organiser margin < 10%: Warning "Organiser margin is very low"
+- Winner percentage > 95%: Warning "Winner percentage leaves no organiser margin"
+- Winner percentage < 50%: Warning "Winner receives less than half the jackpot"
+- Player win probability < 5%: Warning "Very low win probability may discourage players"
 
-### 3. Room Filtering (`handlers/room_handler.go` + `db/queries/rooms.sql`)
+**Handler Enhancement**:
+The existing `Validate` handler in `handlers/room_handler.go` already implements basic validation. Needs enhancement with additional checks.
 
-The `List` handler is updated to accept optional query parameters. Since sqlc does not support dynamic WHERE clauses, we add a new query `ListRoomsFiltered` that uses `CASE`/`IS NULL` pattern to make each filter optional:
+### 4. Boost Constraint Error Handling
+
+#### Handler Error Mapping
+
+**Location**: `handlers/room_handler.go` (BoostRoom method)
+
+**Current State**: Pre-check exists but error message is generic
+
+**Enhancement**:
+```go
+// In BoostRoom handler
+for _, b := range boosts {
+    if b.UserID == req.Body.UserID {
+        return nil, huma.Error409Conflict("You have already boosted this room", nil)
+    }
+}
+
+// Fallback for DB-level constraint
+var pgErr *pgconn.PgError
+if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+    return nil, huma.Error409Conflict("You have already boosted this room", nil)
+}
+```
+
+### 5. Insufficient Balance Error Handling
+
+#### Enhanced Error Responses
+
+**Location**: `handlers/room_handler.go` (JoinRoom and BoostRoom methods)
+
+**Current State**: Basic balance check exists, needs enhanced error response
+
+**Enhancement**:
+```go
+type InsufficientBalanceError struct {
+    Message         string `json:"message"`
+    Required        int32  `json:"required"`
+    CurrentBalance  int32  `json:"current_balance"`
+    Shortfall       int32  `json:"shortfall"`
+}
+
+// In JoinRoom
+if user.Balance < room.EntryCost {
+    return nil, huma.Error402PaymentRequired("Insufficient balance for entry", 
+        &InsufficientBalanceError{
+            Message: "Insufficient balance for entry",
+            Required: room.EntryCost,
+            CurrentBalance: user.Balance,
+            Shortfall: room.EntryCost - user.Balance,
+        })
+}
+
+// In BoostRoom
+if user.Balance < req.Body.Amount {
+    return nil, huma.Error402PaymentRequired("Insufficient balance for boost",
+        &InsufficientBalanceError{
+            Message: "Insufficient balance for boost",
+            Required: req.Body.Amount,
+            CurrentBalance: user.Balance,
+            Shortfall: req.Body.Amount - user.Balance,
+        })
+}
+```
+
+### 6. Comprehensive Round History
+
+#### Enhanced Repository Query
+
+**Location**: `backend/db/queries/rounds.sql`
+
+**New Query**: `GetRoundDetails`
 
 ```sql
--- name: ListRoomsFiltered :many
-SELECT * FROM rooms
-WHERE ($1::varchar IS NULL OR status = $1)
-  AND ($2::integer IS NULL OR entry_cost = $2)
-  AND ($3::integer IS NULL OR players_needed = $3)
-ORDER BY
-  CASE WHEN $4 = 'entry_cost'    AND $5 = 'asc'  THEN entry_cost    END ASC,
-  CASE WHEN $4 = 'entry_cost'    AND $5 = 'desc' THEN entry_cost    END DESC,
-  CASE WHEN $4 = 'jackpot'       AND $5 = 'asc'  THEN jackpot       END ASC,
-  CASE WHEN $4 = 'jackpot'       AND $5 = 'desc' THEN jackpot       END DESC,
-  CASE WHEN $4 = 'players_needed' AND $5 = 'asc' THEN players_needed END ASC,
-  CASE WHEN $4 = 'players_needed' AND $5 = 'desc' THEN players_needed END DESC,
-  created_at DESC;
+-- name: GetRoundDetails :one
+SELECT 
+    r.room_id,
+    r.jackpot,
+    r.entry_cost,
+    r.winner_pct,
+    r.status,
+    r.created_at,
+    r.start_time,
+    COALESCE(
+        json_agg(
+            DISTINCT jsonb_build_object(
+                'user_id', rp.user_id,
+                'places', (SELECT COUNT(*) FROM room_places WHERE room_id = r.room_id AND user_id = rp.user_id),
+                'joined_at', rp.joined_at
+            )
+        ) FILTER (WHERE rp.user_id IS NOT NULL),
+        '[]'
+    ) as players,
+    COALESCE(
+        json_agg(
+            DISTINCT jsonb_build_object(
+                'user_id', rb.user_id,
+                'amount', rb.amount,
+                'boosted_at', rb.boosted_at
+            )
+        ) FILTER (WHERE rb.user_id IS NOT NULL),
+        '[]'
+    ) as boosts,
+    COALESCE(
+        json_build_object(
+            'user_id', rw.user_id,
+            'prize', rw.prize,
+            'won_at', rw.won_at
+        ),
+        NULL
+    ) as winner
+FROM rooms r
+LEFT JOIN room_players rp ON r.room_id = rp.room_id
+LEFT JOIN room_boosts rb ON r.room_id = rb.room_id
+LEFT JOIN room_winners rw ON r.room_id = rw.room_id
+WHERE r.room_id = $1
+GROUP BY r.room_id, rw.user_id, rw.prize, rw.won_at;
 ```
 
-The handler passes `nil` for unset filters (using `*string` / `*int32` pointers).
-
-### 4. Room Configurator (`handlers/room_handler.go`)
-
-New method `Validate` on `RoomHandler`. Pure computation — no DB call needed:
-
-```
-full_jackpot = players_needed * entry_cost
-prize_fund   = full_jackpot * winner_pct / 100
-organiser_cut = full_jackpot - prize_fund
-player_roi   = prize_fund / entry_cost   (how many times entry cost the winner gets back)
-```
-
-Warnings are accumulated in a `[]string` slice and returned alongside the numbers.
-
-### 5. Boost Uniqueness
-
-Migration `000007` drops the existing `PRIMARY KEY (room_id, user_id)` on `room_boosts` (which already enforces uniqueness) — actually the existing PK already enforces this at the DB level. The handler needs to detect the `pgx` unique-violation error code (`23505`) and return HTTP 409.
-
-> Note: The existing migration already has `PRIMARY KEY (room_id, user_id)` on `room_boosts`, which is a unique constraint. The handler just needs to catch the error and translate it.
-
-### 6. Insufficient Balance Pre-Checks
-
-Rather than adding a separate pre-check query, the handler reads the room and user state before calling the atomic SQL, then returns the appropriate HTTP error if conditions aren't met. This adds two cheap SELECT queries but gives clear error semantics:
-
-```
-JoinRoom handler:
-  1. GetRoom → check status in ('new','starting_soon'), else 409
-  2. CountRoomPlayers → check < players_needed, else 409 "room is full"
-  3. GetUser → check balance >= entry_cost, else 402
-  4. Check user not already in room via ListRoomPlayers or a dedicated query
-  5. Call JoinRoomAndUpdateStatus (atomic)
-```
-
-For boost:
-```
-  1. GetUser → check balance >= amount, else 402
-  2. Check no existing boost (query room_boosts), else 409
-  3. Call InsertRoomBoost (atomic)
-```
-
-### 7. Round History (`handlers/round_handler.go`)
-
-New handler. Uses a new SQL query `GetRoundDetail` that joins `rooms`, `room_players`, `room_boosts`, `room_winners` for a single finished room. For the list endpoint, a lighter `ListFinishedRooms` query returns room rows only (players/boosts/winner fetched per-room in a loop, acceptable for audit use).
-
-### 8. User Balance Top-Up (`handlers/user_handler.go`)
-
-New method `UpdateBalance`. New SQL query `UpdateUserBalance`:
-
-```sql
--- name: UpdateUserBalance :one
-UPDATE users SET balance = balance + $2
-WHERE id = $1 AND balance + $2 >= 0
-RETURNING *;
-```
-
-If no row is returned (balance would go negative), the handler returns HTTP 422.
-
-### 9. List Users Route
-
-One-liner addition to `MountRoutes` and a new `List` method on `UserHandler` that calls `repo.ListUsers`.
-
-### 10. External RNG (`internal/crons/room_finisher.go`)
+**Handler**:
+**Location**: `backend/handlers/round_handler.go`
 
 ```go
-func selectWinner(players []repository.GetPlayersWithStakesRow, jackpot int32, rngURL string) int32
+type GetRoundDetailsRequest struct {
+    RoomID int32 `path:"room_id"`
+}
+
+type GetRoundDetailsResponse struct {
+    Body struct {
+        RoomID    int32                `json:"room_id"`
+        Jackpot   int32                `json:"jackpot"`
+        EntryCost int32                `json:"entry_cost"`
+        WinnerPct int32                `json:"winner_pct"`
+        Status    string               `json:"status"`
+        CreatedAt time.Time            `json:"created_at"`
+        StartTime *time.Time           `json:"start_time,omitempty"`
+        Players   []RoundPlayerDetail  `json:"players"`
+        Boosts    []RoundBoostDetail   `json:"boosts"`
+        Winner    *RoundWinnerDetail   `json:"winner,omitempty"`
+    }
+}
+
+type RoundPlayerDetail struct {
+    UserID   int32     `json:"user_id"`
+    Places   int32     `json:"places"`
+    JoinedAt time.Time `json:"joined_at"`
+}
+
+type RoundBoostDetail struct {
+    UserID    int32     `json:"user_id"`
+    Amount    int32     `json:"amount"`
+    BoostedAt time.Time `json:"boosted_at"`
+}
+
+type RoundWinnerDetail struct {
+    UserID int32     `json:"user_id"`
+    Prize  int32     `json:"prize"`
+    WonAt  time.Time `json:"won_at"`
+}
 ```
 
-When `rngURL != ""`, the function calls `GET {rngURL}?max={totalStake}` and expects a JSON response `{"result": N}`. On any error it falls back to local rand. The `rngURL` is threaded from `AppConfig.RNGURL` through `RoomFinisher(pool, config)`.
+### 7. External Random Number Generator Integration
 
-### 11. Configurable `winner_pct`
+#### RNG Client Service
 
-Migration `000006` adds `winner_pct INTEGER NOT NULL DEFAULT 80 CHECK (winner_pct BETWEEN 1 AND 99)`.
+**Location**: `backend/internal/rng/client.go`
 
-A new SQL query `FinishRoomAndAwardWinnerPct` replaces the hardcoded `80` with a parameter. The `Room` model gains a `WinnerPct int32` field. `InsertRoom` and all room responses are updated.
+**Interface**:
+```go
+type RNGClient struct {
+    baseURL string
+    timeout time.Duration
+    client  *http.Client
+}
 
-The old `FinishRoomAndAwardWinner` query is kept for backward compatibility but the cron switches to the new one.
+func NewRNGClient(baseURL string) *RNGClient
 
-### 12. Room Templates (`handlers/template_handler.go`)
+// SelectRandom returns a random number in [0, max) using external RNG or fallback
+func (c *RNGClient) SelectRandom(ctx context.Context, max int32, roomID int32, playerCount int32) (int32, error)
 
-New handler + new SQL file `db/queries/templates.sql` with standard CRUD. The `room_templates` table has no FK dependencies, making it safe to add independently.
+// callExternalRNG makes HTTP request to external service
+func (c *RNGClient) callExternalRNG(ctx context.Context, max int32, roomID int32, playerCount int32) (int32, error)
 
----
+// fallbackRandom uses local math/rand as fallback
+func (c *RNGClient) fallbackRandom(max int32) int32
+```
+
+**Configuration**:
+- Environment variable: `RNG_URL` (optional)
+- Request format: `GET {RNG_URL}?max={max}&room_id={room_id}&player_count={count}`
+- Response format: `{"result": N}` where N is in [0, max)
+- Timeout: 2 seconds
+- Fallback: Local `math/rand` on any error
+
+**Integration**:
+The existing `room_finisher.go` already has partial implementation with `callExternalRNG` function. Needs to be extracted into a reusable service and enhanced with context support and additional parameters.
 
 ## Data Models
 
-### Updated `Room` struct (after migration 000006)
+### Event Schema
 
 ```go
-type Room struct {
-    RoomID        int32
-    Jackpot       int32
-    StartTime     pgtype.Timestamptz
-    Status        string
-    PlayersNeeded int32
-    WinnerPct     int32   // NEW — default 80
-    CreatedAt     time.Time
-    UpdatedAt     time.Time
-    EntryCost     int32
+type RoomEvent struct {
+    Type      string      `json:"type"`
+    RoomID    int32       `json:"room_id"`
+    Timestamp time.Time   `json:"timestamp"`
+    Data      interface{} `json:"data"`
+}
+
+type PlayerJoinedData struct {
+    UserID int32 `json:"user_id"`
+    Places int32 `json:"places"`
+}
+
+type BoostAppliedData struct {
+    UserID int32 `json:"user_id"`
+    Amount int32 `json:"amount"`
+}
+
+type RoomStartingData struct {
+    StartTime        time.Time `json:"start_time"`
+    CountdownSeconds int32     `json:"countdown_seconds"`
+}
+
+type GameFinishedData struct {
+    WinnerID int32 `json:"winner_id"`
+    Prize    int32 `json:"prize"`
 }
 ```
 
-### New `RoomTemplate` struct
+### Round Details Schema
 
-```go
-type RoomTemplate struct {
-    TemplateID    int32
-    Name          string
-    PlayersNeeded int32
-    EntryCost     int32
-    WinnerPct     int32
-    CreatedAt     time.Time
-    UpdatedAt     time.Time
-}
-```
-
-### Round Detail response (not a DB model — assembled in handler)
-
-```go
-type RoundDetail struct {
-    RoomID        int32
-    Jackpot       int32
-    EntryCost     int32
-    PlayersNeeded int32
-    WinnerPct     int32
-    StartTime     *time.Time
-    Players       []RoundPlayer   // {user_id, joined_at}
-    Boosts        []RoundBoost    // {user_id, amount}
-    Winner        *RoundWinner    // {user_id, prize, won_at}
-}
-```
-
----
+Already defined in repository layer, needs aggregation in handler response.
 
 ## Error Handling
 
-| Scenario | HTTP Code | Message |
-|---|---|---|
-| Insufficient balance (join) | 402 | `"insufficient balance to join room"` |
-| Insufficient balance (boost) | 402 | `"insufficient balance for boost"` |
-| Room full | 409 | `"room is full"` |
-| User already in room | 409 | `"user already in room"` |
-| Duplicate boost | 409 | `"user has already boosted this room"` |
-| Balance would go negative | 422 | `"balance cannot go below zero"` |
-| Round not finished | 404 | `"round not found or not finished"` |
-| Template name conflict | 409 | `"template name already exists"` |
+### Error Response Structure
 
-All errors use `huma.Error{Code}(message, nil)` to stay consistent with the existing error style.
+All error responses follow Huma v2 conventions:
 
----
+```json
+{
+  "title": "Payment Required",
+  "status": 402,
+  "detail": "Insufficient balance for entry",
+  "errors": [
+    {
+      "message": "Insufficient balance for entry",
+      "location": "",
+      "value": null
+    }
+  ],
+  "required": 100,
+  "current_balance": 50,
+  "shortfall": 50
+}
+```
+
+### HTTP Status Codes
+
+- 400 Bad Request: Invalid input, invalid room state
+- 402 Payment Required: Insufficient balance
+- 404 Not Found: Room/user not found
+- 409 Conflict: Duplicate boost, room full, already in room
+- 500 Internal Server Error: Database errors, external service failures
 
 ## Testing Strategy
 
-The existing test suites in `backend/tests/api/` and `backend/tests/room_management/` are extended:
+### Unit Tests
 
-- `tests/api/main.go` — add tests for: list users, update balance, room filtering, configurator validate, round history, template CRUD, boost duplicate rejection, insufficient balance 402 responses.
-- `tests/room_management/main.go` — add tests for: winner_pct propagation, external RNG fallback (mock URL), boost uniqueness at DB level.
-- A new `tests/websocket/main.go` — connects a WebSocket client, triggers a room state change via REST, and asserts the WS message arrives within 2 seconds.
+**Location**: `backend/tests/missing_features/`
 
-All tests follow the existing pattern: standalone `main` packages that connect to a live server/DB and report pass/fail.
+1. Event Publisher Tests
+   - Test event serialization
+   - Test Redis publish calls
+   - Test error handling
 
----
+2. Economic Validator Tests
+   - Test ROI calculations
+   - Test warning generation
+   - Test edge cases (zero values, extreme percentages)
 
-## Dependency Notes
+3. RNG Client Tests
+   - Test external RNG call
+   - Test fallback mechanism
+   - Test timeout handling
+   - Test response validation
 
-- `github.com/gorilla/websocket` — needs to be added to `go.mod` for WebSocket support.
-- No other new external dependencies are required; all other features use existing imports.
-- sqlc regeneration is required after adding new `.sql` query files and migrations.
+### Integration Tests
+
+**Location**: `backend/tests/api/`
+
+Extend existing `run.sh` script with new test cases:
+
+1. Real-time Events
+   - Subscribe to WebSocket
+   - Perform actions (join, boost)
+   - Verify event reception
+
+2. Room Filtering
+   - Create rooms with various parameters
+   - Test each filter parameter
+   - Test sorting
+   - Test combined filters
+
+3. Error Handling
+   - Test insufficient balance scenarios
+   - Test duplicate boost attempts
+   - Verify error response structure
+
+4. Round History
+   - Create complete round
+   - Verify all data is returned
+   - Test with missing data (no boosts, no winner)
+
+5. External RNG
+   - Mock external RNG service
+   - Test successful call
+   - Test fallback on failure
+
+### Manual Testing
+
+1. WebSocket connection and event streaming
+2. Frontend integration with real-time updates
+3. Economic validation with various configurations
+4. External RNG service integration
+
+## Implementation Notes
+
+### Existing Code Reuse
+
+- Redis pub/sub infrastructure already exists (`internal/redisclient/pubsub.go`)
+- Room filtering query already implemented (`ListRoomsFiltered`)
+- Basic validation logic exists in `Validate` handler
+- External RNG call partially implemented in `room_finisher.go`
+- Balance checks already present in join/boost handlers
+
+### Code Organization
+
+- New event publisher: `internal/events/publisher.go`
+- Economic validator: `internal/validator/economic.go`
+- RNG client: `internal/rng/client.go`
+- Enhanced queries: `db/queries/rounds.sql`
+- Handler enhancements: Modify existing handlers in `handlers/`
+
+### Configuration Changes
+
+Add to `.env`:
+```
+RNG_URL=  # Optional, e.g., http://rng-service:8080/random
+```
+
+### Database Changes
+
+No new migrations required. All features use existing schema.
+
+### Performance Considerations
+
+1. Redis pub/sub is non-blocking - errors are logged but don't affect HTTP responses
+2. Room filtering uses indexed columns (status, entry_cost, players_needed)
+3. Round history query uses LEFT JOINs with aggregation - may be slow for large datasets
+4. External RNG has 2-second timeout to prevent blocking
+5. Event publishing happens after successful database commits
+
+### Security Considerations
+
+1. SQL injection prevention: Use parameterized queries, validate sort field names
+2. WebSocket authentication: Reuse existing WebSocket handler authentication
+3. External RNG: Validate response range, use HTTPS in production
+4. Error messages: Don't expose internal details, use generic messages for unexpected errors
+
+## Deployment
+
+### Rollout Plan
+
+1. Deploy event publisher (non-breaking, events are optional)
+2. Deploy enhanced error handling (improves existing endpoints)
+3. Deploy room filtering (already implemented, verify functionality)
+4. Deploy round history endpoint (new endpoint)
+5. Deploy external RNG integration (optional feature, fallback ensures compatibility)
+
+### Monitoring
+
+- Log all event publishing errors
+- Monitor external RNG call success rate and latency
+- Track validation warnings frequency
+- Monitor WebSocket connection count
+
+### Rollback Strategy
+
+All changes are backward compatible:
+- Event publishing failures don't affect core functionality
+- External RNG falls back to local implementation
+- Enhanced error responses maintain HTTP status code compatibility
+- New endpoints don't affect existing functionality

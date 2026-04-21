@@ -6,9 +6,11 @@ import (
 
 	"github.com/SomeSuperCoder/OnlineShop/handlers"
 	"github.com/SomeSuperCoder/OnlineShop/internal"
+	"github.com/SomeSuperCoder/OnlineShop/internal/events"
 	"github.com/SomeSuperCoder/OnlineShop/internal/handler"
 	"github.com/SomeSuperCoder/OnlineShop/internal/redisclient"
 	"github.com/SomeSuperCoder/OnlineShop/internal/service"
+	"github.com/SomeSuperCoder/OnlineShop/internal/validator"
 	"github.com/SomeSuperCoder/OnlineShop/repository"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humagin"
@@ -36,12 +38,13 @@ func main() {
 	api := humagin.NewWithGroup(r, apiGroup, humaConfig)
 
 	pubSub := redisclient.New(redisClient)
-	MountRoutes(api, r, repo, pool, redisClient, pubSub, appConfig)
+	publisher := events.NewEventPublisher(pubSub)
+	MountRoutes(api, r, repo, pool, redisClient, pubSub, publisher, appConfig)
 
 	r.Run(fmt.Sprintf(":%s", appConfig.Port))
 }
 
-func MountRoutes(api huma.API, r *gin.Engine, repo *repository.Queries, pool *pgxpool.Pool, redisClient *redis.Client, pubSub *redisclient.PubSub, appConfig *internal.AppConfig) {
+func MountRoutes(api huma.API, r *gin.Engine, repo *repository.Queries, pool *pgxpool.Pool, redisClient *redis.Client, pubSub *redisclient.PubSub, publisher *events.EventPublisher, appConfig *internal.AppConfig) {
 	helloHandler := handlers.HelloHandler{Repo: repo, Pool: pool}
 	huma.Register(api, huma.Operation{
 		OperationID: "get-hello",
@@ -98,7 +101,7 @@ func MountRoutes(api huma.API, r *gin.Engine, repo *repository.Queries, pool *pg
 		Path:        "/users/{id}/balance",
 	}, userHandler.SetBalance)
 
-	roomHandler := handlers.RoomHandler{Repo: repo, Pool: pool, PubSub: pubSub}
+	roomHandler := handlers.RoomHandler{Repo: repo, Pool: pool, PubSub: pubSub, Publisher: publisher, Validator: &validator.EconomicValidator{}}
 	// rooms
 	huma.Register(api, huma.Operation{
 		OperationID: "create-room",
@@ -184,6 +187,11 @@ func MountRoutes(api huma.API, r *gin.Engine, repo *repository.Queries, pool *pg
 		Method:      "GET",
 		Path:        "/rounds/{room_id}",
 	}, roundHandler.Get)
+	huma.Register(api, huma.Operation{
+		OperationID: "get-round-details",
+		Method:      "GET",
+		Path:        "/rounds/{room_id}/details",
+	}, roundHandler.GetDetails)
 
 	// room templates
 	templateHandler := handlers.TemplateHandler{Repo: repo, Pool: pool}

@@ -8,6 +8,8 @@ package repository
 import (
 	"context"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const getFinishedRoom = `-- name: GetFinishedRoom :one
@@ -72,6 +74,88 @@ func (q *Queries) GetRoundBoosts(ctx context.Context, arg GetRoundBoostsParams) 
 		return nil, err
 	}
 	return items, nil
+}
+
+const getRoundDetails = `-- name: GetRoundDetails :one
+SELECT
+    r.room_id,
+    r.jackpot,
+    r.entry_cost,
+    r.winner_pct,
+    r.players_needed,
+    r.status,
+    r.created_at,
+    r.start_time,
+    COALESCE(
+        json_agg(
+            DISTINCT jsonb_build_object(
+                'user_id', rp.user_id,
+                'places', (SELECT COUNT(*)::INTEGER FROM room_places WHERE room_id = r.room_id AND user_id = rp.user_id),
+                'joined_at', rp.joined_at
+            )
+        ) FILTER (WHERE rp.user_id IS NOT NULL),
+        '[]'
+    ) AS players,
+    COALESCE(
+        json_agg(
+            DISTINCT jsonb_build_object(
+                'user_id', rb.user_id,
+                'amount', rb.amount,
+                'boosted_at', rb.boosted_at
+            )
+        ) FILTER (WHERE rb.user_id IS NOT NULL),
+        '[]'
+    ) AS boosts,
+    CASE WHEN rw.user_id IS NOT NULL THEN
+        jsonb_build_object(
+            'user_id', rw.user_id,
+            'prize', rw.prize,
+            'won_at', rw.won_at
+        )
+    ELSE NULL END AS winner
+FROM rooms r
+LEFT JOIN room_players rp ON r.room_id = rp.room_id
+LEFT JOIN room_boosts rb ON r.room_id = rb.room_id
+LEFT JOIN room_winners rw ON r.room_id = rw.room_id
+WHERE r.room_id = $1
+GROUP BY r.room_id, rw.user_id, rw.prize, rw.won_at
+`
+
+type GetRoundDetailsParams struct {
+	RoomID int32 `json:"room_id"`
+}
+
+type GetRoundDetailsRow struct {
+	RoomID        int32              `json:"room_id"`
+	Jackpot       int32              `json:"jackpot"`
+	EntryCost     int32              `json:"entry_cost"`
+	WinnerPct     int32              `json:"winner_pct"`
+	PlayersNeeded int32              `json:"players_needed"`
+	Status        string             `json:"status"`
+	CreatedAt     time.Time          `json:"created_at"`
+	StartTime     pgtype.Timestamptz `json:"start_time"`
+	Players       interface{}        `json:"players"`
+	Boosts        interface{}        `json:"boosts"`
+	Winner        interface{}        `json:"winner"`
+}
+
+func (q *Queries) GetRoundDetails(ctx context.Context, arg GetRoundDetailsParams) (GetRoundDetailsRow, error) {
+	row := q.db.QueryRow(ctx, getRoundDetails, arg.RoomID)
+	var i GetRoundDetailsRow
+	err := row.Scan(
+		&i.RoomID,
+		&i.Jackpot,
+		&i.EntryCost,
+		&i.WinnerPct,
+		&i.PlayersNeeded,
+		&i.Status,
+		&i.CreatedAt,
+		&i.StartTime,
+		&i.Players,
+		&i.Boosts,
+		&i.Winner,
+	)
+	return i, err
 }
 
 const getRoundPlayers = `-- name: GetRoundPlayers :many

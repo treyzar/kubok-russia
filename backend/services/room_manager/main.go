@@ -9,7 +9,9 @@ import (
 
 	"github.com/SomeSuperCoder/OnlineShop/internal"
 	"github.com/SomeSuperCoder/OnlineShop/internal/crons"
+	"github.com/SomeSuperCoder/OnlineShop/internal/events"
 	"github.com/SomeSuperCoder/OnlineShop/internal/redisclient"
+	"github.com/SomeSuperCoder/OnlineShop/internal/rng"
 	"github.com/hx/eon"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
@@ -32,6 +34,12 @@ func main() {
 	redisClient := redis.NewClient(&redis.Options{Addr: config.RedisURL})
 	pubSub := redisclient.New(redisClient)
 
+	// Initialize EventPublisher for crons
+	eventPublisher := events.NewEventPublisher(pubSub)
+
+	// Initialize RNG client for winner selection
+	rngClient := rng.NewRNGClient(config.RNGURL)
+
 	// Create a context that listens for OS interrupt signals (like CTRL+C)
 	ctx, _ := signal.NotifyContext(
 		context.Background(),
@@ -44,12 +52,12 @@ func main() {
 
 	// Run room starter every 1 second to check for rooms that need to start
 	scheduler.Schedule(ctx, time.Second, 1*time.Second, &eon.Job{
-		Runner: crons.RoomStarter(pool, pubSub),
+		Runner: crons.RoomStarter(pool, eventPublisher),
 	})
 
 	// Run room finisher every 1 second to check for rooms that need to finish
 	scheduler.Schedule(ctx, time.Second, 1*time.Second, &eon.Job{
-		Runner: crons.RoomFinisher(pool, config, pubSub),
+		Runner: crons.RoomFinisher(pool, eventPublisher, rngClient),
 	})
 
 	log.Println("🎮 Room Manager: Monitoring rooms every 1 second for auto-start")

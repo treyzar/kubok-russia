@@ -2,180 +2,132 @@
 
 ## Introduction
 
-This document covers the missing and incomplete backend features identified in `backend/missing.md` for the bonus-game platform. The platform allows users to join lottery-style rooms, buy boosts, and compete for a prize fund. The backend is written in Go (Gin + Huma), uses PostgreSQL (via sqlc), and Redis for pub/sub. The missing items span real-time WebSocket updates, room filtering, room configuration validation, boost uniqueness enforcement, proper error handling for insufficient balance, a round history API, user balance management, exposed list-users route, external RNG support, configurable prize percentage, and a populated Redis pub/sub client.
+This document specifies the requirements for implementing missing and incomplete features in the OnlineShop lottery room platform backend. The platform currently has a partially implemented system for managing lottery rooms, players, boosts, and provably fair mechanics. Several critical features identified in the backend README need to be completed to meet the project requirements.
 
 ## Glossary
 
-- **Room**: A game session with a jackpot, entry cost, player slots, and a lifecycle status (`new` → `starting_soon` → `playing` → `finished`).
-- **Jackpot**: The accumulated prize pool for a room, funded by entry costs and boosts.
-- **Boost**: An optional extra stake a player can add to a playing room to increase their win probability.
-- **WinnerPct**: The configurable percentage of the jackpot awarded to the winner (default 80%).
-- **RNG**: Random Number Generator — used to select the weighted winner.
-- **External RNG**: An HTTP-based third-party RNG API that can replace the local PRNG.
-- **Pub/Sub**: Redis publish/subscribe mechanism used to broadcast room state changes.
-- **WebSocket**: A persistent bidirectional connection used to push real-time room state to clients.
-- **Room Configurator**: The endpoint/logic that validates room parameters for economic soundness.
-- **Round History**: A log of finished rooms with full participant, boost, winner, and balance-change detail.
-- **Balance Top-Up**: An administrative operation to adjust a user's balance for testing or demo purposes.
-- **sqlc**: Code-generation tool that produces Go from SQL queries; generated files must not be edited manually.
-- **Huma**: The OpenAPI-aware HTTP framework wrapping Gin used for all REST handlers.
-
----
+- **System**: The OnlineShop lottery room platform backend
+- **Room**: A lottery game instance with configurable parameters
+- **Player**: A user participating in a room
+- **Boost**: An additional payment to increase winning probability
+- **WebSocket**: Real-time bidirectional communication protocol
+- **Redis**: In-memory data store used for pub/sub messaging
+- **RNG**: Random Number Generator service
+- **ROI**: Return on Investment
+- **HTTP Handler**: Go function that processes HTTP requests
 
 ## Requirements
 
-### Requirement 1 — WebSocket Real-Time Room Updates
+### Requirement 1: Real-Time Event Broadcasting
 
-**User Story:** As a player, I want to see live updates of room state (player list, timer, jackpot, status) without polling, so that the game feels responsive and engaging.
-
-#### Acceptance Criteria
-
-1. WHEN a client connects to `GET /rooms/{room_id}/ws`, THE System SHALL upgrade the connection to WebSocket and register the client as a subscriber for that room's channel.
-2. WHEN room state changes (player joins/leaves, boost applied, status transitions, timer tick), THE System SHALL publish a JSON message to the Redis channel `room:{room_id}` containing the updated room snapshot.
-3. WHILE a WebSocket client is connected, THE System SHALL forward every message received on the Redis channel `room:{room_id}` to that client within 500 ms.
-4. IF a WebSocket client disconnects, THEN THE System SHALL unsubscribe that client from the Redis channel and release associated resources.
-5. THE System SHALL implement a Redis pub/sub helper in `internal/redisclient/` that exposes `Publish(roomID, payload)` and `Subscribe(roomID)` functions.
-
----
-
-### Requirement 2 — Room Filtering and Sorting
-
-**User Story:** As a player, I want to filter and sort the room list by entry cost, player slots, and status, so that I can quickly find a room that matches my preferences.
+**User Story:** As a player, I want to receive real-time updates about room changes, so that I can see when other players join, boost, or when the game starts/finishes without refreshing.
 
 #### Acceptance Criteria
 
-1. WHEN a client calls `GET /rooms` with query parameter `status`, THE System SHALL return only rooms whose status matches the provided value.
-2. WHEN a client calls `GET /rooms` with query parameter `entry_cost`, THE System SHALL return only rooms whose `entry_cost` equals the provided integer value.
-3. WHEN a client calls `GET /rooms` with query parameter `players_needed`, THE System SHALL return only rooms whose `players_needed` equals the provided integer value.
-4. WHEN a client calls `GET /rooms` with query parameters `sort_by` and `sort_order`, THE System SHALL order results by the specified column (`created_at`, `entry_cost`, `jackpot`, `players_needed`) in the specified direction (`asc` or `desc`).
-5. IF no filter or sort parameters are provided, THEN THE System SHALL return all rooms ordered by `created_at DESC`, preserving existing behaviour.
+1.1 WHEN a Player joins a Room, THE System SHALL publish a "player_joined" event to the Redis pub/sub channel for that Room
 
----
+1.2 WHEN a Player applies a Boost to a Room, THE System SHALL publish a "boost_applied" event to the Redis pub/sub channel for that Room
 
-### Requirement 3 — Room Configurator Validation
+1.3 WHEN a Room transitions to "starting_soon" status, THE System SHALL publish a "room_starting" event with countdown timer information to the Redis pub/sub channel
 
-**User Story:** As an organiser, I want the system to evaluate my room configuration and warn me when it is economically unsound, so that I can create rooms that are attractive to players and profitable for me.
+1.4 WHEN a Room transitions to "playing" status, THE System SHALL publish a "game_started" event to the Redis pub/sub channel for that Room
 
-#### Acceptance Criteria
+1.5 WHEN a Room transitions to "finished" status, THE System SHALL publish a "game_finished" event with winner information to the Redis pub/sub channel for that Room
 
-1. WHEN a client calls `POST /rooms/validate` with room parameters, THE System SHALL compute and return `prize_fund` (WinnerPct % of full jackpot), `organiser_cut` (remainder), `player_roi` (prize_fund / entry_cost ratio), and a `warnings` list.
-2. WHEN `player_roi` is less than 1.5, THE System SHALL include the warning `"prize fund may be unattractive to players"` in the response.
-3. WHEN `organiser_cut` is less than 10% of the full jackpot, THE System SHALL include the warning `"organiser margin is very low"` in the response.
-4. WHEN `winner_pct` exceeds 95, THE System SHALL include the warning `"winner_pct leaves no organiser margin"` in the response.
-5. WHEN `winner_pct` is less than 50, THE System SHALL include the warning `"winner receives less than half the jackpot"` in the response.
-6. THE System SHALL return HTTP 200 with the analysis regardless of warnings, allowing the caller to decide whether to proceed.
+1.6 WHERE a Room has status "starting_soon", THE System SHALL include the remaining seconds until start_time in all published events
 
----
+### Requirement 2: Room Filtering and Sorting
 
-### Requirement 4 — One Boost Per User Per Room
-
-**User Story:** As a platform operator, I want each user to be limited to one boost per room, so that the boost mechanic cannot be exploited by repeated purchases.
+**User Story:** As a player, I want to filter and sort available rooms by entry cost, player count, and status, so that I can quickly find games that match my preferences.
 
 #### Acceptance Criteria
 
-1. THE System SHALL add a database migration that enforces a `UNIQUE (room_id, user_id)` constraint on the `room_boosts` table.
-2. WHEN a user attempts to purchase a second boost for the same room, THE System SHALL return HTTP 409 with the message `"user has already boosted this room"`.
-3. WHEN the first boost attempt succeeds, THE System SHALL return HTTP 200 with the boost record as before.
+2.1 WHEN a GET request is made to "/rooms" endpoint with query parameter "entry_cost", THE System SHALL return only Rooms where entry_cost matches the specified value
 
----
+2.2 WHEN a GET request is made to "/rooms" endpoint with query parameter "players_needed", THE System SHALL return only Rooms where players_needed matches the specified value
 
-### Requirement 5 — Insufficient Balance Error Handling
+2.3 WHEN a GET request is made to "/rooms" endpoint with query parameter "status", THE System SHALL return only Rooms where status matches the specified value
 
-**User Story:** As a player, I want to receive a clear error message when I cannot join a room or buy a boost due to insufficient balance, so that I understand why my action was rejected.
+2.4 WHEN a GET request is made to "/rooms" endpoint with query parameter "sort_by" set to a valid field name, THE System SHALL sort the returned Rooms by that field
 
-#### Acceptance Criteria
+2.5 WHEN a GET request is made to "/rooms" endpoint with query parameter "sort_order" set to "asc" or "desc", THE System SHALL apply ascending or descending sort order respectively
 
-1. WHEN a user calls `POST /rooms/{room_id}/players` and the user's balance is less than the room's `entry_cost`, THE System SHALL return HTTP 402 with the message `"insufficient balance to join room"`.
-2. WHEN a user calls `POST /rooms/{room_id}/players` and the room is full, THE System SHALL return HTTP 409 with the message `"room is full"`.
-3. WHEN a user calls `POST /rooms/{room_id}/players` and the user is already in the room, THE System SHALL return HTTP 409 with the message `"user already in room"`.
-4. WHEN a user calls `POST /rooms/{room_id}/boosts` and the user's balance is less than the boost amount, THE System SHALL return HTTP 402 with the message `"insufficient balance for boost"`.
+2.6 WHERE multiple filter parameters are provided, THE System SHALL apply all filters using AND logic
 
----
+### Requirement 3: Room Configuration Validation
 
-### Requirement 6 — Round History API
-
-**User Story:** As an administrator or auditor, I want to retrieve a full history of finished rounds including participants, boosts, winner, and balance changes, so that I can verify the fairness and correctness of each game.
+**User Story:** As a room creator, I want the system to validate my room configuration for economic viability, so that I can create balanced and attractive games.
 
 #### Acceptance Criteria
 
-1. WHEN a client calls `GET /rounds`, THE System SHALL return a list of finished rooms, each containing `room_id`, `jackpot`, `entry_cost`, `players_needed`, `winner_pct`, `start_time`, `players` (array of user IDs and join times), `boosts` (array of user IDs and amounts), and `winner` (user ID and prize).
-2. WHEN a client calls `GET /rounds/{room_id}`, THE System SHALL return the full round detail for that specific finished room.
-3. IF the requested room is not finished, THEN THE System SHALL return HTTP 404 with the message `"round not found or not finished"`.
+3.1 WHEN a POST request is made to "/rooms/validate" endpoint with room configuration, THE System SHALL calculate the expected ROI for players
 
----
+3.2 WHEN a POST request is made to "/rooms/validate" endpoint with room configuration, THE System SHALL calculate the organizer commission percentage
 
-### Requirement 7 — User Balance Top-Up Endpoint
+3.3 IF the calculated player ROI is below 70 percent, THEN THE System SHALL include a warning in the validation response
 
-**User Story:** As a developer or tester, I want to adjust a user's balance via API, so that I can set up test scenarios without direct database access.
+3.4 IF the calculated organizer commission is below 5 percent, THEN THE System SHALL include a warning in the validation response
 
-#### Acceptance Criteria
+3.5 WHEN validation completes, THE System SHALL return a response containing calculated metrics and any warnings
 
-1. WHEN a client calls `PATCH /users/{id}/balance` with a `delta` integer, THE System SHALL add `delta` to the user's current balance and return the updated user record.
-2. IF `delta` is negative and the resulting balance would be less than zero, THEN THE System SHALL return HTTP 422 with the message `"balance cannot go below zero"`.
-3. THE System SHALL add the corresponding SQL query `UpdateUserBalance` to `users.sql` and regenerate the repository.
+### Requirement 4: Boost Constraint Error Handling
 
----
-
-### Requirement 8 — List Users Route Exposed
-
-**User Story:** As a developer, I want `GET /users` to be available via the API, so that I can list all users without direct database access.
+**User Story:** As a player, I want clear error messages when I try to boost a room multiple times, so that I understand why my action failed.
 
 #### Acceptance Criteria
 
-1. WHEN a client calls `GET /users`, THE System SHALL return a JSON array of all users ordered by `id ASC`.
-2. THE System SHALL register the `GET /users` route in `MountRoutes` using the existing `ListUsers` repository query.
+4.1 WHEN a Player attempts to create a second Boost for the same Room, THE System SHALL return HTTP status code 409 Conflict
 
----
+4.2 WHEN a duplicate Boost attempt is detected, THE System SHALL include an error message stating "You have already boosted this room"
 
-### Requirement 9 — External RNG Support
+4.3 WHEN a duplicate Boost attempt is detected, THE System SHALL not modify the Player balance or Room jackpot
 
-**User Story:** As a platform operator, I want to configure an external RNG API for winner selection, so that the randomness source is auditable and replaceable.
+### Requirement 5: Insufficient Balance Error Handling
 
-#### Acceptance Criteria
-
-1. WHERE `RNG_URL` is set in the environment, THE System SHALL call the external RNG endpoint with the total number of weighted tickets and use the returned integer as the winning ticket index.
-2. WHERE `RNG_URL` is not set, THE System SHALL fall back to the local `math/rand` weighted selection, preserving existing behaviour.
-3. IF the external RNG call fails or returns an invalid response, THEN THE System SHALL log the error and fall back to local random selection.
-4. THE System SHALL add `RNG_URL` as an optional field to `AppConfig`.
-
----
-
-### Requirement 10 — Configurable Prize Percentage
-
-**User Story:** As an organiser, I want to set the winner's prize percentage per room, so that I can control the economic balance of each game.
+**User Story:** As a player, I want clear error messages when I don't have enough balance, so that I know exactly why I cannot join a room or apply a boost.
 
 #### Acceptance Criteria
 
-1. THE System SHALL add a database migration adding a `winner_pct` integer column (default 80, range 1–99) to the `rooms` table.
-2. WHEN a room is created via `POST /rooms`, THE System SHALL accept an optional `winner_pct` field and store it; if omitted, THE System SHALL default to 80.
-3. WHEN `FinishRoomAndAwardWinner` is called, THE System SHALL use the room's `winner_pct` value instead of the hardcoded 80.
-4. THE System SHALL expose `winner_pct` in all room response objects.
+5.1 WHEN a Player attempts to join a Room with insufficient balance, THE System SHALL return HTTP status code 402 Payment Required
 
----
+5.2 WHEN a Player attempts to apply a Boost with insufficient balance, THE System SHALL return HTTP status code 402 Payment Required
 
-### Requirement 11 — Redis Pub/Sub Client Implementation
+5.3 WHEN insufficient balance is detected for room entry, THE System SHALL include an error message stating "Insufficient balance for entry"
 
-**User Story:** As a developer, I want the `internal/redisclient/` package to contain a working pub/sub helper, so that WebSocket and other services can broadcast room events reliably.
+5.4 WHEN insufficient balance is detected for boost, THE System SHALL include an error message stating "Insufficient balance for boost"
 
-#### Acceptance Criteria
+5.5 WHEN insufficient balance is detected, THE System SHALL include the required amount and current balance in the error response
 
-1. THE System SHALL implement `pubsub.go` in `internal/redisclient/` with a `PubSub` struct that wraps `*redis.Client`.
-2. THE System SHALL expose a `Publish(ctx, roomID int32, payload []byte) error` method on `PubSub`.
-3. THE System SHALL expose a `Subscribe(ctx, roomID int32) *redis.PubSub` method on `PubSub` that returns a subscription handle.
-4. THE System SHALL use the channel naming convention `room:{room_id}` for all pub/sub operations.
+### Requirement 6: Comprehensive Round History
 
----
-
-### Requirement 12 — Room Templates
-
-**User Story:** As an administrator, I want to define reusable room templates with preset parameters, so that the system can later use them for dynamic room creation without manual configuration each time.
+**User Story:** As a player or auditor, I want to view complete round history including all participants, boosts, and balance changes, so that I can verify game fairness and track my performance.
 
 #### Acceptance Criteria
 
-1. THE System SHALL add a database migration creating a `room_templates` table with columns: `template_id` (serial PK), `name` (varchar, unique), `players_needed` (integer), `entry_cost` (integer), `winner_pct` (integer, default 80), `created_at`, `updated_at`.
-2. WHEN a client calls `POST /room-templates`, THE System SHALL create a new template and return the created record.
-3. WHEN a client calls `GET /room-templates`, THE System SHALL return all templates ordered by `created_at DESC`.
-4. WHEN a client calls `GET /room-templates/{template_id}`, THE System SHALL return the template with that ID.
-5. WHEN a client calls `PUT /room-templates/{template_id}`, THE System SHALL update the template fields and return the updated record.
-6. WHEN a client calls `DELETE /room-templates/{template_id}`, THE System SHALL delete the template and return a success message.
-7. IF a template with the same `name` already exists, THEN THE System SHALL return HTTP 409 with the message `"template name already exists"`.
+6.1 WHEN a GET request is made to "/rounds/{round_id}" endpoint, THE System SHALL return the Room information including entry_cost and jackpot
+
+6.2 WHEN a GET request is made to "/rounds/{round_id}" endpoint, THE System SHALL return a list of all Players who participated in that round
+
+6.3 WHEN a GET request is made to "/rounds/{round_id}" endpoint, THE System SHALL return all Boosts applied during that round with player and amount information
+
+6.4 WHEN a GET request is made to "/rounds/{round_id}" endpoint, THE System SHALL return the winner information including user_id and prize amount
+
+6.5 WHEN a GET request is made to "/rounds/{round_id}" endpoint, THE System SHALL aggregate data using SQL JOIN operations across room_players, room_boosts, and room_winners tables
+
+### Requirement 7: External Random Number Generator Integration
+
+**User Story:** As a system operator, I want to use an external RNG service for winner selection, so that the randomness is verifiable and trustworthy.
+
+#### Acceptance Criteria
+
+7.1 WHEN the System starts, THE System SHALL read the RNG_URL configuration from environment variables
+
+7.2 WHERE RNG_URL is configured, WHEN selecting a winner, THE System SHALL make an HTTP request to the external RNG service
+
+7.3 WHERE RNG_URL is configured, IF the external RNG request fails, THEN THE System SHALL fall back to the local math/rand implementation
+
+7.4 WHERE RNG_URL is not configured, THE System SHALL use the local math/rand implementation for winner selection
+
+7.5 WHEN using external RNG, THE System SHALL include the room_id and player count in the request parameters
+
+7.6 WHEN using external RNG, THE System SHALL validate that the returned random number is within the expected range before using it

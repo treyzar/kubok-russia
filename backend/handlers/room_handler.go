@@ -8,7 +8,9 @@ import (
 	"math"
 	"time"
 
+	"github.com/SomeSuperCoder/OnlineShop/internal/events"
 	"github.com/SomeSuperCoder/OnlineShop/internal/redisclient"
+	"github.com/SomeSuperCoder/OnlineShop/internal/validator"
 	"github.com/SomeSuperCoder/OnlineShop/repository"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -17,9 +19,11 @@ import (
 )
 
 type RoomHandler struct {
-	Repo   *repository.Queries
-	Pool   *pgxpool.Pool
-	PubSub *redisclient.PubSub
+	Repo      *repository.Queries
+	Pool      *pgxpool.Pool
+	PubSub    *redisclient.PubSub
+	Publisher *events.EventPublisher
+	Validator *validator.EconomicValidator
 }
 
 // publishRoomSnapshot serialises the room item and publishes it to the room's Redis channel.
@@ -37,6 +41,16 @@ func (h *RoomHandler) publishRoomSnapshot(ctx context.Context, item roomItem) {
 		log.Printf("[RoomHandler] failed to publish room snapshot for room %d: %v", item.RoomID, err)
 	}
 }
+
+// InsufficientBalanceError is returned with HTTP 402 when a user lacks funds.
+type InsufficientBalanceError struct {
+	Message        string `json:"message"`
+	Required       int32  `json:"required"`
+	CurrentBalance int32  `json:"current_balance"`
+	Shortfall      int32  `json:"shortfall"`
+}
+
+func (e *InsufficientBalanceError) Error() string { return e.Message }
 
 // --- Shared response types ---
 
@@ -276,42 +290,27 @@ type ValidateRoomRequest struct {
 
 type ValidateRoomResponse struct {
 	Body struct {
-		PrizeFund    int32    `json:"prize_fund"`
-		OrganiserCut int32    `json:"organiser_cut"`
-		PlayerROI    float64  `json:"player_roi"`
-		Warnings     []string `json:"warnings"`
+		PrizeFund     int32    `json:"prize_fund"`
+		OrganiserCut  int32    `json:"organiser_cut"`
+		PlayerROI     float64  `json:"player_roi"`
+		PlayerWinProb float64  `json:"player_win_probability"`
+		Warnings      []string `json:"warnings"`
 	}
 }
 
 func (h *RoomHandler) Validate(_ context.Context, req *ValidateRoomRequest) (*ValidateRoomResponse, error) {
-	fullJackpot := req.Body.PlayersNeeded * req.Body.EntryCost
-	prizeFund := fullJackpot * req.Body.WinnerPct / 100
-	organiserCut := fullJackpot - prizeFund
-
-	var playerROI float64
-	if req.Body.EntryCost > 0 {
-		playerROI = float64(prizeFund) / float64(req.Body.EntryCost)
+	v := h.Validator
+	if v == nil {
+		v = &validator.EconomicValidator{}
 	}
-
-	var warnings []string
-	if playerROI < 1.5 {
-		warnings = append(warnings, "prize fund may be unattractive to players")
-	}
-	if fullJackpot > 0 && float64(organiserCut) < float64(fullJackpot)*0.10 {
-		warnings = append(warnings, "organiser margin is very low")
-	}
-	if req.Body.WinnerPct > 95 {
-		warnings = append(warnings, "winner_pct leaves no organiser margin")
-	}
-	if req.Body.WinnerPct < 50 {
-		warnings = append(warnings, "winner receives less than half the jackpot")
-	}
+	result := v.ValidateRoomConfig(req.Body.PlayersNeeded, req.Body.EntryCost, req.Body.WinnerPct)
 
 	resp := &ValidateRoomResponse{}
-	resp.Body.PrizeFund = prizeFund
-	resp.Body.OrganiserCut = organiserCut
-	resp.Body.PlayerROI = playerROI
-	resp.Body.Warnings = warnings
+	resp.Body.PrizeFund = result.PrizeFund
+	resp.Body.OrganiserCut = result.OrganiserCut
+	resp.Body.PlayerROI = result.PlayerROI
+	resp.Body.PlayerWinProb = result.PlayerWinProb
+	resp.Body.Warnings = result.Warnings
 	return resp, nil
 }
 
@@ -373,7 +372,12 @@ func (h *RoomHandler) JoinRoom(ctx context.Context, req *JoinRoomRequest) (*Room
 		return nil, err
 	}
 	if user.Balance < room.EntryCost {
-		return nil, huma.Error402PaymentRequired("insufficient balance to join room", nil)
+		return nil, huma.Error402PaymentRequired("Insufficient balance for entry", &InsufficientBalanceError{
+			Message:        "Insufficient balance for entry",
+			Required:       room.EntryCost,
+			CurrentBalance: user.Balance,
+			Shortfall:      room.EntryCost - user.Balance,
+		})
 	}
 
 	// Pre-check: user not already in room
@@ -439,6 +443,12 @@ func (h *RoomHandler) JoinRoom(ctx context.Context, req *JoinRoomRequest) (*Room
 
 	item := roomToItem(updatedRoom)
 	h.publishRoomSnapshot(ctx, item)
+
+	// Publish player_joined event (Requirement 1.1)
+	if h.Publisher != nil {
+		h.Publisher.PublishPlayerJoined(ctx, req.RoomID, req.Body.UserID, places)
+	}
+
 	return roomItemToResponse(item), nil
 }
 
@@ -577,7 +587,12 @@ func (h *RoomHandler) BoostRoom(ctx context.Context, req *BoostRoomRequest) (*Ro
 		return nil, err
 	}
 	if user.Balance < req.Body.Amount {
-		return nil, huma.Error402PaymentRequired("insufficient balance for boost", nil)
+		return nil, huma.Error402PaymentRequired("Insufficient balance for boost", &InsufficientBalanceError{
+			Message:        "Insufficient balance for boost",
+			Required:       req.Body.Amount,
+			CurrentBalance: user.Balance,
+			Shortfall:      req.Body.Amount - user.Balance,
+		})
 	}
 
 	// Pre-check: no existing boost for this user+room
@@ -587,7 +602,7 @@ func (h *RoomHandler) BoostRoom(ctx context.Context, req *BoostRoomRequest) (*Ro
 	}
 	for _, b := range boosts {
 		if b.UserID == req.Body.UserID {
-			return nil, huma.Error409Conflict("user has already boosted this room", nil)
+			return nil, huma.Error409Conflict("You have already boosted this room", nil)
 		}
 	}
 
@@ -600,7 +615,7 @@ func (h *RoomHandler) BoostRoom(ctx context.Context, req *BoostRoomRequest) (*Ro
 		// Catch DB-level unique violation as fallback
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			return nil, huma.Error409Conflict("user has already boosted this room", nil)
+			return nil, huma.Error409Conflict("You have already boosted this room", nil)
 		}
 		return nil, err
 	}
@@ -608,6 +623,11 @@ func (h *RoomHandler) BoostRoom(ctx context.Context, req *BoostRoomRequest) (*Ro
 	// Publish updated room snapshot after successful boost
 	if room, rErr := h.Repo.GetRoom(ctx, repository.GetRoomParams{RoomID: req.RoomID}); rErr == nil {
 		h.publishRoomSnapshot(ctx, roomToItem(room))
+	}
+
+	// Publish boost_applied event (Requirement 1.2)
+	if h.Publisher != nil {
+		h.Publisher.PublishBoostApplied(ctx, req.RoomID, req.Body.UserID, req.Body.Amount)
 	}
 
 	resp := &RoomBoostResponse{}
