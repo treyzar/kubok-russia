@@ -31,11 +31,11 @@ export function CardTestPage({ user, onBackToHome, onLogout }: CardTestPageProps
 
   const wagons = useMemo(
     () => [
-      '/dev-assets/images/train.svg',
-      '/dev-assets/images/train_2.svg',
-      '/dev-assets/images/train_3.svg',
-      '/dev-assets/images/train_4.svg',
-      '/dev-assets/images/train_5.svg',
+      '/dev-assets/images/card_with_peoples.svg',
+      '/dev-assets/images/card_with_mascot.svg',
+      '/dev-assets/card_with_products.svg',
+      '/dev-assets/images/fridge.svg',
+      '/dev-assets/images/big_fridge.svg',
     ],
     [],
   )
