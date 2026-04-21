@@ -5,6 +5,7 @@ import { type AuthUser, getStoredUser, logoutMock } from '@/features/mock-auth/m
 import { AuthLandingHero } from '@/pages/auth/ui/auth-landing-hero'
 import { AuthLoginForm } from '@/pages/auth/ui/auth-login-form'
 import { HomePage } from '@/pages/home'
+import { NotFoundPage } from '@/pages/not-found'
 
 export function App() {
   const navigate = useNavigate()
@@ -32,7 +33,7 @@ export function App() {
         path="/games"
         element={user ? <HomePage onLogout={handleLogout} user={user} /> : <Navigate replace to="/auth" />}
       />
-      <Route path="*" element={<Navigate replace to="/" />} />
+      <Route path="*" element={<NotFoundPage />} />
     </Routes>
   )
 }
