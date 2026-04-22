@@ -252,4 +252,62 @@ func MountRoutes(api huma.API, r *gin.Engine, repo *repository.Queries, pool *pg
 		Method:      "POST",
 		Path:        "/fair-rooms/{id}/start",
 	}, fairHandler.Start)
+
+	// Admin panel
+	adminStatsService := service.NewAdminStatsService(repo, pool)
+	templateLifecycleManager := service.NewTemplateLifecycleManager(repo, pool)
+	adminHandler := handlers.AdminHandler{
+		Repo:                     repo,
+		Pool:                     pool,
+		StatsService:             adminStatsService,
+		TemplateLifecycleManager: templateLifecycleManager,
+	}
+
+	huma.Register(api, huma.Operation{
+		OperationID: "validate-template",
+		Method:      "POST",
+		Path:        "/admin/templates/validate",
+		Summary:     "Validate template parameters and get recommendations",
+		Tags:        []string{"admin"},
+	}, adminHandler.ValidateTemplate)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "get-template-statistics-list",
+		Method:      "GET",
+		Path:        "/admin/statistics/templates",
+		Summary:     "Get list of all templates with statistics",
+		Tags:        []string{"admin"},
+	}, adminHandler.GetTemplateStatisticsList)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "get-template-statistics-detail",
+		Method:      "GET",
+		Path:        "/admin/statistics/templates/{template_id}",
+		Summary:     "Get detailed statistics for a specific template",
+		Tags:        []string{"admin"},
+	}, adminHandler.GetTemplateStatisticsDetail)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "get-template-status",
+		Method:      "GET",
+		Path:        "/admin/templates/{template_id}/status",
+		Summary:     "Get template status including active/waiting room counts",
+		Tags:        []string{"admin"},
+	}, adminHandler.GetTemplateStatus)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "admin-delete-template",
+		Method:      "DELETE",
+		Path:        "/admin/templates/{template_id}",
+		Summary:     "Delete template with safe room handling",
+		Tags:        []string{"admin"},
+	}, adminHandler.DeleteTemplate)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "admin-update-template",
+		Method:      "PUT",
+		Path:        "/admin/templates/{template_id}",
+		Summary:     "Update template with safe room handling",
+		Tags:        []string{"admin"},
+	}, adminHandler.UpdateTemplate)
 }

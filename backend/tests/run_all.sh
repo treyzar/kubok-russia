@@ -18,6 +18,7 @@ SUITES=(
     "Room Places|tests/room_places/run.sh"
     "Fair Rooms|tests/fair_rooms/run.sh"
     "Template Settings|tests/template_settings/run.sh"
+    "Admin Handler|tests/admin_handler/run.sh"
 )
 
 declare -a RESULTS   # "suite|passed|failed|status"
