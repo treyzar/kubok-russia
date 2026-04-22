@@ -8,3 +8,13 @@ This Replit hosts the **frontend** (React + Vite + TypeScript + Tailwind v4) of 
 
 ## Deployment
 - Autoscale: build `npm --prefix frontend run build`, run `npm --prefix frontend run preview`.
+
+## Java/Spring Boot port (`backend-java/`)
+- Java 21 + Spring Boot 3.3 port of the Go backend. Single process replaces the
+  three Go services (api / room_manager / bot_manager) using `@Scheduled` jobs.
+- Layout: `controller/` (REST + WS), `service/` (business logic),
+  `scheduler/` (cron jobs), `events/` (Redis pub/sub bridge), `repository/`
+  (Spring Data JPA), `domain/` (entities + enums), Flyway migration consolidating
+  the 18 goose migrations into `src/main/resources/db/migration/V1__init_schema.sql`.
+- Run: `mvn -f backend-java/pom.xml spring-boot:run` (requires Postgres + Redis).
+- See `backend-java/MIGRATION.md` for the full Go → Java mapping.
