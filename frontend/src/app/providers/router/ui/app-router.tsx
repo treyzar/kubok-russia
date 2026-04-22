@@ -10,6 +10,7 @@ import { LobbyPage } from '@pages/lobby'
 import { NotFoundPage } from '@pages/not-found'
 
 import { routePaths } from '../config/route-paths'
+import FridgeGamePage from '@/pages/fridge-game/ui/fridge-game-page'
 
 export function AppRouter() {
   const navigate = useNavigate()
@@ -95,6 +96,16 @@ export function AppRouter() {
         element={
           user ? (
             <LobbyPage onBackToGames={handleBackToGames} onCreateGame={handleGoToCreateGame} onStartGame={handleBackToGames} />
+          ) : (
+            <Navigate replace to={routePaths.auth} />
+          )
+        }
+      />
+      <Route
+        path={routePaths.fridgeGame}
+        element={
+          user ? (
+            <FridgeGamePage />
           ) : (
             <Navigate replace to={routePaths.auth} />
           )
