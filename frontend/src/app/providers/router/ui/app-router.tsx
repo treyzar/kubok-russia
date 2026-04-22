@@ -6,6 +6,7 @@ import { AuthLandingHero, AuthLoginForm } from '@pages/auth'
 import { CreateGamePage } from '@pages/create-game'
 import { HomePage } from '@pages/home'
 import { JoinGamePage } from '@pages/join-game'
+import { LobbyPage } from '@pages/lobby'
 import { NotFoundPage } from '@pages/not-found'
 
 import { routePaths } from '../config/route-paths'
@@ -36,6 +37,10 @@ export function AppRouter() {
     navigate(routePaths.games)
   }
 
+  function handleGoToLobby(): void {
+    navigate(routePaths.gamesLobby)
+  }
+
   return (
     <Routes>
       <Route path={routePaths.root} element={<AuthLandingHero onEnterLogin={() => navigate(routePaths.auth)} />} />
@@ -60,6 +65,7 @@ export function AppRouter() {
             <CreateGamePage
               onBackToGames={handleBackToGames}
               onJoinGame={handleGoToJoinGame}
+              onOpenLobby={handleGoToLobby}
               onLogout={handleLogout}
               user={user}
             />
@@ -75,9 +81,20 @@ export function AppRouter() {
             <JoinGamePage
               onBackToGames={handleBackToGames}
               onCreateGame={handleGoToCreateGame}
+              onOpenLobby={handleGoToLobby}
               onLogout={handleLogout}
               user={user}
             />
+          ) : (
+            <Navigate replace to={routePaths.auth} />
+          )
+        }
+      />
+      <Route
+        path={routePaths.gamesLobby}
+        element={
+          user ? (
+            <LobbyPage onBackToGames={handleBackToGames} onCreateGame={handleGoToCreateGame} onStartGame={handleBackToGames} />
           ) : (
             <Navigate replace to={routePaths.auth} />
           )

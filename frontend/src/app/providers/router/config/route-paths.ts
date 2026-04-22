@@ -4,4 +4,5 @@ export const routePaths = {
   games: '/games',
   gamesCreate: '/games/create',
   gamesJoin: '/games/join',
+  gamesLobby: '/games/lobby',
 } as const
