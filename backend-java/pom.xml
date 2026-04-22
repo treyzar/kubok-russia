@@ -16,7 +16,7 @@
     <description>Java/Spring Boot port of the Go online-shop backend (rooms + provably fair rooms)</description>
 
     <properties>
-        <java.version>21</java.version>
+        <java.version>17</java.version>
     </properties>
 
     <dependencies>
