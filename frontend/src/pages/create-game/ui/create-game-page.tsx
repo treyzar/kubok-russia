@@ -8,12 +8,13 @@ type CreateGamePageProps = {
   user: AuthUser
   onBackToGames: () => void
   onJoinGame: () => void
+  onOpenLobby: () => void
   onLogout: () => void
 }
 
 type GameBackground = 'altai' | 'space' | 'japan'
 
-export function CreateGamePage({ onBackToGames, onJoinGame, onLogout, user }: CreateGamePageProps) {
+export function CreateGamePage({ onBackToGames, onJoinGame, onOpenLobby, onLogout, user }: CreateGamePageProps) {
   const [playersCount, setPlayersCount] = useState('10')
   const [startPrice, setStartPrice] = useState('3000')
   const [background, setBackground] = useState<GameBackground>('altai')
@@ -240,6 +241,7 @@ export function CreateGamePage({ onBackToGames, onJoinGame, onLogout, user }: Cr
             <div className="mt-4 flex justify-end">
               <Button
                 className="h-[54px] min-w-[138px] rounded-[10px] bg-[#6B22F5] px-8 text-[38px] font-semibold text-white shadow-[0_10px_20px_rgba(68,44,229,0.38)] transition-[transform,box-shadow,background-color,color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-[1px] hover:bg-[#7D38FF] hover:text-white hover:shadow-[0_16px_30px_rgba(86,58,240,0.50)] active:translate-y-0 active:scale-[0.98]"
+                onClick={onOpenLobby}
                 type="button"
               >
                 Начать
