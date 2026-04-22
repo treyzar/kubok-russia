@@ -48,16 +48,28 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED).body(m);
     }
 
-    @ExceptionHandler({RoomFullException.class, RoomNotAcceptingException.class,
-                       RoomNotWaitingException.class, PlayerNotInRoomException.class})
+    @ExceptionHandler({RoomNotWaitingException.class, PlayerNotInRoomException.class})
     public ResponseEntity<?> handleBadRequest(RuntimeException e) {
         return body(HttpStatus.BAD_REQUEST, e.getMessage());
     }
 
     @ExceptionHandler({DuplicatePlayerException.class, DuplicateBoostException.class,
-                       TemplateInUseException.class, DataIntegrityViolationException.class})
+                       TemplateInUseException.class, RoomFullException.class,
+                       RoomNotAcceptingException.class})
     public ResponseEntity<?> handleConflict(RuntimeException e) {
         return body(HttpStatus.CONFLICT, e.getMessage());
+    }
+
+    /** Translate Postgres unique-constraint violations to Go's exact wording where possible. */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<?> handleIntegrity(DataIntegrityViolationException e) {
+        String raw = e.getMostSpecificCause() != null ? e.getMostSpecificCause().getMessage() : e.getMessage();
+        String msg = raw == null ? "constraint violation" : raw;
+        if (raw != null && (raw.contains("room_templates_name_key")
+                || raw.toLowerCase().contains("name") && raw.contains("unique"))) {
+            msg = "template name already exists";
+        }
+        return body(HttpStatus.CONFLICT, msg);
     }
 
     @ExceptionHandler(CreditFailedException.class)

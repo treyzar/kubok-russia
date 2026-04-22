@@ -19,11 +19,21 @@ public class User {
 
     /** Game currency — stored as INTEGER to match Go schema (mig 006). */
     @Column(nullable = false)
+    @lombok.Builder.Default
     private Integer balance = 0;
 
     @Column(nullable = false)
+    @lombok.Builder.Default
     private Boolean bot = Boolean.FALSE;
 
     @Column(name = "created_at", nullable = false, updatable = false)
+    @lombok.Builder.Default
     private Instant createdAt = Instant.now();
+
+    @PrePersist
+    void prePersist() {
+        if (createdAt == null) createdAt = Instant.now();
+        if (balance == null) balance = 0;
+        if (bot == null) bot = Boolean.FALSE;
+    }
 }

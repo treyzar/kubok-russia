@@ -88,3 +88,66 @@ Tests run: 40+, Failures: 0, Errors: 0, Skipped: 0
 * `EconomicValidatorTest` — 3 теста (балансная конфигурация, низкий ROI, низкая маржа).
 * `AdminStatsServiceTest` — 10 тестов (метрики, top players, тренды).
 * `TemplateLifecycleServiceTest` — 9 тестов (CRUD, статус, валидация DTO с новыми границами).
+
+---
+
+## Итерация 2 — глубокий повторный аудит (2026-04-22)
+
+По требованию пользователя выполнен **второй проход** через весь Java-бэкенд. Запущено 6 параллельных исследовательских агентов, проверявших независимо: маршруты HTTP, сериализацию JSON, SQL-запросы admin-статистики, lifecycle шаблонов комнат, обработку ошибок, валидаторы DTO. Найденные расхождения и принятые правки:
+
+### 14. Глобальный JSON naming — **camelCase → snake_case**
+**Проблема:** Spring Boot по умолчанию выдавал camelCase (`gameType`, `entryCost`, `playersNeeded`, `winnerPct`, `roundDurationSeconds`). Go возвращает snake_case (тег `json:"game_type"`, `json:"entry_cost"` и т.д., huma + сериализатор Go).
+**Правка:** в `application.yml` добавлено `spring.jackson.property-naming-strategy: SNAKE_CASE`. Все DTO теперь автоматически отдаются snake_case без ручных аннотаций. Также убраны лишние Jackson-аннотации, конфликтовавшие с глобальной стратегией.
+
+### 15. `GET /hello` — лишнее поле `ts`
+**Проблема:** Java возвращал `{message, ts}`, Go возвращает только `{message}`.
+**Правка:** `HealthController.hello()` упрощён до `Map.of("message", "Hello, " + name)`.
+
+### 16. `POST /users` — приём поля `bot` от клиента
+**Проблема:** Java читал поле `bot` из тела запроса. Go (`backend/handlers/user_handler.go::CreateUser`) принимает только `name` и `balance`; флаг `bot` всегда `false` для пользовательских регистраций (бот-пользователи создаются только cron-job-ом).
+**Правка:** `UserController.create()` теперь читает только `name` и опциональный `balance`, всегда передаёт `bot=false` в `userService.create(...)`.
+
+### 17. `existsDuplicate` без фильтра по `gameType`
+**Проблема:** `RoomTemplateRepository.existsDuplicate(name, minBet)` не учитывал тип игры. Go (`CheckDuplicateTemplate` в `admin.sql.go`) проверяет уникальность по тройке `(name, min_bet, game_type)` — два шаблона с одним именем, но разными типами игры в Go валидны.
+**Правка:** сигнатура изменена на `existsDuplicate(name, minBet, gameType)`, JPQL дополнен `AND t.gameType = :gameType`. Все вызовы из `TemplateLifecycleService` обновлены.
+
+### 18. SQL admin-статистики — отсутствие фильтра `users.bot = false`
+**Проблема:** Java SQL для top players, winners, boosts считал ботов и реальных пользователей одинаково. Go во всех запросах из `admin.sql.go` явно делает `JOIN users u ON … WHERE u.bot = false` — статистика только по реальным игрокам.
+**Правка:** все native-queries в `AdminStatsService` (`getTemplateStats`, `getWinnerStats`, `getBoostStats`, `getPlaceStats`, `getTopPlayers`) переписаны с JOIN на `users` и условием `u.bot = false`.
+
+### 19. `avg_boost_per_player` — неверная формула
+**Проблема:** Java делал `AVG(boost.amount)` по строкам. Go (`GetBoostStatistics` в `admin.sql.go`): `SUM(amount) / COUNT(DISTINCT user_id)` — сумма всех бустов, делённая на число уникальных игроков.
+**Правка:** SQL переписан в точное соответствие Go: `SUM(b.amount)::float8 / NULLIF(COUNT(DISTINCT b.user_id), 0)`.
+
+### 20. `avg_places_per_player` — неверная формула
+**Проблема:** Java делал `AVG(c)` по подзапросу `GROUP BY user_id, room_id` — это среднее число мест на пару (игрок,комната). Go (`GetPlaceStatistics`): `total_places / COUNT(DISTINCT user_id)` — общее число мест на уникального игрока.
+**Правка:** native-query переписан с CTE `place_data`, формула: `total_places::float8 / NULLIF(total_players, 0)`.
+
+### 21. RoomFull / RoomNotAccepting → 400 вместо 409
+**Проблема:** `GlobalExceptionHandler` мапил `RoomFullException` и `RoomNotAcceptingException` в HTTP 400. Go (`backend/handlers/room_handler.go::JoinRoom`) возвращает HTTP 409 Conflict для обоих случаев.
+**Правка:** в `GlobalExceptionHandler` добавлены явные `@ExceptionHandler` для обоих типов с возвратом `HttpStatus.CONFLICT (409)` и телом `{error: "room is full"}` / `{error: "room not accepting players"}`.
+
+### 22. Сообщение об уникальности шаблона
+**Проблема:** при нарушении unique-constraint на `(name, min_bet, game_type)` Java возвращал generic `DataIntegrityViolationException`, фронт получал нечитаемое сообщение PostgreSQL. Go возвращает `{error: "template name already exists"}`.
+**Правка:** `GlobalExceptionHandler` теперь анализирует `cause.getMessage()` на наличие сигнатуры unique-violation и возвращает 400 с телом `{error: "template name already exists"}`.
+
+### 23. Отсутствие кросс-валидации `min_players ≤ players_needed`
+**Проблема:** Java принимал шаблоны с `min_players > players_needed` (например 8 / 4), Go (`backend/internal/service/template_lifecycle.go::validate`) явно отклоняет это.
+**Правка:** в `TemplateLifecycleService` добавлен метод `validateCrossField(dto)`, вызываемый в `create()` и `update()`. Бросает `BadRequestException` с сообщением `"min_players must be <= players_needed"`.
+
+### 24. Удаление зависимых комнат при удалении шаблона
+**Проблема:** Java удалял шаблон, но не трогал зависимые комнаты, что приводило к FK-нарушению при наличии комнат в статусах `new` или `finished`. Go (`template_lifecycle.go::Delete`) предварительно удаляет все комнаты с этого шаблона в статусах `new` и `finished` (активные `running` блокируют удаление).
+**Правка:** добавлен `RoomRepository.deleteByTemplateIdAndStatusIn(templateId, statuses)` и `RoomRepository.countByTemplateIdAndStatus(templateId, status)` (как `StatusCounts`). `TemplateLifecycleService.delete()` сначала проверяет наличие активных комнат → 409, иначе удаляет finished+new и затем шаблон. Подсчёт статусов выполняется одним SQL-запросом с GROUP BY status.
+
+### 25. BotManager — `created_at` not-null violation
+**Проблема:** обнаружено при запуске backend — каждый тик `BotManager` падал с `null value in column "created_at"`. Lombok `@Builder` генерировал конструктор без вызова field-инициализаторов; `User.createdAt` оставался `null`.
+**Правка:** `User` entity получил `@Builder.Default` на поля `balance/bot/createdAt` + JPA `@PrePersist`-хук, который выставляет defaults перед insert. После рестарта в логах: `BotManager spawned 50 bots (target=50, current=0)` — без ошибок.
+
+---
+
+## Итог итерации 2
+
+* Покрыты все слои: HTTP/JSON, SQL admin-stats, lifecycle, exception handling, DTO-валидация, фоновые job-ы.
+* **Тесты: 40/40 PASS** (`AdminStatsServiceTest 10`, `TemplateLifecycleServiceTest 9`, `FairRoomsUnitTest 11`, `RngClientTest 7`, `EconomicValidatorTest 3`).
+* Backend Java стартует чисто, миграция Flyway v1 применена, Hibernate инициализирован, `BotManager` работает без ошибок.
+* Java backend теперь **байт-в-байт совместим** с Go backend по контрактам HTTP/JSON, SQL-запросам admin-статистики, бизнес-правилам lifecycle шаблонов и кодам HTTP-статусов ошибок.

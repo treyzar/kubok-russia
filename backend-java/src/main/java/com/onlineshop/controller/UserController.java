@@ -21,8 +21,7 @@ public class UserController {
     public User create(@RequestBody Map<String, Object> body) {
         String name = (String) body.get("name");
         Object bal = body.getOrDefault("balance", 0);
-        Object bot = body.getOrDefault("bot", false);
-        return users.create(name, ((Number) bal).intValue(), Boolean.TRUE.equals(bot));
+        return users.create(name, ((Number) bal).intValue(), false);
     }
 
     @GetMapping

@@ -33,18 +33,26 @@ public class AdminStatsService {
     @Transactional(readOnly = true)
     public HistoricalMetrics getHistoricalMetrics() {
         Instant since = Instant.now().minus(7, ChronoUnit.DAYS);
+        // Mirrors Go GetHistoricalMetrics in repository/admin.sql.go: real-player count
+        // EXCLUDES bots via JOIN users + FILTER (WHERE u.bot = false).
         Object[] row = (Object[]) em.createNativeQuery("""
-                SELECT
-                    COALESCE(AVG(real_player_count), 0)::float8 AS avg_real_players_per_room,
-                    COALESCE(AVG(rt.entry_cost), 0)::float8     AS avg_entry_cost,
-                    COUNT(*)::bigint                            AS total_completed_rooms
-                FROM (
-                    SELECT r.room_id, r.template_id,
-                           (SELECT COUNT(*) FROM room_players p WHERE p.room_id = r.room_id) AS real_player_count
+                WITH completed_rooms AS (
+                    SELECT
+                        r.room_id,
+                        r.entry_cost,
+                        COUNT(DISTINCT rp.user_id) FILTER (WHERE u.bot = false) AS real_players
                     FROM rooms r
-                    WHERE r.status = 'finished' AND r.created_at >= :since
-                ) sub
-                LEFT JOIN room_templates rt ON rt.template_id = sub.template_id
+                    LEFT JOIN room_players rp ON r.room_id = rp.room_id
+                    LEFT JOIN users u ON rp.user_id = u.id
+                    WHERE r.status = 'finished'
+                      AND r.created_at >= :since
+                    GROUP BY r.room_id, r.entry_cost
+                )
+                SELECT
+                    COALESCE(AVG(real_players), 0)::float8 AS avg_real_players_per_room,
+                    COALESCE(AVG(entry_cost), 0)::float8   AS avg_entry_cost,
+                    COUNT(*)::bigint                       AS total_completed_rooms
+                FROM completed_rooms
                 """)
                 .setParameter("since", since)
                 .getSingleResult();
@@ -84,7 +92,8 @@ public class AdminStatsService {
     @Transactional(readOnly = true)
     public boolean checkDuplicate(TemplateDto dto) {
         return templateRepo.existsDuplicate(
-                dto.playersNeeded(), dto.minPlayers(), dto.entryCost(), dto.winnerPct());
+                dto.playersNeeded(), dto.minPlayers(), dto.entryCost(), dto.winnerPct(),
+                dto.gameType());
     }
 
     /**
@@ -115,8 +124,11 @@ public class AdminStatsService {
 
     @Transactional(readOnly = true)
     public boolean checkDuplicateAdmin(AdminValidateTemplateRequest dto) {
+        com.onlineshop.domain.enums.GameType gt = dto.gameType() == null || dto.gameType().isBlank()
+                ? com.onlineshop.domain.enums.GameType.TRAIN
+                : com.onlineshop.domain.enums.GameType.fromValue(dto.gameType());
         return templateRepo.existsDuplicate(
-                dto.playersNeeded(), dto.minPlayers(), dto.entryCost(), dto.winnerPct());
+                dto.playersNeeded(), dto.minPlayers(), dto.entryCost(), dto.winnerPct(), gt);
     }
 
     @Transactional(readOnly = true)
@@ -124,57 +136,86 @@ public class AdminStatsService {
         Instant[] range = parseRange(filter);
         Instant start = range[0], end = range[1];
 
+        // Mirrors Go GetTemplateStatistics: includes users JOIN with bot=false / bot=true filters.
         Object[] tpl = (Object[]) em.createNativeQuery("""
+                WITH template_rooms AS (
+                    SELECT r.room_id
+                    FROM rooms r
+                    WHERE r.template_id = :tid
+                      AND r.status = 'finished'
+                      AND r.created_at >= :start
+                      AND r.created_at <= :end
+                )
                 SELECT
-                    COUNT(*)::int                                                AS completed_rooms,
-                    COALESCE(SUM((SELECT COUNT(*) FROM room_players p WHERE p.room_id = r.room_id)), 0)::int AS total_real_players,
-                    0::int                                                        AS total_bots,
-                    COALESCE(AVG((SELECT COUNT(*) FROM room_players p WHERE p.room_id = r.room_id)), 0)::float8 AS avg_real_players_per_room
-                FROM rooms r
-                WHERE r.template_id = :tid AND r.status = 'finished'
-                  AND r.created_at BETWEEN :start AND :end
+                    COUNT(DISTINCT tr.room_id)::int AS completed_rooms,
+                    COUNT(DISTINCT rp.user_id) FILTER (WHERE u.bot = false)::int AS total_real_players,
+                    COUNT(DISTINCT rp.user_id) FILTER (WHERE u.bot = true)::int  AS total_bots,
+                    COALESCE(
+                        COUNT(DISTINCT rp.user_id) FILTER (WHERE u.bot = false)::float8 /
+                        NULLIF(COUNT(DISTINCT tr.room_id), 0),
+                        0
+                    )::float8 AS avg_real_players_per_room
+                FROM template_rooms tr
+                LEFT JOIN room_players rp ON tr.room_id = rp.room_id
+                LEFT JOIN users u ON rp.user_id = u.id
                 """)
                 .setParameter("tid", templateId)
                 .setParameter("start", start)
                 .setParameter("end", end)
                 .getSingleResult();
 
+        // Mirrors Go GetWinnerStatistics: split real/bot wins via users.bot.
         Object[] win = (Object[]) em.createNativeQuery("""
                 SELECT
-                    COUNT(*) FILTER (WHERE rw.user_id IS NOT NULL)::int AS real_player_wins,
-                    0::int                                              AS bot_wins
+                    COUNT(*) FILTER (WHERE u.bot = false)::int AS real_player_wins,
+                    COUNT(*) FILTER (WHERE u.bot = true)::int  AS bot_wins
                 FROM room_winners rw
-                JOIN rooms r ON r.room_id = rw.room_id
+                INNER JOIN users u ON rw.user_id = u.id
+                INNER JOIN rooms r ON r.room_id = rw.room_id
                 WHERE r.template_id = :tid
-                  AND rw.won_at BETWEEN :start AND :end
+                  AND rw.won_at >= :start AND rw.won_at <= :end
                 """)
                 .setParameter("tid", templateId)
                 .setParameter("start", start)
                 .setParameter("end", end)
                 .getSingleResult();
 
+        // Mirrors Go GetBoostStatistics: per-player avg = SUM/COUNT(DISTINCT user), not AVG(amount).
         Object[] boost = (Object[]) em.createNativeQuery("""
+                WITH boost_data AS (
+                    SELECT
+                        SUM(rb.amount)::bigint AS total_boost_amount,
+                        COUNT(DISTINCT rb.user_id)::int AS total_players,
+                        COUNT(DISTINCT rb.room_id)::int AS total_rooms
+                    FROM room_boosts rb
+                    INNER JOIN rooms r ON rb.room_id = r.room_id
+                    WHERE r.template_id = :tid
+                      AND rb.boosted_at >= :start AND rb.boosted_at <= :end
+                )
                 SELECT
-                    COALESCE(SUM(rb.amount), 0)::bigint    AS total_boost_amount,
-                    COALESCE(AVG(rb.amount), 0)::float8    AS avg_boost_per_player,
-                    COALESCE(SUM(rb.amount) / NULLIF(COUNT(DISTINCT rb.room_id), 0), 0)::float8 AS avg_boost_per_room
-                FROM room_boosts rb
-                JOIN rooms r ON r.room_id = rb.room_id
-                WHERE r.template_id = :tid
-                  AND rb.boosted_at BETWEEN :start AND :end
+                    COALESCE(total_boost_amount, 0)::bigint AS total_boost_amount,
+                    COALESCE(total_boost_amount::float8 / NULLIF(total_players, 0), 0)::float8 AS avg_boost_per_player,
+                    COALESCE(total_boost_amount::float8 / NULLIF(total_rooms, 0), 0)::float8   AS avg_boost_per_room
+                FROM boost_data
                 """)
                 .setParameter("tid", templateId)
                 .setParameter("start", start)
                 .setParameter("end", end)
                 .getSingleResult();
 
+        // Mirrors Go GetPlaceStatistics: total_places / DISTINCT players (not avg per group).
         Number avgPlaces = (Number) em.createNativeQuery("""
-                SELECT COALESCE(AVG(c), 0)::float8 FROM (
-                    SELECT COUNT(*) AS c FROM room_places p
-                    JOIN rooms r ON r.room_id = p.room_id
-                    WHERE r.template_id = :tid AND r.created_at BETWEEN :start AND :end
-                    GROUP BY p.user_id, p.room_id
-                ) x
+                WITH place_data AS (
+                    SELECT
+                        COUNT(*)::int AS total_places,
+                        COUNT(DISTINCT rpl.user_id)::int AS total_players
+                    FROM room_places rpl
+                    INNER JOIN rooms r ON rpl.room_id = r.room_id
+                    WHERE r.template_id = :tid
+                      AND rpl.created_at >= :start AND rpl.created_at <= :end
+                )
+                SELECT COALESCE(total_places::float8 / NULLIF(total_players, 0), 0)::float8
+                FROM place_data
                 """)
                 .setParameter("tid", templateId)
                 .setParameter("start", start)

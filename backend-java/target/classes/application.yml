@@ -4,6 +4,9 @@ server:
 spring:
   application:
     name: online-shop-java
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+    default-property-inclusion: non_null
   datasource:
     url: jdbc:postgresql://${PGHOST:localhost}:${PGPORT:5432}/${PGDATABASE:online_shop}
     username: ${PGUSER:postgres}

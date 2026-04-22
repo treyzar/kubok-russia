@@ -33,6 +33,7 @@ com/onlineshop/controller/UserController.class
 com/onlineshop/events/GameFinishedData.class
 com/onlineshop/dto/AdminDtos.class
 com/onlineshop/domain/entity/Room.class
+com/onlineshop/repository/RoomRepository$StatusCounts.class
 com/onlineshop/domain/enums/RiskLevel.class
 com/onlineshop/dto/AdminDtos$AdminValidateTemplateResponse.class
 com/onlineshop/domain/entity/FairPlayer$FairPlayerBuilder.class
