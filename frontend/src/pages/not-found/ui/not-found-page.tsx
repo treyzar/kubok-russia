@@ -1,7 +1,6 @@
 import { UserRound } from 'lucide-react'
 
-import { Button } from '@/shared/ui/button'
-import { MiniFooter } from '@/shared/ui/mini-footer'
+import { Button, MiniFooter } from '@shared/ui'
 
 const navItems = ['Об игре', 'Билеты', 'Архив тиражей']
 

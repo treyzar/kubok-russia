@@ -2,14 +2,14 @@ import { useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import { ArrowRight, Eye, EyeOff, LockKeyhole, Mail, Phone } from 'lucide-react'
 
-import { Button } from '@/shared/ui/button'
+import { Button } from '@shared/ui'
 import {
   type AuthLoginMethod,
   type AuthUser,
   getMockPassword,
   getMockUsers,
   loginWithMock,
-} from '@/features/mock-auth/model/mock-auth'
+} from '@entities/user'
 
 type AuthLoginFormProps = {
   onAuthSuccess: (user: AuthUser) => void

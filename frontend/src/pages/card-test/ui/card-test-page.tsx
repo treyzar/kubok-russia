@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, LogOut } from 'lucide-react'
 
-import { type AuthUser } from '@/features/mock-auth/model/mock-auth'
-import { Button } from '@/shared/ui/button'
+import { type AuthUser } from '@entities/user'
+import { Button } from '@shared/ui'
 
 type CardTestPageProps = {
   user: AuthUser

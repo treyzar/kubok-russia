@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import type { AuthUser } from '@/features/mock-auth/model/mock-auth'
+import type { AuthUser } from '@entities/user'
 
 import type { BoostState, ParticipantOdds, RoomActions, RoomState, RoundPhase, RoundTimelineEvent } from './types'
 
