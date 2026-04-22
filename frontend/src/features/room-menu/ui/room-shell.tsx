@@ -3,13 +3,15 @@ import type { ReactNode } from 'react'
 
 import { Button } from '@shared/ui'
 
-import type { BoostState, ParticipantOdds, RoomActions, RoomState, RoundTimelineEvent } from '../model'
+import type { BoostState, ParticipantOdds, RoomActions, RoomConfig, RoomState, RoundHistoryItem, RoundTimelineEvent } from '../model'
 
 type RoomShellProps = {
   room: RoomState
+  roomConfig: RoomConfig
   participants: ParticipantOdds[]
   boost: BoostState
   timeline: RoundTimelineEvent[]
+  roundHistory: RoundHistoryItem[]
   currentBalance: number
   selectedParticipantId: string | null
   errorMessage: string
@@ -35,9 +37,11 @@ function phaseLabel(room: RoomState): string {
 
 export function RoomShell({
   room,
+  roomConfig,
   participants,
   boost,
   timeline,
+  roundHistory,
   currentBalance,
   selectedParticipantId,
   errorMessage,
@@ -112,8 +116,11 @@ export function RoomShell({
             </div>
 
             <p className="mt-2 text-xs text-[#9EA8B7]">
-              Буст даёт +{boost.chanceBonusPercent}% к весу текущего игрока. Вероятности пересчитываются автоматически.
+              Буст даёт +{boost.chanceBonusPercent}% к весу текущего игрока. Фонд победителя: {roomConfig.prizeFundPercent}%.
             </p>
+            {boost.disabledReason ? (
+              <p className="mt-2 rounded-lg border border-[#555F72] bg-[#1A202B] px-3 py-2 text-sm text-[#C8D2E2]">{boost.disabledReason}</p>
+            ) : null}
             {errorMessage ? (
               <p className="mt-2 rounded-lg border border-[#A13A3A] bg-[#3A1C1C]/80 px-3 py-2 text-sm text-[#FFCACA]">{errorMessage}</p>
             ) : null}
@@ -121,6 +128,16 @@ export function RoomShell({
               <p className="mt-2 rounded-lg border border-[#5A4A12] bg-[#3B3212]/80 px-3 py-2 text-sm text-[#FFECA6]">
                 Победитель текущего раунда: <span className="font-semibold">{winner.name}</span>
               </p>
+            ) : null}
+            {room.phase === 'finished' ? (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <Button className="rounded-xl bg-[#A8E45E] text-[#101114] hover:bg-[#B8EE75]" onClick={actions.repeatRound}>
+                  Быстрый повтор
+                </Button>
+                <Button className="rounded-xl border-[#3A404A] bg-[#141923] text-[#E6ECF5] hover:bg-[#1D2430]" onClick={actions.refreshRoom} variant="outline">
+                  Подобрать похожую комнату
+                </Button>
+              </div>
             ) : null}
           </article>
 
@@ -173,6 +190,26 @@ export function RoomShell({
                   </li>
                 ))}
               </ul>
+            </section>
+            <section className="rounded-3xl border border-[#2E333A] bg-[#171B22]/95 p-4 shadow-[0_18px_40px_rgba(0,0,0,0.35)] sm:p-5">
+              <h3 className="text-base font-semibold text-[#F3F6FA]">Журнал раундов</h3>
+              {roundHistory.length === 0 ? (
+                <p className="mt-2 text-sm text-[#9EA8B7]">Пока нет завершенных раундов. Запустите игру для проверки прозрачности результата.</p>
+              ) : (
+                <ul className="mt-3 space-y-2">
+                  {roundHistory.map((item) => (
+                    <li className="rounded-lg border border-[#323944] bg-[#12161D] px-3 py-2" key={item.id}>
+                      <p className="text-xs text-[#99A3B2]">{item.finishedAt}</p>
+                      <p className="text-sm font-semibold text-[#E5EBF3]">{item.winnerName}</p>
+                      <p className="text-xs text-[#B9C6D9]">
+                        Игроков: {item.participantsTotal} (ботов: {item.botsTotal}) • Фонд: {item.jackpot.toLocaleString('ru-RU')} •
+                        Приз: {item.prize.toLocaleString('ru-RU')}
+                      </p>
+                      <p className="mt-1 text-xs text-[#8EA6C7]">{item.winnerReason}</p>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </section>
           </aside>
         </section>

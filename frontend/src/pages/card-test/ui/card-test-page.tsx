@@ -50,7 +50,6 @@ export function CardTestPage({ user, onBackToHome, onLogout }: CardTestPageProps
   const pausedRef = useRef(false)
   const isFocusAnimatingRef = useRef(false)
   const focusAnimationFrameRef = useRef<number | null>(null)
-  const focusAnimationTimeoutRef = useRef<number | null>(null)
   const dragStateRef = useRef<DragState>({
     isDragging: false,
     moved: false,
@@ -100,9 +99,6 @@ export function CardTestPage({ user, onBackToHome, onLogout }: CardTestPageProps
     if (focusAnimationFrameRef.current !== null) {
       cancelAnimationFrame(focusAnimationFrameRef.current)
       focusAnimationFrameRef.current = null
-    }
-    if (focusAnimationTimeoutRef.current !== null) {
-      window.clearTimeout(focusAnimationTimeoutRef.current)
     }
     track.style.transition = ''
 
@@ -224,12 +220,10 @@ export function CardTestPage({ user, onBackToHome, onLogout }: CardTestPageProps
 
     rafId = requestAnimationFrame(tick)
     return () => {
+      const focusFrameId = focusAnimationFrameRef.current
       cancelAnimationFrame(rafId)
-      if (focusAnimationFrameRef.current !== null) {
-        cancelAnimationFrame(focusAnimationFrameRef.current)
-      }
-      if (focusAnimationTimeoutRef.current !== null) {
-        window.clearTimeout(focusAnimationTimeoutRef.current)
+      if (focusFrameId !== null) {
+        cancelAnimationFrame(focusFrameId)
       }
     }
   }, [])

@@ -1,108 +1,26 @@
 import {
   ArrowLeft,
   ArrowRight,
-  Bell,
-  ChevronDown,
-  CircleDollarSign,
   LogOut,
   Newspaper,
-  Plus,
-  Send,
   Trophy,
 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { type AuthUser } from '@entities/user'
+import { useBodyScrollLock } from '@shared/lib'
 import { Button } from '@shared/ui'
+import { AppHeader } from '@widgets/header'
 
-type HomePageProps = {
-  user: AuthUser
-  onLogout: () => void
-  onCreateGame: () => void
-  onJoinGame: () => void
-}
+import {
+  NEWS_AUTOPLAY_MS,
+  NEWS_MANUAL_PAUSE_MS,
+  NEWS_SLIDE_TRANSITION_MS,
+  lastGames,
+  newsSlides,
+  type HomePageProps,
+} from '../model'
 
-type LastGameItem = {
-  id: string
-  title: string
-  amount: string
-  amountColor: string
-  image: string
-  bg: string
-}
-
-const lastGames: LastGameItem[] = [
-  {
-    id: '634010',
-    title: 'Игра №634010',
-    amount: '+30 110 ₽',
-    amountColor: 'text-[#25D347]',
-    image: '/dev-assets/images/card_with_mascot.svg',
-    bg: 'bg-[#5C2DFF]',
-  },
-  {
-    id: '620341',
-    title: 'Игра №620341',
-    amount: '-110 ₽',
-    amountColor: 'text-[#FF4040]',
-    image: '/dev-assets/images/card_with_peoples.svg',
-    bg: 'bg-[#FF1493]',
-  },
-  {
-    id: '619934',
-    title: 'Игра №619934',
-    amount: '+7 256 ₽',
-    amountColor: 'text-[#25D347]',
-    image: '/dev-assets/images/fridge.svg',
-    bg: 'bg-[#A7E35D]',
-  },
-  {
-    id: '592006',
-    title: 'Игра №592006',
-    amount: '+156 ₽',
-    amountColor: 'text-[#25D347]',
-    image: '/dev-assets/images/card_with_products.svg',
-    bg: 'bg-[#6E27F2]',
-  },
-  {
-    id: '589941',
-    title: 'Игра №589941',
-    amount: '+1 256 ₽',
-    amountColor: 'text-[#25D347]',
-    image: '/dev-assets/images/logo.svg',
-    bg: 'bg-[#FF2A1A]',
-  },
-]
-
-type NewsSlideItem = {
-  id: string
-  image: string
-  alt: string
-}
-
-const newsSlides: NewsSlideItem[] = [
-  {
-    id: 'coupon',
-    image: '/dev-assets/card_with_products.svg',
-    alt: 'Новостной баннер с акцией',
-  },
-  {
-    id: 'winners',
-    image: '/dev-assets/images/card_with_peoples.svg',
-    alt: 'Новостной баннер с победителями',
-  },
-  {
-    id: 'fridge',
-    image: '/dev-assets/images/fridge_with_blocks.svg',
-    alt: 'Новостной баннер с игровым холодильником',
-  },
-]
-
-const NEWS_AUTOPLAY_MS = 4200
-const NEWS_MANUAL_PAUSE_MS = 5000
-const NEWS_SLIDE_TRANSITION_MS = 860
-
-export function HomePage({ onCreateGame, onJoinGame, user, onLogout }: HomePageProps) {
+export function HomePage({ onBrandClick, onCreateGame, onJoinGame, user, onLogout }: HomePageProps) {
   const [newsSlideIndex, setNewsSlideIndex] = useState(0)
   const [isNewsAutoplayPaused, setIsNewsAutoplayPaused] = useState(false)
   const [newsIncomingSlideIndex, setNewsIncomingSlideIndex] = useState<number | null>(null)
@@ -193,18 +111,7 @@ export function HomePage({ onCreateGame, onJoinGame, user, onLogout }: HomePageP
     [newsSlideIndex, startNewsTransition],
   )
 
-  useEffect(() => {
-    const previousBodyOverflow = document.body.style.overflow
-    const previousHtmlOverflow = document.documentElement.style.overflow
-
-    document.body.style.overflow = 'hidden'
-    document.documentElement.style.overflow = 'hidden'
-
-    return () => {
-      document.body.style.overflow = previousBodyOverflow
-      document.documentElement.style.overflow = previousHtmlOverflow
-    }
-  }, [])
+  useBodyScrollLock()
 
   useEffect(() => {
     if (isNewsAutoplayPaused) {
@@ -237,51 +144,7 @@ export function HomePage({ onCreateGame, onJoinGame, user, onLogout }: HomePageP
   return (
     <main className="fixed inset-0 overflow-hidden overscroll-none bg-[#0F1014] text-[#F2F3F5]">
       <section className="flex h-full w-full flex-col overflow-hidden border border-[#2A2B31] bg-[#15161C]">
-          <header className="shrink-0 border-b border-[#2A2B31] bg-[#1B1C22] px-4 py-4 lg:px-8">
-            <div className="grid items-center gap-3 lg:grid-cols-[1fr_auto_1fr]">
-              <div className="flex items-center gap-3">
-                <img alt="Ночной жор" className="h-12 w-12 rounded-full bg-[#B4F25B] p-1.5" src="/dev-assets/images/logo.svg" />
-                <p className="text-[clamp(1.2rem,2.4vw,2rem)] leading-none font-semibold uppercase">Ночной Жор</p>
-              </div>
-
-              <div className="flex items-center justify-center gap-2">
-                <Button
-                  className="h-12 rounded-[10px] border border-[#E21F90] bg-[#3B2254] px-4 text-[0.96rem] font-semibold text-[#EDEAF7] hover:bg-[#47295F]"
-                  type="button"
-                  variant="outline"
-                >
-                  <CircleDollarSign className="mr-1 size-4 text-[#8E33FF]" />
-                  12 000.00
-                  <ChevronDown className="ml-1 size-4" />
-                </Button>
-                <Button
-                  className="h-12 w-12 rounded-[10px] bg-[#FF1894] p-0 text-white hover:bg-[#FF2AA0]"
-                  onClick={onCreateGame}
-                  type="button"
-                >
-                  <Plus className="size-6" />
-                </Button>
-              </div>
-
-              <div className="flex items-center justify-end gap-2">
-                <Button
-                  className="h-12 rounded-[10px] border border-[#7620F5] bg-[#2A1F44] px-3.5 text-[#F0ECFB] hover:bg-[#312550]"
-                  type="button"
-                  variant="outline"
-                >
-                  <img alt={user.name} className="mr-2 h-7 w-7 rounded-full object-cover" src="/dev-assets/images/card_with_peoples.svg" />
-                  <span className="max-w-[140px] truncate text-[0.95rem]">{user.name}</span>
-                  <ChevronDown className="ml-2 size-4" />
-                </Button>
-                <Button className="h-12 w-12 rounded-[10px] border border-[#3A3B42] bg-[#1C1D24] p-0" type="button" variant="outline">
-                  <Send className="size-5" />
-                </Button>
-                <Button className="h-12 w-12 rounded-[10px] border border-[#3A3B42] bg-[#1C1D24] p-0" type="button" variant="outline">
-                  <Bell className="size-5" />
-                </Button>
-              </div>
-            </div>
-          </header>
+          <AppHeader onBrandClick={onBrandClick} onCreateGame={onCreateGame} user={user} />
 
           <div className="grid min-h-0 flex-1 gap-5 overflow-hidden px-4 py-5 lg:grid-cols-[420px_1fr] lg:px-8 lg:py-6">
             <aside className="relative min-h-[360px] overflow-hidden rounded-[10px] border border-[#2B2C30] bg-[#14151A] sm:min-h-[430px] lg:h-full lg:min-h-0">
@@ -314,7 +177,7 @@ export function HomePage({ onCreateGame, onJoinGame, user, onLogout }: HomePageP
                 </h2>
 
                 <div className="mt-3 overflow-hidden rounded-[8px] border border-[#2D2E33]">
-                  <div className="relative h-[140px]">
+                  <div className="relative h-[220px]">
                     {newsSlides.map((slide, index) => {
                       const isCurrentSlide = index === newsSlideIndex
                       const isIncomingSlide = newsIncomingSlideIndex !== null && index === newsIncomingSlideIndex
@@ -364,7 +227,7 @@ export function HomePage({ onCreateGame, onJoinGame, user, onLogout }: HomePageP
                           }}
                           style={newsSlideTransitionStyle}
                         >
-                          <img alt={slide.alt} className="h-full w-full object-cover" loading="eager" src={slide.image} />
+                          <img alt={slide.alt} className="h-full w-full object-cover object-top" loading="eager" src={slide.image} />
                         </div>
                       )
                     })}
@@ -416,7 +279,7 @@ export function HomePage({ onCreateGame, onJoinGame, user, onLogout }: HomePageP
                   {lastGames.map((game) => (
                     <article key={game.id}>
                       <div className={`overflow-hidden rounded-[14px] ${game.bg}`}>
-                        <img alt={game.title} className="h-[120px] w-full object-cover object-center" src={game.image} />
+                        <img alt={game.title} className="h-[104px] w-full object-contain object-center p-2" src={game.image} />
                       </div>
                       <p className="mt-2 text-[1rem] text-[#A9ACB4]">{game.title}</p>
                       <p className={`text-[1rem] font-semibold ${game.amountColor}`}>{game.amount}</p>

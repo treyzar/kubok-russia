@@ -16,6 +16,10 @@ type AuthRecord = AuthUser & {
 }
 
 const STORAGE_KEY = 'kubok26.mock-auth.user'
+const BALANCE_FORMATTER = new Intl.NumberFormat('ru-RU', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+})
 
 function getStorage(): Storage | null {
   if (typeof window === 'undefined') {
@@ -146,4 +150,8 @@ export function logoutMock(): void {
 export function getMockPassword(username: string): string | null {
   const foundUser = MOCK_USERS.find((user) => user.username.toLowerCase() === username.trim().toLowerCase())
   return foundUser?.password ?? null
+}
+
+export function formatUserBalance(balance: number): string {
+  return BALANCE_FORMATTER.format(balance)
 }

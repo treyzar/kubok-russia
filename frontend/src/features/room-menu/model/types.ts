@@ -1,5 +1,12 @@
 export type RoundPhase = 'waiting' | 'filling' | 'countdown' | 'playing' | 'finished'
 
+export type RoomConfig = {
+  seatsTotal: number
+  entryCost: number
+  prizeFundPercent: number
+  boostPrice: number
+}
+
 export type RoomState = {
   id: string
   title: string
@@ -34,6 +41,21 @@ export type RoundTimelineEvent = {
   id: string
   text: string
   at: string
+}
+
+export type RoundHistoryItem = {
+  id: string
+  roomId: string
+  participantsTotal: number
+  botsTotal: number
+  jackpot: number
+  winnerName: string
+  prize: number
+  usedBoost: boolean
+  startedAt: string
+  finishedAt: string
+  winnerReason: string
+  balanceDelta: number
 }
 
 export type RoomActions = {
