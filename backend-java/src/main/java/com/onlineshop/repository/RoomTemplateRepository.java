@@ -16,7 +16,6 @@ public interface RoomTemplateRepository extends JpaRepository<RoomTemplate, Inte
              AND t.minPlayers = :minPlayers
              AND t.entryCost = :entryCost
              AND t.winnerPct = :winnerPct
-             AND t.gameType = com.onlineshop.domain.enums.GameType.JACKPOT
            """)
     boolean existsDuplicate(@Param("playersNeeded") Integer playersNeeded,
                             @Param("minPlayers") Integer minPlayers,

@@ -32,14 +32,14 @@ public class RoomTemplate {
     private Integer winnerPct = 80;
 
     @Column(name = "round_duration_seconds", nullable = false)
-    private Integer roundDurationSeconds = 60;
+    private Integer roundDurationSeconds = 30;
 
     @Column(name = "start_delay_seconds", nullable = false)
-    private Integer startDelaySeconds = 30;
+    private Integer startDelaySeconds = 60;
 
-    @Column(name = "game_type", nullable = false, length = 32)
-    @Enumerated(EnumType.STRING)
-    private GameType gameType = GameType.JACKPOT;
+    @Column(name = "game_type", nullable = false, length = 20)
+    @Convert(converter = Room.GameTypeConverter.class)
+    private GameType gameType = GameType.TRAIN;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
@@ -47,6 +47,5 @@ public class RoomTemplate {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt = Instant.now();
 
-    @PreUpdate
-    public void touch() { this.updatedAt = Instant.now(); }
+    @PreUpdate public void touch() { this.updatedAt = Instant.now(); }
 }

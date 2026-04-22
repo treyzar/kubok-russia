@@ -1,21 +1,14 @@
 package com.onlineshop.events;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.time.Instant;
-import java.util.Map;
 
-/**
- * Generic room event payload. Mirrors the Go events publisher format.
- */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record RoomEvent(
         String type,
-        String roomId,
+        @JsonProperty("room_id") int roomId,
         Instant timestamp,
-        Map<String, Object> data
-) {
-    public static RoomEvent of(String type, String roomId, Map<String, Object> data) {
-        return new RoomEvent(type, roomId, Instant.now(), data);
-    }
-}
+        Object data
+) {}

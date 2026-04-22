@@ -13,6 +13,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -23,31 +24,6 @@ public class AdminController {
     private final AdminStatsService stats;
     private final TemplateLifecycleService lifecycle;
     private final EconomicValidator economic;
-
-    // --- templates ---
-
-    @PostMapping("/templates")
-    public RoomTemplate create(@Valid @RequestBody TemplateDto dto) {
-        return lifecycle.create(dto);
-    }
-
-    @PutMapping("/templates/{id}")
-    public RoomTemplate update(@PathVariable Integer id, @Valid @RequestBody TemplateDto dto) {
-        return lifecycle.update(id, dto);
-    }
-
-    @DeleteMapping("/templates/{id}")
-    public ResponseEntity<Map<String, String>> delete(@PathVariable Integer id) {
-        lifecycle.delete(id);
-        return ResponseEntity.ok(Map.of("message", "deleted"));
-    }
-
-    @GetMapping("/templates/{id}/status")
-    public TemplateStatus status(@PathVariable Integer id) {
-        return lifecycle.getStatus(id);
-    }
-
-    // --- statistics & validation ---
 
     @PostMapping("/templates/validate")
     public TemplateValidationResponse validate(@Valid @RequestBody TemplateDto dto) {
@@ -64,16 +40,35 @@ public class AdminController {
         return Map.of("exists", stats.checkDuplicate(dto));
     }
 
-    @GetMapping("/metrics/historical")
-    public HistoricalMetrics historical() {
-        return stats.getHistoricalMetrics();
+    @GetMapping("/statistics/templates")
+    public Map<String, List<RoomTemplate>> listTemplates() {
+        return Map.of("templates", lifecycle.list());
     }
 
-    @GetMapping("/templates/{id}/stats")
-    public TemplateStats templateStats(@PathVariable Integer id,
+    @GetMapping("/statistics/templates/{id}")
+    public TemplateStats templateStats(@PathVariable("id") Integer id,
                                        @RequestParam(defaultValue = "all") String period,
                                        @RequestParam(required = false) Instant start,
                                        @RequestParam(required = false) Instant end) {
         return stats.getTemplateStatistics(id, new TimeFilter(period, start, end));
     }
+
+    @GetMapping("/templates/{id}/status")
+    public TemplateStatus status(@PathVariable Integer id) {
+        return lifecycle.getStatus(id);
+    }
+
+    @PutMapping("/templates/{id}")
+    public RoomTemplate update(@PathVariable Integer id, @Valid @RequestBody TemplateDto dto) {
+        return lifecycle.update(id, dto);
+    }
+
+    @DeleteMapping("/templates/{id}")
+    public ResponseEntity<Map<String, String>> delete(@PathVariable Integer id) {
+        lifecycle.delete(id);
+        return ResponseEntity.ok(Map.of("message", "deleted"));
+    }
+
+    @GetMapping("/metrics/historical")
+    public HistoricalMetrics historical() { return stats.getHistoricalMetrics(); }
 }

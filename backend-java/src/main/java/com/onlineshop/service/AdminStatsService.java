@@ -57,7 +57,11 @@ public class AdminStatsService {
 
     @Transactional(readOnly = true)
     public List<Warning> validateTemplate(TemplateDto dto) {
-        HistoricalMetrics m = getHistoricalMetrics();
+        return validateWithMetrics(dto, getHistoricalMetrics());
+    }
+
+    /** Pure function — extracted so it is unit-testable without a database. */
+    public static List<Warning> validateWithMetrics(TemplateDto dto, HistoricalMetrics m) {
         List<Warning> w = new ArrayList<>();
 
         if (dto.playersNeeded() == 1)
@@ -159,7 +163,7 @@ public class AdminStatsService {
                 avgPlaces.doubleValue());
     }
 
-    private Instant[] parseRange(TimeFilter f) {
+    public static Instant[] parseRange(TimeFilter f) {
         Instant now = Instant.now();
         Instant start, end;
         String period = f == null || f.period() == null ? "all" : f.period();

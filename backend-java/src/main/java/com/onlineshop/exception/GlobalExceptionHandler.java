@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.NoSuchElementException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -25,26 +26,27 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(status).body(m);
     }
 
-    @ExceptionHandler(RoomNotFoundException.class)
-    public ResponseEntity<?> handleNotFound(RoomNotFoundException e) {
+    @ExceptionHandler({RoomNotFoundException.class, NoSuchElementException.class})
+    public ResponseEntity<?> handleNotFound(RuntimeException e) {
         return body(HttpStatus.NOT_FOUND, e.getMessage());
     }
 
+    /** Insufficient balance maps to 402 (Payment Required) — matches Go. */
+    @ExceptionHandler(InsufficientBalanceException.class)
+    public ResponseEntity<?> handlePaymentRequired(InsufficientBalanceException e) {
+        return body(HttpStatus.PAYMENT_REQUIRED, e.getMessage());
+    }
+
     @ExceptionHandler({RoomFullException.class, RoomNotAcceptingException.class,
-                       RoomNotWaitingException.class, InsufficientBalanceException.class})
+                       RoomNotWaitingException.class, PlayerNotInRoomException.class})
     public ResponseEntity<?> handleBadRequest(RuntimeException e) {
         return body(HttpStatus.BAD_REQUEST, e.getMessage());
     }
 
-    @ExceptionHandler({DuplicatePlayerException.class, TemplateInUseException.class})
+    @ExceptionHandler({DuplicatePlayerException.class, TemplateInUseException.class,
+                       DataIntegrityViolationException.class})
     public ResponseEntity<?> handleConflict(RuntimeException e) {
         return body(HttpStatus.CONFLICT, e.getMessage());
-    }
-
-    @ExceptionHandler(DataIntegrityViolationException.class)
-    public ResponseEntity<?> handleDataIntegrity(DataIntegrityViolationException e) {
-        // Likely a unique constraint violation (e.g., duplicate fair_player).
-        return body(HttpStatus.CONFLICT, "data integrity violation");
     }
 
     @ExceptionHandler(CreditFailedException.class)

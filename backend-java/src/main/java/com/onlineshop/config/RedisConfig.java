@@ -1,6 +1,8 @@
 package com.onlineshop.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.onlineshop.events.RoomEventListener;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -20,7 +22,10 @@ public class RedisConfig {
 
     @Bean
     public ObjectMapper objectMapper() {
-        return new ObjectMapper();
+        ObjectMapper m = new ObjectMapper();
+        m.registerModule(new JavaTimeModule());
+        m.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        return m;
     }
 
     @Bean
@@ -30,7 +35,8 @@ public class RedisConfig {
         RedisMessageListenerContainer container = new RedisMessageListenerContainer();
         container.setConnectionFactory(cf);
         MessageListenerAdapter adapter = new MessageListenerAdapter(listener, "onMessage");
-        container.addMessageListener(adapter, new PatternTopic("room.events.*"));
+        // Subscribe to room:* (Go channel format)
+        container.addMessageListener(adapter, new PatternTopic("room:*"));
         return container;
     }
 }

@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.UUID;
 
 @Entity
@@ -29,4 +30,7 @@ public class FairPlayer {
 
     @Column(nullable = false)
     private Boolean refunded = false;
+
+    @Column(name = "joined_at", nullable = false, updatable = false)
+    private Instant joinedAt = Instant.now();
 }

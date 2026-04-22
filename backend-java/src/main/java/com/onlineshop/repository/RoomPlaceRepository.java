@@ -2,6 +2,7 @@ package com.onlineshop.repository;
 
 import com.onlineshop.domain.entity.RoomPlace;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -16,4 +17,8 @@ public interface RoomPlaceRepository extends JpaRepository<RoomPlace, RoomPlace.
 
     @Query("SELECT COALESCE(MAX(p.placeIndex), 0) FROM RoomPlace p WHERE p.roomId = :roomId")
     Optional<Integer> findMaxIndexByRoomId(@Param("roomId") Integer roomId);
+
+    @Modifying
+    @Query("DELETE FROM RoomPlace p WHERE p.roomId = :roomId AND p.userId = :userId")
+    int deleteAllByRoomIdAndUserId(@Param("roomId") Integer roomId, @Param("userId") Integer userId);
 }

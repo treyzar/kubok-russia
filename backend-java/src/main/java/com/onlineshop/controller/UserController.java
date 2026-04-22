@@ -1,11 +1,13 @@
 package com.onlineshop.controller;
 
 import com.onlineshop.domain.entity.User;
+import com.onlineshop.dto.RoomDtos.*;
 import com.onlineshop.service.UserService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
-import java.math.BigDecimal;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -19,9 +21,44 @@ public class UserController {
     public User create(@RequestBody Map<String, Object> body) {
         String name = (String) body.get("name");
         Object bal = body.getOrDefault("balance", 0);
-        return users.create(name, new BigDecimal(bal.toString()));
+        Object bot = body.getOrDefault("bot", false);
+        return users.create(name, ((Number) bal).intValue(), Boolean.TRUE.equals(bot));
     }
+
+    @GetMapping
+    public List<User> list() { return users.list(); }
 
     @GetMapping("/{id}")
     public User get(@PathVariable Integer id) { return users.get(id); }
+
+    @DeleteMapping("/{id}")
+    public Map<String, String> delete(@PathVariable Integer id) {
+        users.delete(id);
+        return Map.of("message", "deleted");
+    }
+
+    /** Apply signed delta to balance (PATCH semantics from Go). */
+    @PatchMapping("/{id}/balance")
+    public User patchBalance(@PathVariable Integer id,
+                             @Valid @RequestBody BalancePatchRequest req) {
+        return users.patchBalance(id, req.delta());
+    }
+
+    @PostMapping("/{id}/balance/increase")
+    public User increase(@PathVariable Integer id,
+                         @Valid @RequestBody BalanceMoveRequest req) {
+        return users.patchBalance(id, req.amount());
+    }
+
+    @PostMapping("/{id}/balance/decrease")
+    public User decrease(@PathVariable Integer id,
+                         @Valid @RequestBody BalanceMoveRequest req) {
+        return users.patchBalance(id, -req.amount());
+    }
+
+    @PutMapping("/{id}/balance")
+    public User setBalance(@PathVariable Integer id,
+                           @Valid @RequestBody BalanceSetRequest req) {
+        return users.setBalance(id, req.balance());
+    }
 }

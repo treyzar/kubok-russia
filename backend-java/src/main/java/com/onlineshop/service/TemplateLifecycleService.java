@@ -15,10 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.NoSuchElementException;
 
-/**
- * Java port of internal/service/TemplateLifecycleManager. Enforces "no active rooms"
- * pre-condition before destructive template operations.
- */
+/** Mirrors internal/service/TemplateLifecycleManager. */
 @Service
 @RequiredArgsConstructor
 public class TemplateLifecycleService {
@@ -27,9 +24,17 @@ public class TemplateLifecycleService {
     private final RoomRepository roomRepo;
 
     @Transactional(readOnly = true)
-    public TemplateStatus getStatus(Integer templateId) {
-        templateRepo.findById(templateId)
+    public List<RoomTemplate> list() { return templateRepo.findAll(); }
+
+    @Transactional(readOnly = true)
+    public RoomTemplate get(Integer id) {
+        return templateRepo.findById(id)
                 .orElseThrow(() -> new NoSuchElementException("template not found"));
+    }
+
+    @Transactional(readOnly = true)
+    public TemplateStatus getStatus(Integer templateId) {
+        get(templateId);
         int active = countByTemplateAndStatus(templateId, RoomStatus.PLAYING);
         int waiting = countByTemplateAndStatus(templateId, RoomStatus.NEW)
                     + countByTemplateAndStatus(templateId, RoomStatus.STARTING_SOON);
@@ -39,24 +44,19 @@ public class TemplateLifecycleService {
     @Transactional
     public void delete(Integer templateId) {
         TemplateStatus s = getStatus(templateId);
-        if (!s.canDelete()) {
-            throw new TemplateInUseException(
-                    "cannot delete template: %d active and %d waiting rooms exist"
-                            .formatted(s.activeRooms(), s.waitingRooms()));
-        }
+        if (!s.canDelete()) throw new TemplateInUseException(
+                "cannot delete template: %d active and %d waiting rooms exist"
+                        .formatted(s.activeRooms(), s.waitingRooms()));
         templateRepo.deleteById(templateId);
     }
 
     @Transactional
     public RoomTemplate update(Integer templateId, TemplateDto dto) {
         TemplateStatus s = getStatus(templateId);
-        if (!s.canDelete()) {
-            throw new TemplateInUseException(
-                    "cannot update template: %d active and %d waiting rooms exist"
-                            .formatted(s.activeRooms(), s.waitingRooms()));
-        }
-        RoomTemplate t = templateRepo.findById(templateId)
-                .orElseThrow(() -> new NoSuchElementException("template not found"));
+        if (!s.canDelete()) throw new TemplateInUseException(
+                "cannot update template: %d active and %d waiting rooms exist"
+                        .formatted(s.activeRooms(), s.waitingRooms()));
+        RoomTemplate t = get(templateId);
         applyDto(t, dto);
         return templateRepo.save(t);
     }
@@ -80,11 +80,7 @@ public class TemplateLifecycleService {
     }
 
     private int countByTemplateAndStatus(Integer templateId, RoomStatus status) {
-        // Simple in-memory count — fine for low cardinality. Replace with a JPQL
-        // query if room volume grows.
-        List<Room> all = roomRepo.findAllByStatus(status);
-        return (int) all.stream()
-                .filter(r -> templateId.equals(r.getTemplateId()))
-                .count();
+        return (int) roomRepo.findAllByStatus(status).stream()
+                .filter(r -> templateId.equals(r.getTemplateId())).count();
     }
 }

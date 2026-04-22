@@ -19,18 +19,17 @@ public class FairRoom {
     @Id
     private UUID id;
 
-    @Column(name = "risk_level", nullable = false, length = 16)
-    @Enumerated(EnumType.STRING)
+    @Column(name = "risk_level", nullable = false, length = 20)
+    @Convert(converter = RiskLevel.JpaConverter.class)
     private RiskLevel riskLevel;
 
-    @Column(nullable = false, length = 16)
-    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    @Convert(converter = FairRoomState.JpaConverter.class)
     private FairRoomState state = FairRoomState.CREATED;
 
     @Column(name = "max_capacity", nullable = false)
     private Integer maxCapacity = 10;
 
-    /** Sensitive: never serialise via REST. */
     @JsonIgnore
     @Column(name = "seed_phrase", nullable = false, columnDefinition = "TEXT")
     private String seedPhrase;
@@ -47,10 +46,8 @@ public class FairRoom {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt = Instant.now();
 
-    /** Virtual; populated by repository projections via LEFT JOIN COUNT. */
     @Transient
     private long playerCount;
 
-    @PreUpdate
-    public void touch() { this.updatedAt = Instant.now(); }
+    @PreUpdate public void touch() { this.updatedAt = Instant.now(); }
 }
