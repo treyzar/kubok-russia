@@ -170,6 +170,13 @@ public class RoomService {
         placeRepo.deleteAllByRoomIdAndUserId(roomId, userId);
 
         room.setJackpot(Math.max(0, room.getJackpot() - refund));
+        // Mirror Go: if last player left while room was NEW/STARTING_SOON, revert to NEW.
+        long remaining = playerRepo.countByRoomId(roomId);
+        if (remaining == 0 && (room.getStatus() == RoomStatus.NEW
+                || room.getStatus() == RoomStatus.STARTING_SOON)) {
+            room.setStatus(RoomStatus.NEW);
+            room.setStartTime(null);
+        }
         Room saved = roomRepo.save(room);
 
         if (refund > 0) userService.credit(userId, refund);

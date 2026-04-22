@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report-3.0.xsd" version="3.0" name="com.onlineshop.TemplateLifecycleServiceTest" time="0.008" tests="9" errors="0" skipped="0" failures="0">
+<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report-3.0.xsd" version="3.0" name="com.onlineshop.TemplateLifecycleServiceTest" time="0.007" tests="9" errors="0" skipped="0" failures="0">
   <properties>
     <property name="java.specification.version" value="19"/>
     <property name="sun.jnu.encoding" value="UTF-8"/>
@@ -60,12 +60,12 @@
     <property name="java.class.version" value="63.0"/>
   </properties>
   <testcase name="updateErrorFlag_active" classname="com.onlineshop.TemplateLifecycleServiceTest" time="0.001"/>
-  <testcase name="canDelete_noRooms" classname="com.onlineshop.TemplateLifecycleServiceTest" time="0.001"/>
+  <testcase name="canDelete_noRooms" classname="com.onlineshop.TemplateLifecycleServiceTest" time="0.0"/>
   <testcase name="updateParams_validation" classname="com.onlineshop.TemplateLifecycleServiceTest" time="0.0"/>
-  <testcase name="deletionErrorFlag_active" classname="com.onlineshop.TemplateLifecycleServiceTest" time="0.0"/>
-  <testcase name="cannotDelete_active" classname="com.onlineshop.TemplateLifecycleServiceTest" time="0.001"/>
-  <testcase name="deletionErrorFlag_waiting" classname="com.onlineshop.TemplateLifecycleServiceTest" time="0.001"/>
+  <testcase name="deletionErrorFlag_active" classname="com.onlineshop.TemplateLifecycleServiceTest" time="0.001"/>
+  <testcase name="cannotDelete_active" classname="com.onlineshop.TemplateLifecycleServiceTest" time="0.0"/>
+  <testcase name="deletionErrorFlag_waiting" classname="com.onlineshop.TemplateLifecycleServiceTest" time="0.0"/>
   <testcase name="cannotDelete_waiting" classname="com.onlineshop.TemplateLifecycleServiceTest" time="0.0"/>
   <testcase name="cannotDelete_both" classname="com.onlineshop.TemplateLifecycleServiceTest" time="0.0"/>
-  <testcase name="updateErrorFlag_waiting" classname="com.onlineshop.TemplateLifecycleServiceTest" time="0.001"/>
+  <testcase name="updateErrorFlag_waiting" classname="com.onlineshop.TemplateLifecycleServiceTest" time="0.0"/>
 </testsuite>

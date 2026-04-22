@@ -18,7 +18,7 @@ public interface RoomPlaceRepository extends JpaRepository<RoomPlace, RoomPlace.
     @Query("SELECT COALESCE(MAX(p.placeIndex), 0) FROM RoomPlace p WHERE p.roomId = :roomId")
     Optional<Integer> findMaxIndexByRoomId(@Param("roomId") Integer roomId);
 
-    @Modifying
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("DELETE FROM RoomPlace p WHERE p.roomId = :roomId AND p.userId = :userId")
     int deleteAllByRoomIdAndUserId(@Param("roomId") Integer roomId, @Param("userId") Integer userId);
 }
