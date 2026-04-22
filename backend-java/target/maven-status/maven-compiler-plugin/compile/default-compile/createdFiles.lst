@@ -96,6 +96,7 @@ com/onlineshop/domain/entity/RoomPlace$PK.class
 com/onlineshop/domain/entity/User.class
 com/onlineshop/domain/entity/RoomPlayer.class
 com/onlineshop/domain/entity/RoomWinner$PK.class
+com/onlineshop/config/OpenApiConfig.class
 com/onlineshop/dto/FairRoomDto.class
 com/onlineshop/exception/DomainExceptions$InsufficientBalanceForRoomException.class
 com/onlineshop/controller/TemplateController.class
