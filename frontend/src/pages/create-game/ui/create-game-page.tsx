@@ -1,100 +1,34 @@
-import { Bell, ChevronDown, CircleDollarSign, LogOut, Plus, Search, Send } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { ChevronDown, LogOut, Search } from 'lucide-react'
+import { useMemo, useState } from 'react'
 
-import { type AuthUser } from '@entities/user'
-import { Avatar, AvatarFallback, AvatarImage, Button, Card, Input } from '@shared/ui'
+import { useBodyScrollLock } from '@shared/lib'
+import { Button, Card, Input } from '@shared/ui'
+import { AppHeader } from '@widgets/header'
 
-type CreateGamePageProps = {
-  user: AuthUser
-  onBackToGames: () => void
-  onJoinGame: () => void
-  onOpenLobby: () => void
-  onLogout: () => void
-}
-
-type GameBackground = 'altai' | 'space' | 'japan'
+import {
+  analyzeRoomConfigurator,
+  initialRoomConfiguratorState,
+  type CreateGamePageProps,
+  type GameBackground,
+  type RoomConfiguratorState,
+} from '../model'
 
 export function CreateGamePage({ onBackToGames, onJoinGame, onOpenLobby, onLogout, user }: CreateGamePageProps) {
   const [playersCount, setPlayersCount] = useState('10')
   const [startPrice, setStartPrice] = useState('3000')
   const [background, setBackground] = useState<GameBackground>('altai')
   const [showTutorial, setShowTutorial] = useState(false)
+  const [isConfiguratorOpen, setIsConfiguratorOpen] = useState(false)
+  const [configDraft, setConfigDraft] = useState<RoomConfiguratorState>(initialRoomConfiguratorState)
+  const [configSaved, setConfigSaved] = useState(false)
 
-  useEffect(() => {
-    const previousBodyOverflow = document.body.style.overflow
-    const previousHtmlOverflow = document.documentElement.style.overflow
-
-    document.body.style.overflow = 'hidden'
-    document.documentElement.style.overflow = 'hidden'
-
-    return () => {
-      document.body.style.overflow = previousBodyOverflow
-      document.documentElement.style.overflow = previousHtmlOverflow
-    }
-  }, [])
+  useBodyScrollLock()
+  const configAnalysis = useMemo(() => analyzeRoomConfigurator(configDraft), [configDraft])
 
   return (
     <main className="fixed inset-0 overflow-hidden bg-[#FF1493] text-[#F2F3F5]">
       <section className="flex h-full w-full flex-col overflow-hidden">
-        <header className="border-b border-[#2A2B31] bg-[#1D1E23]">
-          <div className="mx-auto grid w-full max-w-[1248px] grid-cols-1 items-center gap-3 px-3 py-3 sm:px-4 md:grid-cols-[1fr_auto_1fr] md:px-5 xl:px-0">
-            <button
-              className="inline-flex items-center justify-center gap-3 border-0 bg-transparent text-[#F5F6F9] md:justify-start"
-              onClick={onBackToGames}
-              type="button"
-            >
-              <img alt="Ночной жор" className="h-[44px] w-[44px] rounded-full object-cover md:h-[46px] md:w-[46px]" src="/dev-assets/images/logo.svg" />
-              <span className="text-[32px] leading-none font-bold tracking-[0.02em] sm:text-[36px] lg:text-[39px]">НОЧНОЙ ЖОР</span>
-            </button>
-
-            <div className="flex items-center justify-center gap-2">
-              <Button
-                className="h-[46px] gap-2 rounded-[8px] border border-[#F21795] bg-[#3B2254] px-3 text-[14px] font-semibold text-[#F0EAFB] transition-[transform,box-shadow,background-color,border-color,color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-[1px] hover:bg-[#4D2C6E] hover:text-[#F0EAFB] hover:shadow-[0_12px_24px_rgba(52,24,78,0.50)] active:translate-y-0 active:scale-[0.98] md:h-[52px] md:px-4 md:text-[16px]"
-                type="button"
-                variant="outline"
-              >
-                <CircleDollarSign className="size-4 text-[#7D3EFF]" />
-                12 000.00
-                <ChevronDown className="size-4" />
-              </Button>
-              <Button
-                className="h-[46px] w-[46px] rounded-[8px] border border-[#FF1894] bg-[#FF1894] p-0 text-white transition-[transform,box-shadow,background-color,border-color,color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-[1px] hover:bg-[#FF2BA1] hover:shadow-[0_12px_24px_rgba(255,24,148,0.45)] active:translate-y-0 active:scale-[0.98] md:h-[52px] md:w-[52px]"
-                type="button"
-              >
-                <Plus className="size-6 md:size-7" />
-              </Button>
-            </div>
-
-            <div className="flex items-center justify-center gap-2 md:justify-end">
-              <Button
-                className="h-[46px] gap-2 rounded-[8px] border border-[#7620F5] bg-[#2A1F44] px-2.5 text-[14px] text-[#F0ECFB] transition-[transform,box-shadow,background-color,border-color,color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-[1px] hover:bg-[#322453] hover:text-[#F0ECFB] hover:shadow-[0_12px_24px_rgba(63,31,109,0.46)] active:translate-y-0 active:scale-[0.98] md:h-[52px] md:px-3.5 md:text-[16px]"
-                type="button"
-                variant="outline"
-              >
-                <Avatar className="size-7">
-                  <AvatarImage alt={user.name} src="/dev-assets/images/card_with_peoples.svg" />
-                  <AvatarFallback>{user.name.slice(0, 1)}</AvatarFallback>
-                </Avatar>
-                <span className="max-w-[130px] truncate font-semibold md:max-w-[170px]">{user.name}</span>
-                <ChevronDown className="size-4" />
-              </Button>
-              <Button
-                className="h-[46px] w-[46px] rounded-[8px] border border-[#3A3B42] bg-[#1C1D24] p-0 text-[#ECEEF4] transition-[transform,box-shadow,background-color,border-color,color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-[1px] hover:bg-[#252731] hover:text-[#ECEEF4] hover:shadow-[0_10px_20px_rgba(8,10,16,0.48)] active:translate-y-0 active:scale-[0.98] md:h-[52px] md:w-[52px]"
-                type="button"
-                variant="outline"
-              >
-                <Send className="size-5" />
-              </Button>
-              <Button
-                className="h-[46px] w-[46px] rounded-[8px] border border-[#3A3B42] bg-[#1C1D24] p-0 text-[#ECEEF4] transition-[transform,box-shadow,background-color,border-color,color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-[1px] hover:bg-[#252731] hover:text-[#ECEEF4] hover:shadow-[0_10px_20px_rgba(8,10,16,0.48)] active:translate-y-0 active:scale-[0.98] md:h-[52px] md:w-[52px]"
-                type="button"
-                variant="outline"
-              >
-                <Bell className="size-5" />
-              </Button>
-            </div>
-          </div>
-        </header>
+        <AppHeader onBrandClick={onBackToGames} user={user} />
 
         <section className="mx-auto grid w-full max-w-[1248px] flex-1 grid-cols-1 gap-4 overflow-y-auto px-3 pb-5 pt-4 sm:px-4 lg:grid-cols-[minmax(260px,418px)_1fr] lg:gap-6 lg:px-5 xl:px-0">
           <aside className="relative min-h-[340px] overflow-hidden rounded-[12px] border border-[#2D2E33] bg-[#1A1B21] sm:min-h-[420px] lg:min-h-0">
@@ -239,17 +173,133 @@ export function CreateGamePage({ onBackToGames, onJoinGame, onOpenLobby, onLogou
             </Card>
 
             <div className="mt-4 flex justify-end">
-              <Button
-                className="h-[54px] min-w-[138px] rounded-[10px] bg-[#6B22F5] px-8 text-[38px] font-semibold text-white shadow-[0_10px_20px_rgba(68,44,229,0.38)] transition-[transform,box-shadow,background-color,color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-[1px] hover:bg-[#7D38FF] hover:text-white hover:shadow-[0_16px_30px_rgba(86,58,240,0.50)] active:translate-y-0 active:scale-[0.98]"
-                onClick={onOpenLobby}
-                type="button"
-              >
-                Начать
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  className="h-[54px] rounded-[10px] border border-[#8A62FF] bg-[#3E2A6B] px-5 text-[17px] font-semibold text-white hover:bg-[#4B3380]"
+                  onClick={() => setIsConfiguratorOpen(true)}
+                  type="button"
+                  variant="outline"
+                >
+                  Конфигуратор
+                </Button>
+                <Button
+                  className="h-[54px] min-w-[138px] rounded-[10px] bg-[#6B22F5] px-8 text-[38px] font-semibold text-white shadow-[0_10px_20px_rgba(68,44,229,0.38)] transition-[transform,box-shadow,background-color,color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-[1px] hover:bg-[#7D38FF] hover:text-white hover:shadow-[0_16px_30px_rgba(86,58,240,0.50)] active:translate-y-0 active:scale-[0.98]"
+                  onClick={onOpenLobby}
+                  type="button"
+                >
+                  Начать
+                </Button>
+              </div>
             </div>
+            {configSaved ? (
+              <p className="mt-3 rounded-[10px] border border-[#78B84A] bg-[#203121] px-3 py-2 text-[14px] text-[#CFF3B8]">
+                Конфигурация сохранена. Оценка обновлена: привлекательность {configAnalysis.attractivenessScore}%, выгода организатора {configAnalysis.organizerScore}%.
+              </p>
+            ) : null}
           </div>
         </section>
       </section>
+
+      {isConfiguratorOpen ? (
+        <div className="fixed inset-0 z-50 bg-black/70 p-4 backdrop-blur-sm">
+          <div className="mx-auto max-h-full w-full max-w-[880px] overflow-y-auto rounded-[20px] border border-[#4B2F67] bg-[#1A1C25] p-5">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-[28px] font-bold text-[#ADE562]">Конфигуратор комнаты</h2>
+              <Button className="rounded-[9px] border border-[#50576A] bg-[#202532] px-3 hover:bg-[#252B3B]" onClick={() => setIsConfiguratorOpen(false)} type="button" variant="outline">
+                Закрыть
+              </Button>
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <label className="space-y-1">
+                <span className="text-sm text-[#A5ADC1]">Количество мест</span>
+                <Input
+                  className="h-[44px] rounded-[10px] border-[#364050] bg-[#141821]"
+                  onChange={(event) => setConfigDraft((prev) => ({ ...prev, seatsTotal: Number(event.target.value || 0) }))}
+                  type="number"
+                  value={String(configDraft.seatsTotal)}
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-sm text-[#A5ADC1]">Цена входа</span>
+                <Input
+                  className="h-[44px] rounded-[10px] border-[#364050] bg-[#141821]"
+                  onChange={(event) => setConfigDraft((prev) => ({ ...prev, entryCost: Number(event.target.value || 0) }))}
+                  type="number"
+                  value={String(configDraft.entryCost)}
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-sm text-[#A5ADC1]">Фонд победителю (%)</span>
+                <Input
+                  className="h-[44px] rounded-[10px] border-[#364050] bg-[#141821]"
+                  onChange={(event) => setConfigDraft((prev) => ({ ...prev, prizeFundPercent: Number(event.target.value || 0) }))}
+                  type="number"
+                  value={String(configDraft.prizeFundPercent)}
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-sm text-[#A5ADC1]">Стоимость буста</span>
+                <Input
+                  className="h-[44px] rounded-[10px] border-[#364050] bg-[#141821]"
+                  onChange={(event) => setConfigDraft((prev) => ({ ...prev, boostPrice: Number(event.target.value || 0) }))}
+                  type="number"
+                  value={String(configDraft.boostPrice)}
+                />
+              </label>
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <div className="rounded-[12px] border border-[#325744] bg-[#1C2B23] px-3 py-2">
+                <p className="text-sm text-[#9DD9B5]">Привлекательность для игрока</p>
+                <p className="text-2xl font-bold text-[#CCF6DE]">{configAnalysis.attractivenessScore}%</p>
+              </div>
+              <div className="rounded-[12px] border border-[#4D4A2A] bg-[#2B2919] px-3 py-2">
+                <p className="text-sm text-[#D9D296]">Выгода для организатора</p>
+                <p className="text-2xl font-bold text-[#F7EEB3]">{configAnalysis.organizerScore}%</p>
+              </div>
+            </div>
+
+            {configAnalysis.warnings.length > 0 ? (
+              <div className="mt-4 rounded-[12px] border border-[#786C34] bg-[#332D18] px-3 py-3">
+                <p className="text-sm font-semibold text-[#F1E3A3]">Предупреждения</p>
+                <ul className="mt-2 space-y-1 text-sm text-[#F5EEC8]">
+                  {configAnalysis.warnings.map((warning) => (
+                    <li key={warning}>• {warning}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {configAnalysis.errors.length > 0 ? (
+              <div className="mt-4 rounded-[12px] border border-[#8A3C3C] bg-[#3A1E1E] px-3 py-3">
+                <p className="text-sm font-semibold text-[#FFB8B8]">Невалидная конфигурация</p>
+                <ul className="mt-2 space-y-1 text-sm text-[#FFD1D1]">
+                  {configAnalysis.errors.map((error) => (
+                    <li key={error}>• {error}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <Button
+                className="rounded-[10px] bg-[#6B22F5] px-5 text-white hover:bg-[#7D38FF]"
+                disabled={!configAnalysis.canSave}
+                onClick={() => {
+                  setPlayersCount(String(configDraft.seatsTotal))
+                  setStartPrice(String(configDraft.entryCost))
+                  setConfigSaved(true)
+                  setIsConfiguratorOpen(false)
+                }}
+                type="button"
+              >
+                Сохранить конфигурацию
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <Button className="sr-only" onClick={onLogout} type="button" variant="ghost">
         <LogOut className="size-4" />

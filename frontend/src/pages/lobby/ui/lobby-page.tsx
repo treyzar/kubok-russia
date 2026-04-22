@@ -1,81 +1,21 @@
-import { Bell, ChevronDown, Plus, Send, Settings } from 'lucide-react'
+import { Settings } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
-type LobbyPageProps = {
-  onBackToGames: () => void
-  onCreateGame: () => void
-  onStartGame: () => void
-}
+import { RoomShell, useRoomMockStore } from '@features/room-menu'
+import { useBodyScrollLock } from '@shared/lib'
+import { AppHeader } from '@widgets/header'
 
-type PlayerFace = 'smile' | 'beard'
+import { SIDE_PLAYERS, type LobbyPageProps } from '../model'
+import { PlayerAvatar } from './player-avatar'
 
-type SidePlayer = {
-  id: string
-  top: string
-  right: string
-  ringColor: string
-  face: PlayerFace
-}
-
-const FACE_POSITION: Record<PlayerFace, string> = {
-  smile: '90% 31%',
-  beard: '54% 29%',
-}
-
-const SIDE_PLAYERS: SidePlayer[] = [
-  { id: '1', top: '12.4%', right: '14.5%', ringColor: '#6E2BFF', face: 'smile' },
-  { id: '2', top: '12.4%', right: '3.3%', ringColor: '#FF2A1F', face: 'smile' },
-  { id: '3', top: '24.1%', right: '14.5%', ringColor: '#FF1595', face: 'beard' },
-  { id: '4', top: '24.1%', right: '3.3%', ringColor: '#AEE85F', face: 'smile' },
-  { id: '5', top: '35.8%', right: '14.5%', ringColor: '#6E2BFF', face: 'smile' },
-  { id: '6', top: '35.8%', right: '3.3%', ringColor: '#FF2A1F', face: 'smile' },
-  { id: '7', top: '47.5%', right: '14.5%', ringColor: '#FF1595', face: 'beard' },
-  { id: '8', top: '47.5%', right: '3.3%', ringColor: '#6E2BFF', face: 'smile' },
-  { id: '9', top: '59.2%', right: '3.3%', ringColor: '#6E2BFF', face: 'smile' },
-  { id: '10', top: '70.9%', right: '14.5%', ringColor: '#FF1595', face: 'beard' },
-]
-
-type PlayerAvatarProps = {
-  face: PlayerFace
-  ringColor: string
-  size: string
-}
-
-function PlayerAvatar({ face, ringColor, size }: PlayerAvatarProps) {
-  return (
-    <span
-      aria-hidden="true"
-      className="inline-flex items-center justify-center rounded-full p-[4px] shadow-[0_5px_14px_rgba(0,0,0,0.40)]"
-      style={{ backgroundColor: ringColor, height: size, width: size }}
-    >
-      <span className="block h-full w-full overflow-hidden rounded-full border border-black/20 bg-[#121316]">
-        <img
-          alt=""
-          className="h-full w-full object-cover"
-          src="/dev-assets/images/card_with_peoples.svg"
-          style={{ objectPosition: FACE_POSITION[face] }}
-        />
-      </span>
-    </span>
-  )
-}
-
-export function LobbyPage({ onBackToGames, onCreateGame, onStartGame }: LobbyPageProps) {
+export function LobbyPage({ onBackToGames, onCreateGame, onStartGame, user }: LobbyPageProps) {
   const [copied, setCopied] = useState(false)
+  const [isSimulationOpen, setIsSimulationOpen] = useState(false)
+  const [isJournalOpen, setIsJournalOpen] = useState(false)
   const copyTimerRef = useRef<number | null>(null)
+  const roomStore = useRoomMockStore({ user, onLeaveRoom: onBackToGames })
 
-  useEffect(() => {
-    const previousBodyOverflow = document.body.style.overflow
-    const previousHtmlOverflow = document.documentElement.style.overflow
-
-    document.body.style.overflow = 'hidden'
-    document.documentElement.style.overflow = 'hidden'
-
-    return () => {
-      document.body.style.overflow = previousBodyOverflow
-      document.documentElement.style.overflow = previousHtmlOverflow
-    }
-  }, [])
+  useBodyScrollLock()
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
@@ -113,61 +53,7 @@ export function LobbyPage({ onBackToGames, onCreateGame, onStartGame }: LobbyPag
 
   return (
     <main className="fixed inset-0 flex min-h-dvh flex-col overflow-hidden bg-[#15161C] text-[#F2F3F5]">
-      <header className="h-[74px] shrink-0 border-b border-[#2D2E34] bg-[#1D1E23]">
-        <div className="flex h-full items-center justify-between gap-2 px-4">
-          <button
-            className="inline-flex cursor-pointer items-center gap-3 rounded-[8px] px-1 py-1 transition hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#A8E45E]"
-            onClick={onBackToGames}
-            type="button"
-          >
-            <img alt="Ночной жор" className="h-[42px] w-[42px] rounded-full object-cover" src="/dev-assets/images/logo.svg" />
-            <span className="max-[680px]:hidden text-[39px] leading-none font-bold tracking-[0.015em] uppercase">Ночной жор</span>
-          </button>
-
-          <div className="hidden items-center gap-2 md:flex">
-            <button
-              className="inline-flex h-[38px] cursor-pointer items-center gap-2 rounded-[8px] border border-[#F21795] bg-[#3B2254] px-3.5 text-[15px] font-semibold text-[#F0EAFB] transition hover:bg-[#4D2C6E]"
-              type="button"
-            >
-              <span className="inline-flex h-[17px] w-[17px] items-center justify-center rounded-full bg-[#7D3EFF] text-[11px] font-bold text-white">₽</span>
-              12 000.00
-              <ChevronDown className="size-[17px]" />
-            </button>
-            <button
-              className="inline-flex h-[38px] w-[40px] cursor-pointer items-center justify-center rounded-[8px] border border-[#FF1894] bg-[#FF1894] text-white transition hover:bg-[#FF2BA1]"
-              onClick={onCreateGame}
-              type="button"
-            >
-              <Plus className="size-[30px]" />
-            </button>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              className="inline-flex h-[38px] cursor-pointer items-center gap-2 rounded-[8px] border border-[#7620F5] bg-[#2A1F44] px-2.5 text-[15px] text-[#F0ECFB] transition hover:bg-[#322453]"
-              type="button"
-            >
-              <PlayerAvatar face="smile" ringColor="#6E2BFF" size="26px" />
-              <span className="max-w-[150px] truncate font-semibold max-[640px]:max-w-[96px]">Амир Леванов</span>
-              <ChevronDown className="size-[17px] shrink-0" />
-            </button>
-            <button
-              aria-label="Сообщения"
-              className="inline-flex h-[38px] w-[38px] cursor-pointer items-center justify-center rounded-[8px] border border-[#3A3B42] bg-[#1C1D24] text-[#ECEEF4] transition hover:bg-[#252731]"
-              type="button"
-            >
-              <Send className="size-[20px]" />
-            </button>
-            <button
-              aria-label="Уведомления"
-              className="inline-flex h-[38px] w-[38px] cursor-pointer items-center justify-center rounded-[8px] border border-[#3A3B42] bg-[#1C1D24] text-[#ECEEF4] transition hover:bg-[#252731]"
-              type="button"
-            >
-              <Bell className="size-[20px]" />
-            </button>
-          </div>
-        </div>
-      </header>
+      <AppHeader onBrandClick={onBackToGames} onCreateGame={onCreateGame} user={user} />
 
       <section className="relative flex-1 overflow-hidden bg-[#D5D8DA]">
         <img
@@ -188,13 +74,13 @@ export function LobbyPage({ onBackToGames, onCreateGame, onStartGame }: LobbyPag
         <div className="absolute inset-0 z-20 max-[900px]:hidden">
           {SIDE_PLAYERS.map((player) => (
             <div className="absolute" key={player.id} style={{ right: player.right, top: player.top }}>
-              <PlayerAvatar face={player.face} ringColor={player.ringColor} size="62px" />
+              <PlayerAvatar face={player.face} size="72px" />
             </div>
           ))}
 
           <div
-            className="absolute flex h-[62px] w-[62px] items-center justify-center rounded-full border-[4px] border-dashed border-black bg-white/55 text-[41px] leading-none font-extrabold text-black shadow-[0_5px_14px_rgba(0,0,0,0.3)]"
-            style={{ right: '14.2%', top: '59.1%' }}
+            className="absolute flex h-[72px] w-[72px] items-center justify-center rounded-full border-[4px] border-dashed border-black text-[38px] leading-none font-black text-black"
+            style={{ right: '12.5%', top: '65.0%' }}
           >
             +3
           </div>
@@ -229,6 +115,24 @@ export function LobbyPage({ onBackToGames, onCreateGame, onStartGame }: LobbyPag
           </span>
           <span className="whitespace-nowrap uppercase">Начать игру</span>
         </button>
+        <button
+          aria-label="Открыть симуляцию раунда"
+          className="absolute z-20 inline-flex h-[56px] items-center justify-center rounded-[10px] border border-[#7A52FF] bg-[#5B35D2] px-6 text-[22px] leading-none font-extrabold tracking-[0.01em] text-white shadow-[0_8px_14px_rgba(0,0,0,0.28)] transition hover:brightness-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#D6C7FF]"
+          onClick={() => setIsSimulationOpen(true)}
+          style={{ bottom: '3.8%', left: '50%', transform: 'translateX(-50%)' }}
+          type="button"
+        >
+          Симуляция раунда
+        </button>
+        <button
+          aria-label="Открыть журнал раундов"
+          className="absolute z-20 inline-flex h-[48px] items-center justify-center rounded-[10px] border border-[#4E6689] bg-[#233752] px-4 text-[18px] font-bold text-[#DDEAFF] shadow-[0_8px_14px_rgba(0,0,0,0.28)] transition hover:brightness-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B9D7FF]"
+          onClick={() => setIsJournalOpen(true)}
+          style={{ bottom: '12.2%', left: '50%', transform: 'translateX(-50%)' }}
+          type="button"
+        >
+          Журнал раундов
+        </button>
 
         {copied ? (
           <div className="pointer-events-none absolute bottom-[14%] left-1/2 z-30 -translate-x-1/2 rounded-[10px] bg-black/82 px-4 py-2 text-[14px] font-semibold text-white">
@@ -236,6 +140,81 @@ export function LobbyPage({ onBackToGames, onCreateGame, onStartGame }: LobbyPag
           </div>
         ) : null}
       </section>
+      {isSimulationOpen ? (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm">
+          <div className="absolute right-5 top-5 z-10 flex gap-2">
+            <button
+              className="rounded-md border border-white/20 bg-black/40 px-3 py-2 text-sm font-semibold text-white hover:bg-black/55"
+              onClick={() => setIsSimulationOpen(false)}
+              type="button"
+            >
+              Закрыть
+            </button>
+          </div>
+          <RoomShell
+            actions={roomStore.actions}
+            boost={roomStore.boost}
+            currentBalance={roomStore.currentBalance}
+            errorMessage={roomStore.errorMessage}
+            participants={roomStore.participants}
+            room={roomStore.room}
+            roomConfig={roomStore.roomConfig}
+            roundHistory={roomStore.roundHistory}
+            selectedParticipantId={roomStore.selectedParticipantId}
+            timeline={roomStore.timeline}
+          >
+            <div className="grid h-full place-items-center">
+              <div className="max-w-[470px] rounded-2xl border border-[#3D4350] bg-[#0D1118]/85 p-5 text-center">
+                <p className="text-[0.92rem] uppercase tracking-[0.08em] text-[#90A4C4]">Демонстрация визуального раунда</p>
+                <h2 className="mt-2 text-[1.6rem] font-extrabold text-[#F0F4FA]">Победитель определяется прозрачно</h2>
+                <p className="mt-2 text-[0.98rem] text-[#B6C5DB]">
+                  Эта сцена отражает backend-логику: шансы, бусты и итоговый выбор победителя. После завершения используйте
+                  «Быстрый повтор» для непрерывного цикла.
+                </p>
+              </div>
+            </div>
+          </RoomShell>
+        </div>
+      ) : null}
+      {isJournalOpen ? (
+        <div className="fixed inset-0 z-50 bg-black/70 p-4 backdrop-blur-sm">
+          <div className="mx-auto max-h-full w-full max-w-[920px] overflow-y-auto rounded-[18px] border border-[#3E4758] bg-[#141922] p-5">
+            <div className="flex items-center justify-between">
+              <h2 className="text-[28px] font-bold text-[#ADE562]">Журнал раундов</h2>
+              <button
+                className="rounded-md border border-white/20 bg-black/35 px-3 py-2 text-sm font-semibold text-white hover:bg-black/55"
+                onClick={() => setIsJournalOpen(false)}
+                type="button"
+              >
+                Закрыть
+              </button>
+            </div>
+            {roomStore.roundHistory.length === 0 ? (
+              <p className="mt-3 rounded-[10px] border border-[#3D4557] bg-[#1A2231] px-3 py-2 text-[14px] text-[#CAD4E2]">
+                История пока пуста. Запустите «Симуляцию раунда» и завершите игру.
+              </p>
+            ) : (
+              <div className="mt-4 space-y-2">
+                {roomStore.roundHistory.map((item) => (
+                  <article className="rounded-[12px] border border-[#364154] bg-[#1B2433] px-3 py-3 text-[14px]" key={item.id}>
+                    <p className="text-[#AAB8CC]">{item.finishedAt} • Комната {item.roomId}</p>
+                    <p className="mt-1 text-[17px] font-bold text-[#EBF2FF]">{item.winnerName}</p>
+                    <p className="mt-1 text-[#D7E0EE]">
+                      Участники: {item.participantsTotal}, боты: {item.botsTotal}, фонд: {item.jackpot.toLocaleString('ru-RU')}, приз:{' '}
+                      {item.prize.toLocaleString('ru-RU')}
+                    </p>
+                    <p className="mt-1 text-[#C3D8FF]">{item.winnerReason}</p>
+                    <p className="mt-1 text-[#9FD0A8]">
+                      Изменение баланса игрока: {item.balanceDelta > 0 ? '+' : ''}
+                      {item.balanceDelta.toLocaleString('ru-RU')}
+                    </p>
+                  </article>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
     </main>
   )
 }

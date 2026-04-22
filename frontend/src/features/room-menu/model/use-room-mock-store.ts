@@ -1,8 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import type { AuthUser } from '@entities/user'
 
-import type { BoostState, ParticipantOdds, RoomActions, RoomState, RoundPhase, RoundTimelineEvent } from './types'
+import type {
+  BoostState,
+  ParticipantOdds,
+  RoomActions,
+  RoomConfig,
+  RoomState,
+  RoundPhase,
+  RoundHistoryItem,
+  RoundTimelineEvent,
+} from './types'
 
 type UseRoomMockStoreParams = {
   user: AuthUser
@@ -11,9 +20,11 @@ type UseRoomMockStoreParams = {
 
 type UseRoomMockStoreResult = {
   room: RoomState
+  roomConfig: RoomConfig
   participants: ParticipantOdds[]
   boost: BoostState
   timeline: RoundTimelineEvent[]
+  roundHistory: RoundHistoryItem[]
   currentBalance: number
   selectedParticipantId: string | null
   errorMessage: string
@@ -30,11 +41,16 @@ type InternalParticipant = {
   isCurrentUser: boolean
 }
 
-const BOOST_PRICE = 300
+const DEFAULT_CONFIG: RoomConfig = {
+  seatsTotal: 10,
+  entryCost: 500,
+  prizeFundPercent: 82,
+  boostPrice: 300,
+}
+
 const BOOST_WEIGHT = 20
 const COUNTDOWN_SECONDS = 12
 const PLAYING_SECONDS = 10
-const DEFAULT_ENTRY_COST = 500
 
 function nowLabel(): string {
   return new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
@@ -96,21 +112,47 @@ function pickWinner(participants: InternalParticipant[]): string | null {
   return weighted[weighted.length - 1]?.id ?? null
 }
 
+function toRoundHistoryItem(
+  room: RoomState,
+  participants: InternalParticipant[],
+  winnerName: string,
+  config: RoomConfig,
+): RoundHistoryItem {
+  const botsTotal = participants.filter((participant) => participant.isBot).length
+  const usedBoost = participants.some((participant) => participant.isCurrentUser && participant.boostPoints > 0)
+  const prize = Math.round(room.jackpot * (config.prizeFundPercent / 100))
+  return {
+    id: `RH-${Date.now()}`,
+    roomId: room.id,
+    participantsTotal: participants.length,
+    botsTotal,
+    jackpot: room.jackpot,
+    winnerName,
+    prize,
+    usedBoost,
+    startedAt: nowLabel(),
+    finishedAt: nowLabel(),
+    winnerReason: `Победитель выбран взвешенным RNG на основе шанса и буста. Буст учитывался: ${usedBoost ? 'да' : 'нет'}.`,
+    balanceDelta: winnerName.includes('(вы)') ? prize - room.entryCost : -room.entryCost,
+  }
+}
+
 export function useRoomMockStore({ user, onLeaveRoom }: UseRoomMockStoreParams): UseRoomMockStoreResult {
-  const createInitialRoom = (): RoomState => ({
+  const [roomConfig] = useState<RoomConfig>(DEFAULT_CONFIG)
+  const [room, setRoom] = useState<RoomState>({
     id: 'RM-901',
     title: 'VIP room: Турбо-дуэль',
-    entryCost: DEFAULT_ENTRY_COST,
-    seatsTotal: 4,
+    entryCost: roomConfig.entryCost,
+    seatsTotal: roomConfig.seatsTotal,
     seatsTaken: 1,
-    jackpot: DEFAULT_ENTRY_COST,
+    jackpot: roomConfig.entryCost,
     phase: 'waiting',
     countdownSeconds: COUNTDOWN_SECONDS,
     playingSeconds: PLAYING_SECONDS,
     winnerId: null,
   })
 
-  const createInitialParticipants = (): InternalParticipant[] => [
+  const [participants, setParticipants] = useState<InternalParticipant[]>([
     {
       id: user.id,
       name: user.name,
@@ -120,15 +162,8 @@ export function useRoomMockStore({ user, onLeaveRoom }: UseRoomMockStoreParams):
       boostPoints: 0,
       isCurrentUser: true,
     },
-  ]
-
-  const [room, setRoom] = useState<RoomState>({
-    ...createInitialRoom(),
-  })
-
-  const [participants, setParticipants] = useState<InternalParticipant[]>(createInitialParticipants())
-
-  const [currentBalance, setCurrentBalance] = useState(user.balance - DEFAULT_ENTRY_COST)
+  ])
+  const [currentBalance, setCurrentBalance] = useState(user.balance - roomConfig.entryCost)
   const [selectedParticipantId, setSelectedParticipantId] = useState<string | null>(user.id)
   const [timeline, setTimeline] = useState<RoundTimelineEvent[]>([
     {
@@ -137,6 +172,7 @@ export function useRoomMockStore({ user, onLeaveRoom }: UseRoomMockStoreParams):
       at: nowLabel(),
     },
   ])
+  const [roundHistory, setRoundHistory] = useState<RoundHistoryItem[]>([])
   const [errorMessage, setErrorMessage] = useState('')
   const [boostPurchased, setBoostPurchased] = useState(false)
   const botIndexRef = useRef(0)
@@ -159,12 +195,20 @@ export function useRoomMockStore({ user, onLeaveRoom }: UseRoomMockStoreParams):
         at: nowLabel(),
       },
       ...prev,
-    ].slice(0, 10))
+    ].slice(0, 14))
   }
 
-  const addBotIfNeeded = (): void => {
+  const syncRoomByParticipants = (nextParticipants: InternalParticipant[]): void => {
+    setRoom((prev) => ({
+      ...prev,
+      seatsTaken: nextParticipants.length,
+      jackpot: nextParticipants.length * prev.entryCost,
+    }))
+  }
+
+  const addBotIfNeeded = useCallback((): void => {
     setParticipants((prev) => {
-      if (prev.length >= room.seatsTotal) {
+      if (prev.length >= room.seatsTotal || room.phase !== 'filling') {
         return prev
       }
 
@@ -180,36 +224,35 @@ export function useRoomMockStore({ user, onLeaveRoom }: UseRoomMockStoreParams):
         boostPoints: 0,
         isCurrentUser: false,
       }
+      const nextParticipants = [...prev, nextParticipant]
+      syncRoomByParticipants(nextParticipants)
 
-      return [...prev, nextParticipant]
+      if (nextParticipants.length >= room.seatsTotal) {
+        setRoom((roomPrev) => {
+          if (roomPrev.phase !== 'filling') {
+            return roomPrev
+          }
+          return { ...roomPrev, phase: 'countdown', countdownSeconds: COUNTDOWN_SECONDS }
+        })
+        addTimeline(`Статус комнаты: ${toPhaseText('countdown')}.`)
+        addTimeline('Комната заполнена. Запуск обратного отсчёта.')
+      }
+
+      return nextParticipants
     })
-  }
+  }, [botPool, room.phase, room.seatsTotal])
 
   useEffect(() => {
     if (room.phase !== 'filling') {
       return
     }
 
-    if (participants.length >= room.seatsTotal) {
-      setRoom((prev) => ({ ...prev, phase: 'countdown', countdownSeconds: COUNTDOWN_SECONDS }))
-      addTimeline('Комната заполнена. Запуск обратного отсчёта.')
-      return
-    }
-
     const id = window.setInterval(() => {
       addBotIfNeeded()
-    }, 2200)
+    }, 1800)
 
     return () => window.clearInterval(id)
-  }, [participants.length, room.phase, room.seatsTotal])
-
-  useEffect(() => {
-    setRoom((prev) => ({
-      ...prev,
-      seatsTaken: participants.length,
-      jackpot: participants.length * prev.entryCost,
-    }))
-  }, [participants.length])
+  }, [addBotIfNeeded, room.phase])
 
   useEffect(() => {
     if (room.phase !== 'countdown') {
@@ -223,6 +266,7 @@ export function useRoomMockStore({ user, onLeaveRoom }: UseRoomMockStoreParams):
         }
 
         if (prev.countdownSeconds <= 1) {
+          addTimeline(`Статус комнаты: ${toPhaseText('playing')}.`)
           addTimeline('Раунд стартовал.')
           return { ...prev, phase: 'playing', countdownSeconds: 0, playingSeconds: PLAYING_SECONDS }
         }
@@ -249,7 +293,13 @@ export function useRoomMockStore({ user, onLeaveRoom }: UseRoomMockStoreParams):
           const winnerId = pickWinner(participants)
           if (winnerId) {
             const winner = participants.find((item) => item.id === winnerId)
-            addTimeline(`Победитель раунда: ${winner?.name ?? 'Неизвестный игрок'}.`)
+            const winnerName = winner ? `${winner.name}${winner.isCurrentUser ? ' (вы)' : ''}` : 'Неизвестный игрок'
+            addTimeline(`Статус комнаты: ${toPhaseText('finished')}.`)
+            addTimeline(`Победитель раунда: ${winnerName}.`)
+            setRoundHistory((history) => [
+              toRoundHistoryItem(prev, participants, winnerName, roomConfig),
+              ...history,
+            ].slice(0, 20))
           }
           return { ...prev, phase: 'finished', playingSeconds: 0, winnerId }
         }
@@ -259,12 +309,19 @@ export function useRoomMockStore({ user, onLeaveRoom }: UseRoomMockStoreParams):
     }, 1000)
 
     return () => window.clearInterval(id)
-  }, [participants, room.phase])
+  }, [participants, room.phase, roomConfig])
 
   const roomActions: RoomActions = {
     joinRoom: () => {
       setErrorMessage('')
-      setRoom((prev) => ({ ...prev, phase: 'filling', winnerId: null, countdownSeconds: COUNTDOWN_SECONDS, playingSeconds: PLAYING_SECONDS }))
+      setRoom((prev) => ({
+        ...prev,
+        phase: 'filling',
+        winnerId: null,
+        countdownSeconds: COUNTDOWN_SECONDS,
+        playingSeconds: PLAYING_SECONDS,
+      }))
+      addTimeline(`Статус комнаты: ${toPhaseText('filling')}.`)
       addTimeline('Запущено заполнение комнаты. Ожидаем участников и ботов.')
     },
     buyBoost: () => {
@@ -280,13 +337,13 @@ export function useRoomMockStore({ user, onLeaveRoom }: UseRoomMockStoreParams):
         return
       }
 
-      if (currentBalance < BOOST_PRICE) {
-        setErrorMessage('Недостаточно баллов для покупки буста. Выберите комнату дешевле или пополните баланс.')
+      if (currentBalance < roomConfig.boostPrice) {
+        setErrorMessage('Недостаточно баллов для буста. Подберите комнату дешевле и попробуйте снова.')
         return
       }
 
       setBoostPurchased(true)
-      setCurrentBalance((prev) => prev - BOOST_PRICE)
+      setCurrentBalance((prev) => prev - roomConfig.boostPrice)
       setParticipants((prev) =>
         prev.map((item) =>
           item.isCurrentUser
@@ -302,13 +359,15 @@ export function useRoomMockStore({ user, onLeaveRoom }: UseRoomMockStoreParams):
     repeatRound: () => {
       setErrorMessage('')
       setBoostPurchased(false)
-      setParticipants((prev) =>
-        prev.map((item, index) => ({
+      setParticipants((prev) => {
+        const nextParticipants = prev.map((item, index) => ({
           ...item,
           boostPoints: 0,
           seat: index + 1,
-        })),
-      )
+        }))
+        syncRoomByParticipants(nextParticipants)
+        return nextParticipants
+      })
       setRoom((prev) => ({
         ...prev,
         phase: 'filling',
@@ -316,13 +375,36 @@ export function useRoomMockStore({ user, onLeaveRoom }: UseRoomMockStoreParams):
         countdownSeconds: COUNTDOWN_SECONDS,
         playingSeconds: PLAYING_SECONDS,
       }))
+      addTimeline(`Статус комнаты: ${toPhaseText('filling')}.`)
       addTimeline('Запущен новый раунд в этой же комнате.')
     },
     refreshRoom: () => {
       botIndexRef.current = 0
-      setRoom(createInitialRoom())
-      setParticipants(createInitialParticipants())
-      setCurrentBalance(user.balance - DEFAULT_ENTRY_COST)
+      const resetParticipants: InternalParticipant[] = [
+        {
+          id: user.id,
+          name: user.name,
+          isBot: false,
+          seat: 1,
+          weight: 100,
+          boostPoints: 0,
+          isCurrentUser: true,
+        },
+      ]
+      setRoom({
+        id: 'RM-901',
+        title: 'VIP room: Турбо-дуэль',
+        entryCost: roomConfig.entryCost,
+        seatsTotal: roomConfig.seatsTotal,
+        seatsTaken: 1,
+        jackpot: roomConfig.entryCost,
+        phase: 'waiting',
+        countdownSeconds: COUNTDOWN_SECONDS,
+        playingSeconds: PLAYING_SECONDS,
+        winnerId: null,
+      })
+      setParticipants(resetParticipants)
+      setCurrentBalance(user.balance - roomConfig.entryCost)
       setSelectedParticipantId(user.id)
       setErrorMessage('')
       setBoostPurchased(false)
@@ -333,6 +415,7 @@ export function useRoomMockStore({ user, onLeaveRoom }: UseRoomMockStoreParams):
           at: nowLabel(),
         },
       ])
+      addTimeline(`Статус комнаты: ${toPhaseText('waiting')}.`)
     },
     leaveRoom: () => {
       onLeaveRoom()
@@ -344,23 +427,33 @@ export function useRoomMockStore({ user, onLeaveRoom }: UseRoomMockStoreParams):
 
   const participantOdds = useMemo(() => recalcChances(participants), [participants])
 
+  const boostDisabledReason = useMemo(() => {
+    if (boostPurchased) {
+      return 'Буст уже применён'
+    }
+    if (room.phase === 'finished') {
+      return 'Раунд завершён'
+    }
+    if (currentBalance < roomConfig.boostPrice) {
+      return 'Недостаточно бонусных баллов'
+    }
+    return null
+  }, [boostPurchased, currentBalance, room.phase, roomConfig.boostPrice])
+
   const boost: BoostState = {
-    price: BOOST_PRICE,
+    price: roomConfig.boostPrice,
     chanceBonusPercent: BOOST_WEIGHT,
     purchasedByCurrentUser: boostPurchased,
-    disabledReason: boostPurchased ? 'Буст уже применён' : null,
+    disabledReason: boostDisabledReason,
   }
-
-  useEffect(() => {
-    addTimeline(`Статус комнаты: ${toPhaseText(room.phase)}.`)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [room.phase])
 
   return {
     room,
+    roomConfig,
     participants: participantOdds,
     boost,
     timeline,
+    roundHistory,
     currentBalance,
     selectedParticipantId,
     errorMessage,
