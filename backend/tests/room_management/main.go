@@ -23,6 +23,18 @@ var (
 
 // Helper function to join a room with 1 place (mimics the disabled JoinRoomAndUpdateStatus)
 func joinRoomHelper(ctx context.Context, roomID, userID int32) (repository.Room, error) {
+	// Pre-check: user not already in room
+	players, err := queries.ListRoomPlayers(ctx, repository.ListRoomPlayersParams{RoomID: roomID})
+	if err != nil {
+		return repository.Room{}, err
+	}
+	for _, p := range players {
+		if p.UserID == userID {
+			// User already in room, return current room state without changes
+			return queries.GetRoom(ctx, repository.GetRoomParams{RoomID: roomID})
+		}
+	}
+
 	tx, err := pool.Begin(ctx)
 	if err != nil {
 		return repository.Room{}, err
@@ -35,6 +47,19 @@ func joinRoomHelper(ctx context.Context, roomID, userID int32) (repository.Room,
 	room, err := txRepo.GetRoom(ctx, repository.GetRoomParams{RoomID: roomID})
 	if err != nil {
 		return repository.Room{}, err
+	}
+
+	// Pre-check: room capacity
+	playerCount, err := txRepo.CountRoomPlayers(ctx, repository.CountRoomPlayersParams{RoomID: roomID})
+	if err != nil {
+		return repository.Room{}, err
+	}
+	if playerCount >= int64(room.PlayersNeeded) {
+		// Room is full, return current room state without changes
+		if err := tx.Commit(ctx); err != nil {
+			return repository.Room{}, err
+		}
+		return queries.GetRoom(ctx, repository.GetRoomParams{RoomID: roomID})
 	}
 
 	// Deduct entry cost and add to jackpot
@@ -80,7 +105,42 @@ func joinRoomHelper(ctx context.Context, roomID, userID int32) (repository.Room,
 	}
 
 	// Get updated room
-	return queries.GetRoom(ctx, repository.GetRoomParams{RoomID: roomID})
+	updatedRoom, err := queries.GetRoom(ctx, repository.GetRoomParams{RoomID: roomID})
+	if err != nil {
+		return repository.Room{}, err
+	}
+
+	// Count real (non-bot) players in the room
+	realPlayerCount, err := queries.CountRealPlayersInRoom(ctx, repository.CountRealPlayersInRoomParams{RoomID: roomID})
+	if err != nil {
+		return repository.Room{}, err
+	}
+
+	// If this is the first real player reaching min_players threshold and room is 'new', transition to 'starting_soon' and set start_time
+	if realPlayerCount >= int64(updatedRoom.MinPlayers) && updatedRoom.Status == "new" {
+		startTime := time.Now().Add(time.Duration(updatedRoom.StartDelaySeconds) * time.Second)
+		updatedRoom, err = queries.SetRoomStatus(ctx, repository.SetRoomStatusParams{
+			RoomID: roomID,
+			Status: "starting_soon",
+		})
+		if err != nil {
+			return repository.Room{}, err
+		}
+
+		// Update start_time using a direct query since SetRoomStatus doesn't handle it
+		_, err = pool.Exec(ctx, "UPDATE rooms SET start_time = $1 WHERE room_id = $2", startTime, roomID)
+		if err != nil {
+			return repository.Room{}, err
+		}
+
+		// Get the room again to get the updated start_time
+		updatedRoom, err = queries.GetRoom(ctx, repository.GetRoomParams{RoomID: roomID})
+		if err != nil {
+			return repository.Room{}, err
+		}
+	}
+
+	return updatedRoom, nil
 }
 
 func main() {
@@ -190,6 +250,7 @@ func testUserJoinRoom() error {
 		},
 		Status:               "new",
 		PlayersNeeded:        3,
+		MinPlayers:           1,
 		EntryCost:            100,
 		WinnerPct:            80,
 		GameType:             "train",
@@ -327,6 +388,7 @@ func testFullRoom() error {
 		},
 		Status:               "new",
 		PlayersNeeded:        1,
+		MinPlayers:           1,
 		EntryCost:            100,
 		WinnerPct:            80,
 		GameType:             "train",
@@ -478,6 +540,7 @@ func testRoomAutoStart() error {
 		},
 		Status:               "starting_soon",
 		PlayersNeeded:        2,
+		MinPlayers:           1,
 		EntryCost:            100,
 		WinnerPct:            80,
 		GameType:             "train",
@@ -620,6 +683,7 @@ func testCannotBoostNonPlaying() error {
 			},
 			Status:               "new",
 			PlayersNeeded:        3,
+			MinPlayers:           1,
 			EntryCost:            100,
 			WinnerPct:            80,
 			GameType:             "train",
@@ -669,6 +733,7 @@ func testDeclareWinner() error {
 		},
 		Status:               "finished",
 		PlayersNeeded:        2,
+		MinPlayers:           1,
 		EntryCost:            100,
 		WinnerPct:            80,
 		GameType:             "train",
@@ -722,6 +787,7 @@ func testRoomAutoFinish() error {
 		},
 		Status:               "playing",
 		PlayersNeeded:        2,
+		MinPlayers:           1,
 		EntryCost:            100,
 		WinnerPct:            80,
 		GameType:             "train",
@@ -744,11 +810,11 @@ func testRoomAutoFinish() error {
 	}
 
 	for _, bot := range bots {
-		rows, err := queries.BotJoinRoom(context.Background(), repository.BotJoinRoomParams{
+		joined, err := queries.BotJoinRoom(context.Background(), repository.BotJoinRoomParams{
 			RoomID: room.RoomID,
 			ID:     bot.ID,
 		})
-		if err != nil || len(rows) == 0 {
+		if err != nil || !joined {
 			return fmt.Errorf("failed to add bot %d to room: %v", bot.ID, err)
 		}
 
@@ -843,6 +909,7 @@ func testWinnerPctPrizeCalculation() error {
 		},
 		Status:               "playing",
 		PlayersNeeded:        playersNeeded,
+		MinPlayers:           1,
 		EntryCost:            entryCost,
 		WinnerPct:            customPct,
 		GameType:             "train",
@@ -872,11 +939,11 @@ func testWinnerPctPrizeCalculation() error {
 		return fmt.Errorf("not enough bots available: %v", err)
 	}
 	for _, bot := range bots {
-		rows, err := queries.BotJoinRoom(context.Background(), repository.BotJoinRoomParams{
+		joined, err := queries.BotJoinRoom(context.Background(), repository.BotJoinRoomParams{
 			RoomID: room.RoomID,
 			ID:     bot.ID,
 		})
-		if err != nil || len(rows) == 0 {
+		if err != nil || !joined {
 			return fmt.Errorf("failed to add bot %d: %v", bot.ID, err)
 		}
 
@@ -959,6 +1026,7 @@ func testExternalRNGFallback() error {
 		},
 		Status:               "new",
 		PlayersNeeded:        2,
+		MinPlayers:           1,
 		EntryCost:            0,
 		WinnerPct:            80,
 		GameType:             "train",
@@ -1042,6 +1110,7 @@ func testBoostUniquenessDB() error {
 		},
 		Status:               "playing",
 		PlayersNeeded:        2,
+		MinPlayers:           1,
 		EntryCost:            0,
 		WinnerPct:            80,
 		GameType:             "train",

@@ -134,6 +134,7 @@ type Room struct {
 	RoundDurationSeconds int32              `json:"round_duration_seconds"`
 	StartDelaySeconds    int32              `json:"start_delay_seconds"`
 	GameType             string             `json:"game_type"`
+	MinPlayers           int32              `json:"min_players"`
 }
 
 type RoomBoost struct {
@@ -168,6 +169,7 @@ type RoomTemplate struct {
 	RoundDurationSeconds int32     `json:"round_duration_seconds"`
 	StartDelaySeconds    int32     `json:"start_delay_seconds"`
 	GameType             string    `json:"game_type"`
+	MinPlayers           int32     `json:"min_players"`
 }
 
 type RoomWinner struct {

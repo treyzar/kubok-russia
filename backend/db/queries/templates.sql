@@ -1,6 +1,6 @@
 -- name: InsertTemplate :one
-INSERT INTO room_templates (name, players_needed, entry_cost, winner_pct, round_duration_seconds, start_delay_seconds, game_type)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO room_templates (name, players_needed, entry_cost, winner_pct, round_duration_seconds, start_delay_seconds, game_type, min_players)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING *;
 
 -- name: ListTemplates :many
@@ -20,6 +20,7 @@ SET name = $2,
     round_duration_seconds = $6,
     start_delay_seconds = $7,
     game_type = $8,
+    min_players = $9,
     updated_at = CURRENT_TIMESTAMP
 WHERE template_id = $1
 RETURNING *;

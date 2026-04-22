@@ -22,6 +22,7 @@ type templateItem struct {
 	TemplateID           int32     `json:"template_id"`
 	Name                 string    `json:"name"`
 	PlayersNeeded        int32     `json:"players_needed"`
+	MinPlayers           int32     `json:"min_players"`
 	EntryCost            int32     `json:"entry_cost"`
 	WinnerPct            int32     `json:"winner_pct"`
 	RoundDurationSeconds int32     `json:"round_duration_seconds"`
@@ -40,6 +41,7 @@ func templateToItem(t repository.RoomTemplate) templateItem {
 		TemplateID:           t.TemplateID,
 		Name:                 t.Name,
 		PlayersNeeded:        t.PlayersNeeded,
+		MinPlayers:           t.MinPlayers,
 		EntryCost:            t.EntryCost,
 		WinnerPct:            t.WinnerPct,
 		RoundDurationSeconds: t.RoundDurationSeconds,
@@ -64,6 +66,7 @@ type CreateTemplateRequest struct {
 	Body struct {
 		Name                 string `json:"name" minLength:"1" maxLength:"255"`
 		PlayersNeeded        int32  `json:"players_needed" minimum:"1"`
+		MinPlayers           *int32 `json:"min_players,omitempty" minimum:"1"`
 		EntryCost            int32  `json:"entry_cost" minimum:"0"`
 		WinnerPct            *int32 `json:"winner_pct,omitempty" minimum:"1" maximum:"99"`
 		RoundDurationSeconds *int32 `json:"round_duration_seconds,omitempty" minimum:"10" maximum:"3600"`
@@ -73,6 +76,15 @@ type CreateTemplateRequest struct {
 }
 
 func (h *TemplateHandler) Create(ctx context.Context, req *CreateTemplateRequest) (*TemplateResponse, error) {
+	minPlayers := int32(1)
+	if req.Body.MinPlayers != nil {
+		minPlayers = *req.Body.MinPlayers
+	}
+
+	if minPlayers > req.Body.PlayersNeeded {
+		return nil, huma.Error400BadRequest("min_players cannot be greater than players_needed", nil)
+	}
+
 	winnerPct := int32(80)
 	if req.Body.WinnerPct != nil {
 		winnerPct = *req.Body.WinnerPct
@@ -104,6 +116,7 @@ func (h *TemplateHandler) Create(ctx context.Context, req *CreateTemplateRequest
 		RoundDurationSeconds: roundDurationSeconds,
 		StartDelaySeconds:    startDelaySeconds,
 		GameType:             gameType,
+		MinPlayers:           minPlayers,
 	})
 	if err != nil {
 		return nil, catchUniqueNameViolation(err)
@@ -160,6 +173,7 @@ type UpdateTemplateRequest struct {
 	Body       struct {
 		Name                 string `json:"name" minLength:"1" maxLength:"255"`
 		PlayersNeeded        int32  `json:"players_needed" minimum:"1"`
+		MinPlayers           *int32 `json:"min_players,omitempty" minimum:"1"`
 		EntryCost            int32  `json:"entry_cost" minimum:"0"`
 		WinnerPct            *int32 `json:"winner_pct,omitempty" minimum:"1" maximum:"99"`
 		RoundDurationSeconds *int32 `json:"round_duration_seconds,omitempty" minimum:"10" maximum:"3600"`
@@ -176,6 +190,15 @@ func (h *TemplateHandler) Update(ctx context.Context, req *UpdateTemplateRequest
 	}
 
 	// Use existing values as defaults, override if provided
+	minPlayers := existing.MinPlayers
+	if req.Body.MinPlayers != nil {
+		minPlayers = *req.Body.MinPlayers
+	}
+
+	if minPlayers > req.Body.PlayersNeeded {
+		return nil, huma.Error400BadRequest("min_players cannot be greater than players_needed", nil)
+	}
+
 	winnerPct := existing.WinnerPct
 	if req.Body.WinnerPct != nil {
 		winnerPct = *req.Body.WinnerPct
@@ -208,6 +231,7 @@ func (h *TemplateHandler) Update(ctx context.Context, req *UpdateTemplateRequest
 		RoundDurationSeconds: roundDurationSeconds,
 		StartDelaySeconds:    startDelaySeconds,
 		GameType:             gameType,
+		MinPlayers:           minPlayers,
 	})
 	if err != nil {
 		return nil, catchUniqueNameViolation(err)

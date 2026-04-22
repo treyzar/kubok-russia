@@ -1,6 +1,6 @@
 -- name: InsertRoom :one
-INSERT INTO rooms (jackpot, start_time, status, players_needed, entry_cost, winner_pct, round_duration_seconds, start_delay_seconds, game_type)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+INSERT INTO rooms (jackpot, start_time, status, players_needed, entry_cost, winner_pct, round_duration_seconds, start_delay_seconds, game_type, min_players)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 RETURNING *;
 
 -- name: DeleteRoom :exec
@@ -72,6 +72,11 @@ SELECT false AS joined;
 -- name: CountRoomPlayers :one
 SELECT COUNT(DISTINCT user_id) FROM room_players
 WHERE room_id = $1;
+
+-- name: CountRealPlayersInRoom :one
+SELECT COUNT(DISTINCT rp.user_id) FROM room_players rp
+JOIN users u ON u.id = rp.user_id
+WHERE rp.room_id = $1 AND u.bot = false;
 
 -- name: JoinRoomAndUpdateStatus :one
 -- TEMPORARILY DISABLED DUE TO SQLC LIMITATION

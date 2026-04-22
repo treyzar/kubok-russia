@@ -61,6 +61,7 @@ type RoomResponse struct {
 		StartTime            *time.Time `json:"start_time,omitempty"`
 		Status               string     `json:"status"`
 		PlayersNeeded        int32      `json:"players_needed"`
+		MinPlayers           int32      `json:"min_players"`
 		EntryCost            int32      `json:"entry_cost"`
 		WinnerPct            int32      `json:"winner_pct"`
 		RoundDurationSeconds int32      `json:"round_duration_seconds"`
@@ -98,6 +99,7 @@ type CreateRoomRequest struct {
 		StartTime            *time.Time `json:"start_time,omitempty"`
 		Status               string     `json:"status" enum:"new,starting_soon,playing"`
 		PlayersNeeded        int32      `json:"players_needed" minimum:"1"`
+		MinPlayers           *int32     `json:"min_players,omitempty" minimum:"1"`
 		EntryCost            int32      `json:"entry_cost" minimum:"0"`
 		WinnerPct            *int32     `json:"winner_pct,omitempty" minimum:"1" maximum:"99"`
 		RoundDurationSeconds *int32     `json:"round_duration_seconds,omitempty" minimum:"10" maximum:"3600"`
@@ -126,6 +128,7 @@ type roomItem struct {
 	StartTime            *time.Time `json:"start_time,omitempty"`
 	Status               string     `json:"status"`
 	PlayersNeeded        int32      `json:"players_needed"`
+	MinPlayers           int32      `json:"min_players"`
 	EntryCost            int32      `json:"entry_cost"`
 	WinnerPct            int32      `json:"winner_pct"`
 	RoundDurationSeconds int32      `json:"round_duration_seconds"`
@@ -145,6 +148,7 @@ func roomToItem(r repository.Room) roomItem {
 		Jackpot:              r.Jackpot,
 		Status:               r.Status,
 		PlayersNeeded:        r.PlayersNeeded,
+		MinPlayers:           r.MinPlayers,
 		EntryCost:            r.EntryCost,
 		WinnerPct:            r.WinnerPct,
 		RoundDurationSeconds: r.RoundDurationSeconds,
@@ -166,6 +170,7 @@ func roomItemToResponse(item roomItem) *RoomResponse {
 	resp.Body.StartTime = item.StartTime
 	resp.Body.Status = item.Status
 	resp.Body.PlayersNeeded = item.PlayersNeeded
+	resp.Body.MinPlayers = item.MinPlayers
 	resp.Body.EntryCost = item.EntryCost
 	resp.Body.WinnerPct = item.WinnerPct
 	resp.Body.RoundDurationSeconds = item.RoundDurationSeconds
@@ -182,7 +187,7 @@ func (h *RoomHandler) Create(ctx context.Context, req *CreateRoomRequest) (*Room
 		startTime = pgtype.Timestamptz{Time: *req.Body.StartTime, Valid: true}
 	}
 
-	var winnerPct, roundDurationSeconds, startDelaySeconds int32
+	var winnerPct, roundDurationSeconds, startDelaySeconds, minPlayers int32
 	var gameType string
 
 	// If template_id is provided, fetch template settings
@@ -196,8 +201,18 @@ func (h *RoomHandler) Create(ctx context.Context, req *CreateRoomRequest) (*Room
 		roundDurationSeconds = template.RoundDurationSeconds
 		startDelaySeconds = template.StartDelaySeconds
 		gameType = template.GameType
+		minPlayers = template.MinPlayers
 	} else {
 		// Use provided values or defaults
+		minPlayers = int32(1)
+		if req.Body.MinPlayers != nil {
+			minPlayers = *req.Body.MinPlayers
+		}
+
+		if minPlayers > req.Body.PlayersNeeded {
+			return nil, huma.Error400BadRequest("min_players cannot be greater than players_needed", nil)
+		}
+
 		winnerPct = int32(80)
 		if req.Body.WinnerPct != nil {
 			winnerPct = *req.Body.WinnerPct
@@ -232,6 +247,7 @@ func (h *RoomHandler) Create(ctx context.Context, req *CreateRoomRequest) (*Room
 		RoundDurationSeconds: roundDurationSeconds,
 		StartDelaySeconds:    startDelaySeconds,
 		GameType:             gameType,
+		MinPlayers:           minPlayers,
 	})
 	if err != nil {
 		return nil, err
@@ -458,14 +474,14 @@ func (h *RoomHandler) JoinRoom(ctx context.Context, req *JoinRoomRequest) (*Room
 		return nil, err
 	}
 
-	// Check if this was the first player and update room status/start_time if needed
-	playerCount, err = h.Repo.CountRoomPlayers(ctx, repository.CountRoomPlayersParams{RoomID: req.RoomID})
+	// Count real (non-bot) players in the room
+	realPlayerCount, err := h.Repo.CountRealPlayersInRoom(ctx, repository.CountRealPlayersInRoomParams{RoomID: req.RoomID})
 	if err != nil {
 		return nil, err
 	}
 
-	// If this is the first player and room is 'new', transition to 'starting_soon' and set start_time
-	if playerCount == 1 && updatedRoom.Status == "new" {
+	// If this is the first real player reaching min_players threshold and room is 'new', transition to 'starting_soon' and set start_time
+	if realPlayerCount >= int64(updatedRoom.MinPlayers) && updatedRoom.Status == "new" {
 		startTime := time.Now().Add(time.Duration(updatedRoom.StartDelaySeconds) * time.Second)
 		updatedRoom, err = h.Repo.SetRoomStatus(ctx, repository.SetRoomStatusParams{
 			RoomID: req.RoomID,
