@@ -42,7 +42,7 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "redis-server --daemonize yes --port 6379 --bind 127.0.0.1 --save '' --appendonly no >/dev/null 2>&1; cd backend-java && mvn -q spring-boot:run"
+args = "redis-server --daemonize yes --port 6379 --bind 127.0.0.1 --save '' --appendonly no >/dev/null 2>&1; PGPASSWORD=password psql -h $PGHOST -U $PGUSER -d $PGDATABASE -tAc \"SELECT 1 FROM pg_database WHERE datname='online_shop'\" | grep -q 1 || PGPASSWORD=password psql -h $PGHOST -U $PGUSER -d $PGDATABASE -c 'CREATE DATABASE online_shop'; cd backend-java && PGDATABASE=online_shop REDIS_HOST=127.0.0.1 REDIS_PORT=6379 mvn -q spring-boot:run"
 waitForPort = 8080
 
 [[ports]]

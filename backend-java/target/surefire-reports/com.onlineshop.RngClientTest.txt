@@ -1,4 +1,4 @@
 -------------------------------------------------------------------------------
 Test set: com.onlineshop.RngClientTest
 -------------------------------------------------------------------------------
-Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 4.936 s -- in com.onlineshop.RngClientTest
+Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 4.629 s -- in com.onlineshop.RngClientTest
