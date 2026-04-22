@@ -1,9 +1,9 @@
 import { Crown, DoorOpen, Gauge, RefreshCw, Rocket, ShieldCheck, Timer, Trophy, Users } from 'lucide-react'
 import type { ReactNode } from 'react'
 
-import { Button } from '@/shared/ui/button'
+import { Button } from '@shared/ui'
 
-import type { BoostState, ParticipantOdds, RoomActions, RoomState, RoundTimelineEvent } from '@/features/room-menu/model/types'
+import type { BoostState, ParticipantOdds, RoomActions, RoomState, RoundTimelineEvent } from '../model'
 
 type RoomShellProps = {
   room: RoomState

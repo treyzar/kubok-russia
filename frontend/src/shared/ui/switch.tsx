@@ -1,6 +1,6 @@
 import type { ButtonHTMLAttributes } from 'react'
 
-import { cn } from '@/shared/lib/utils'
+import { cn } from '@shared/lib/utils'
 
 type SwitchProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'onChange'> & {
   checked: boolean

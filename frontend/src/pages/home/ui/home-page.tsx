@@ -12,12 +12,14 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { type AuthUser } from '@/features/mock-auth/model/mock-auth'
-import { Button } from '@/shared/ui/button'
+import { type AuthUser } from '@entities/user'
+import { Button } from '@shared/ui'
 
 type HomePageProps = {
   user: AuthUser
   onLogout: () => void
+  onCreateGame: () => void
+  onJoinGame: () => void
 }
 
 type LastGameItem = {
@@ -100,7 +102,7 @@ const NEWS_AUTOPLAY_MS = 4200
 const NEWS_MANUAL_PAUSE_MS = 5000
 const NEWS_SLIDE_TRANSITION_MS = 860
 
-export function HomePage({ user, onLogout }: HomePageProps) {
+export function HomePage({ onCreateGame, onJoinGame, user, onLogout }: HomePageProps) {
   const [newsSlideIndex, setNewsSlideIndex] = useState(0)
   const [isNewsAutoplayPaused, setIsNewsAutoplayPaused] = useState(false)
   const [newsIncomingSlideIndex, setNewsIncomingSlideIndex] = useState<number | null>(null)
@@ -254,6 +256,7 @@ export function HomePage({ user, onLogout }: HomePageProps) {
                 </Button>
                 <Button
                   className="h-12 w-12 rounded-[10px] bg-[#FF1894] p-0 text-white hover:bg-[#FF2AA0]"
+                  onClick={onCreateGame}
                   type="button"
                 >
                   <Plus className="size-6" />
@@ -281,23 +284,25 @@ export function HomePage({ user, onLogout }: HomePageProps) {
           </header>
 
           <div className="grid min-h-0 flex-1 gap-5 overflow-hidden px-4 py-5 lg:grid-cols-[420px_1fr] lg:px-8 lg:py-6">
-            <aside className="relative h-full min-h-0 overflow-hidden rounded-[10px] border border-[#2B2C30] bg-[#14151A]">
+            <aside className="relative min-h-[360px] overflow-hidden rounded-[10px] border border-[#2B2C30] bg-[#14151A] sm:min-h-[430px] lg:h-full lg:min-h-0">
               <img
                 alt="Игровой холодильник"
                 className="absolute inset-0 h-full w-full object-cover object-center opacity-90"
                 src="/dev-assets/images/fridge_with_blocks.svg"
               />
               <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-[#111217]/40" />
-              <div className="absolute bottom-9 left-4 right-4 z-10 flex flex-col gap-3">
-                <Button className="h-16 rounded-[9px] bg-[#6B22F5] text-[2rem] font-semibold text-white hover:bg-[#7A36F7]" type="button">
-                  Быстрая игра
-                </Button>
-                <Button className="h-16 rounded-[9px] bg-[#FF1493] text-[2rem] font-semibold text-white hover:bg-[#FF2CA0]" type="button">
-                  Создать игру
-                </Button>
-                <Button className="h-16 rounded-[9px] bg-[#A8E45E] text-[1.85rem] font-semibold text-[#101114] hover:bg-[#B9ED76]" type="button">
-                  Присоединиться к игре
-                </Button>
+              <div className="absolute inset-0 z-10 flex items-center justify-center px-4 sm:px-5">
+                <div className="w-full max-w-[360px] space-y-3 sm:max-w-[380px]">
+                  <Button className="h-12 w-full rounded-[9px] bg-[#6B22F5] text-[clamp(1.1rem,2.25vw,2rem)] font-semibold text-white hover:bg-[#7A36F7] sm:h-14 lg:h-16" type="button">
+                    Быстрая игра
+                  </Button>
+                  <Button className="h-12 w-full rounded-[9px] bg-[#FF1493] text-[clamp(1.1rem,2.25vw,2rem)] font-semibold text-white hover:bg-[#FF2CA0] sm:h-14 lg:h-16" onClick={onCreateGame} type="button">
+                    Создать игру
+                  </Button>
+                  <Button className="h-12 w-full rounded-[9px] bg-[#A8E45E] text-[clamp(1.1rem,2.15vw,1.85rem)] font-semibold text-[#101114] hover:bg-[#B9ED76] sm:h-14 lg:h-16" onClick={onJoinGame} type="button">
+                    Присоединиться к игре
+                  </Button>
+                </div>
               </div>
             </aside>
 

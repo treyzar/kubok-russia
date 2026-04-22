@@ -2,7 +2,7 @@ import { useState } from 'react'
 
 import { AuthLandingHero } from './auth-landing-hero'
 import { AuthLoginForm } from './auth-login-form'
-import type { AuthUser } from '@/features/mock-auth/model/mock-auth'
+import type { AuthUser } from '@entities/user'
 
 type AuthPageProps = {
   onAuthSuccess: (user: AuthUser) => void

@@ -1,10 +1,10 @@
-export { RoomShell } from './ui/room-shell'
-export { useRoomMockStore } from './model/use-room-mock-store'
-export type {
-  BoostState,
-  ParticipantOdds,
-  RoomActions,
-  RoomState,
-  RoundPhase,
-  RoundTimelineEvent,
-} from './model/types'
+export { RoomShell } from './ui'
+export {
+  useRoomMockStore,
+  type BoostState,
+  type ParticipantOdds,
+  type RoomActions,
+  type RoomState,
+  type RoundPhase,
+  type RoundTimelineEvent,
+} from './model'

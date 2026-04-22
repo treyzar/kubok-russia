@@ -2,13 +2,7 @@ import { memo, useEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { ArrowLeft, ArrowRight, UserRound } from 'lucide-react'
 
-import { Avatar, AvatarFallback, AvatarImage } from '@/shared/ui/avatar'
-import { Badge } from '@/shared/ui/badge'
-import { Button } from '@/shared/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
-import { MiniFooter } from '@/shared/ui/mini-footer'
-import { Separator } from '@/shared/ui/separator'
-import { Switch } from '@/shared/ui/switch'
+import { Avatar, AvatarFallback, AvatarImage, Badge, Button, Card, CardContent, CardHeader, CardTitle, MiniFooter, Separator, Switch } from '@shared/ui'
 
 type AuthLandingHeroProps = {
   onEnterLogin: () => void
