@@ -14,9 +14,10 @@ import (
 )
 
 var (
-	pool    *pgxpool.Pool
-	queries *repository.Queries
-	config  *internal.AppConfig
+	pool       *pgxpool.Pool
+	queries    *repository.Queries
+	config     *internal.AppConfig
+	testRoomID int32 // Track the room created for tests 2-6
 )
 
 // Helper function to join a room with specified number of places
@@ -197,6 +198,9 @@ func testJoinRoomSinglePlace() error {
 		return fmt.Errorf("failed to create room: %v", err)
 	}
 
+	// Store the room ID for subsequent tests
+	testRoomID = room.RoomID
+
 	// Get user1
 	users, err := queries.ListUsers(context.Background())
 	if err != nil {
@@ -256,17 +260,10 @@ func testJoinRoomSinglePlace() error {
 }
 
 func testJoinRoomMultiplePlaces() error {
-	// Get the room
-	rooms, err := queries.ListRooms(context.Background())
+	// Use the room from test 2
+	room, err := queries.GetRoom(context.Background(), repository.GetRoomParams{RoomID: testRoomID})
 	if err != nil {
-		return err
-	}
-	var room repository.Room
-	for _, r := range rooms {
-		if r.Status == "starting_soon" {
-			room = r
-			break
-		}
+		return fmt.Errorf("failed to get test room: %v", err)
 	}
 
 	// Get user2
@@ -324,17 +321,10 @@ func testJoinRoomMultiplePlaces() error {
 }
 
 func testSequentialPlaceIndices() error {
-	// Get the room
-	rooms, err := queries.ListRooms(context.Background())
+	// Use the room from test 2
+	room, err := queries.GetRoom(context.Background(), repository.GetRoomParams{RoomID: testRoomID})
 	if err != nil {
-		return err
-	}
-	var room repository.Room
-	for _, r := range rooms {
-		if r.Status == "starting_soon" {
-			room = r
-			break
-		}
+		return fmt.Errorf("failed to get test room: %v", err)
 	}
 
 	// Get user3
@@ -396,21 +386,10 @@ func testSequentialPlaceIndices() error {
 }
 
 func testPlaceCountsInResponse() error {
-	// Get the room
-	rooms, err := queries.ListRooms(context.Background())
+	// Use the room from test 2
+	room, err := queries.GetRoom(context.Background(), repository.GetRoomParams{RoomID: testRoomID})
 	if err != nil {
-		return err
-	}
-	var room repository.Room
-	for _, r := range rooms {
-		if r.Status == "starting_soon" {
-			room = r
-			break
-		}
-	}
-
-	if room.RoomID == 0 {
-		return fmt.Errorf("no starting_soon room found")
+		return fmt.Errorf("failed to get test room: %v", err)
 	}
 
 	// Get players with their place counts
@@ -866,21 +845,10 @@ func testBotIntegration() error {
 }
 
 func testPlaceIdInvariant() error {
-	// Get a room with players (use the first starting_soon room from earlier tests)
-	rooms, err := queries.ListRooms(context.Background())
+	// Use the room from tests 2-5 which should still have players
+	room, err := queries.GetRoom(context.Background(), repository.GetRoomParams{RoomID: testRoomID})
 	if err != nil {
-		return err
-	}
-	var room repository.Room
-	for _, r := range rooms {
-		if r.Status == "starting_soon" {
-			room = r
-			break
-		}
-	}
-
-	if room.RoomID == 0 {
-		return fmt.Errorf("no starting_soon room found for invariant check")
+		return fmt.Errorf("failed to get test room: %v", err)
 	}
 
 	ctx := context.Background()

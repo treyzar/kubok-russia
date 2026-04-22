@@ -825,16 +825,22 @@ player_places AS (
     SELECT COUNT(place_id) AS place_count FROM room_players
     WHERE room_players.room_id = $1 AND room_players.user_id = $2
 ),
-deleted AS (
+deleted_players AS (
     DELETE FROM room_players
     WHERE room_players.room_id = $1 AND room_players.user_id = $2
       AND (SELECT status FROM room_info) IN ('new', 'starting_soon')
     RETURNING room_id, user_id, joined_at
 ),
+deleted_places AS (
+    DELETE FROM room_places
+    WHERE room_places.room_id = $1 AND room_places.user_id = $2
+      AND EXISTS (SELECT 1 FROM deleted_players)
+    RETURNING room_id
+),
 balance_refund AS (
     UPDATE users
     SET balance = users.balance + (SELECT entry_cost FROM room_info) * (SELECT place_count FROM player_places)
-    WHERE users.id = $2 AND EXISTS (SELECT 1 FROM deleted)
+    WHERE users.id = $2 AND EXISTS (SELECT 1 FROM deleted_players)
     RETURNING users.id
 ),
 player_count AS (
@@ -846,7 +852,7 @@ SET status = CASE
     ELSE status
 END,
 jackpot = CASE
-    WHEN EXISTS (SELECT 1 FROM deleted) THEN GREATEST(jackpot - (SELECT entry_cost FROM room_info) * (SELECT place_count FROM player_places), 0)
+    WHEN EXISTS (SELECT 1 FROM deleted_players) THEN GREATEST(jackpot - (SELECT entry_cost FROM room_info) * (SELECT place_count FROM player_places), 0)
     ELSE jackpot
 END,
 updated_at = CURRENT_TIMESTAMP
