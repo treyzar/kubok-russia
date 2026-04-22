@@ -29,7 +29,7 @@ class TemplateLifecycleServiceTest {
         assertFalse(t.name().isBlank());
         assertTrue(t.playersNeeded() > 0);
         assertTrue(t.entryCost() >= 0);
-        assertTrue(t.winnerPct() > 0 && t.winnerPct() <= 100);
+        assertTrue(t.winnerPct() > 0 && t.winnerPct() <= 99);
         assertTrue(t.minPlayers() > 0);
         assertTrue(t.minPlayers() <= t.playersNeeded());
     }

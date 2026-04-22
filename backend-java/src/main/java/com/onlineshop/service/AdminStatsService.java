@@ -3,7 +3,6 @@ package com.onlineshop.service;
 import com.onlineshop.dto.AdminDtos.*;
 import com.onlineshop.dto.TemplateDto;
 import com.onlineshop.repository.RoomTemplateRepository;
-import java.util.ArrayList;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;

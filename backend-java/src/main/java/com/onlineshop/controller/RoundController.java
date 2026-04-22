@@ -38,6 +38,7 @@ public class RoundController {
     @GetMapping("/{roomId}")
     public Map<String, Object> get(@PathVariable Integer roomId) {
         Room r = roomRepo.findById(roomId)
+                .filter(x -> x.getStatus() == RoomStatus.FINISHED)
                 .orElseThrow(() -> new NoSuchElementException("round not found"));
         return assemble(r);
     }

@@ -127,9 +127,19 @@ public class AdminController {
     }
 
     @DeleteMapping("/templates/{id}")
-    public ResponseEntity<Map<String, String>> delete(@PathVariable Integer id) {
+    public ResponseEntity<?> delete(@PathVariable Integer id) {
+        TemplateStatus s = lifecycle.getStatus(id);
+        if (!s.canDelete()) {
+            return ResponseEntity.status(409).body(Map.of(
+                    "message", String.format("Cannot delete template: %d active rooms and %d waiting rooms exist",
+                            s.activeRooms(), s.waitingRooms()),
+                    "template_id", s.templateId(),
+                    "active_rooms", s.activeRooms(),
+                    "waiting_rooms", s.waitingRooms()
+            ));
+        }
         lifecycle.delete(id);
-        return ResponseEntity.ok(Map.of("message", "deleted"));
+        return ResponseEntity.ok(Map.of("message", "Template deleted successfully"));
     }
 
     @GetMapping("/metrics/historical")

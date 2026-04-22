@@ -41,6 +41,6 @@ public class TemplateController {
     @DeleteMapping("/{id}")
     public ResponseEntity<Map<String, String>> delete(@PathVariable("id") Integer id) {
         lifecycle.delete(id);
-        return ResponseEntity.ok(Map.of("message", "deleted"));
+        return ResponseEntity.ok(Map.of("message", "template deleted successfully"));
     }
 }
