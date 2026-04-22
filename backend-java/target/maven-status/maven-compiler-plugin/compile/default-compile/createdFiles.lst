@@ -94,6 +94,7 @@ com/onlineshop/repository/RoomPlaceRepository.class
 com/onlineshop/exception/DomainExceptions$RoomFullException.class
 com/onlineshop/domain/entity/RoomPlace$PK.class
 com/onlineshop/domain/entity/User.class
+com/onlineshop/config/JacksonConfig.class
 com/onlineshop/domain/entity/RoomPlayer.class
 com/onlineshop/domain/entity/RoomWinner$PK.class
 com/onlineshop/config/OpenApiConfig.class

@@ -6,8 +6,11 @@ import com.onlineshop.repository.RoomRepository;
 import com.onlineshop.service.RoomService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -25,10 +28,13 @@ public class RoomFinisherJob {
     private final RoomRepository roomRepo;
     private final RoomService rooms;
 
+    @Autowired @Lazy
+    private RoomFinisherJob self;
+
     @Scheduled(fixedRateString = "${app.scheduler.room-finisher-fixed-rate:1000}")
     public void tick() {
         Instant now = Instant.now();
-        List<Room> playing = roomRepo.findAllByStatus(RoomStatus.PLAYING);
+        List<Room> playing = self.fetchPlayingRooms();
         for (Room r : playing) {
             if (r.getStartTime() == null) continue;
             Instant endsAt = r.getStartTime().plus(Duration.ofSeconds(r.getRoundDurationSeconds()));
@@ -40,5 +46,10 @@ public class RoomFinisherJob {
                 }
             }
         }
+    }
+
+    @Transactional(readOnly = true)
+    public List<Room> fetchPlayingRooms() {
+        return roomRepo.findAllByStatus(RoomStatus.PLAYING);
     }
 }

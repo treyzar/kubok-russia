@@ -20,7 +20,10 @@ public class RoomWinner {
     private Integer prize;
 
     @Column(name = "won_at", nullable = false, updatable = false)
-    private Instant wonAt = Instant.now();
+    private Instant wonAt;
+
+    @PrePersist
+    void prePersist() { if (wonAt == null) wonAt = Instant.now(); }
 
     @Data @NoArgsConstructor @AllArgsConstructor
     public static class PK implements Serializable {

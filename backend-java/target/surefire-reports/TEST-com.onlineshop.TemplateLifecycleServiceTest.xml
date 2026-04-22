@@ -60,12 +60,12 @@
     <property name="java.class.version" value="63.0"/>
   </properties>
   <testcase name="updateErrorFlag_active" classname="com.onlineshop.TemplateLifecycleServiceTest" time="0.001"/>
-  <testcase name="canDelete_noRooms" classname="com.onlineshop.TemplateLifecycleServiceTest" time="0.0"/>
-  <testcase name="updateParams_validation" classname="com.onlineshop.TemplateLifecycleServiceTest" time="0.001"/>
-  <testcase name="deletionErrorFlag_active" classname="com.onlineshop.TemplateLifecycleServiceTest" time="0.001"/>
-  <testcase name="cannotDelete_active" classname="com.onlineshop.TemplateLifecycleServiceTest" time="0.0"/>
+  <testcase name="canDelete_noRooms" classname="com.onlineshop.TemplateLifecycleServiceTest" time="0.001"/>
+  <testcase name="updateParams_validation" classname="com.onlineshop.TemplateLifecycleServiceTest" time="0.0"/>
+  <testcase name="deletionErrorFlag_active" classname="com.onlineshop.TemplateLifecycleServiceTest" time="0.0"/>
+  <testcase name="cannotDelete_active" classname="com.onlineshop.TemplateLifecycleServiceTest" time="0.001"/>
   <testcase name="deletionErrorFlag_waiting" classname="com.onlineshop.TemplateLifecycleServiceTest" time="0.001"/>
   <testcase name="cannotDelete_waiting" classname="com.onlineshop.TemplateLifecycleServiceTest" time="0.0"/>
-  <testcase name="cannotDelete_both" classname="com.onlineshop.TemplateLifecycleServiceTest" time="0.001"/>
-  <testcase name="updateErrorFlag_waiting" classname="com.onlineshop.TemplateLifecycleServiceTest" time="0.0"/>
+  <testcase name="cannotDelete_both" classname="com.onlineshop.TemplateLifecycleServiceTest" time="0.0"/>
+  <testcase name="updateErrorFlag_waiting" classname="com.onlineshop.TemplateLifecycleServiceTest" time="0.001"/>
 </testsuite>

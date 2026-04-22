@@ -119,7 +119,7 @@ public class RoomController {
 
     @GetMapping("/{roomId}/boosts/calc/probability")
     public Map<String, Object> calcProbability(@PathVariable Integer roomId,
-                                                @RequestParam Integer userId,
+                                                @RequestParam("user_id") Integer userId,
                                                 @RequestParam(name = "boost_amount", defaultValue = "0") Double boostAmount) {
         return Map.of("probability",
                 rooms.calcBoostProbability(roomId, userId, (int) Math.round(boostAmount)));
@@ -127,7 +127,7 @@ public class RoomController {
 
     @GetMapping("/{roomId}/boosts/calc/boost")
     public Map<String, Object> calcRequiredBoost(@PathVariable Integer roomId,
-                                                  @RequestParam Integer userId,
+                                                  @RequestParam("user_id") Integer userId,
                                                   @RequestParam(name = "desired_probability") Double desiredProbability) {
         return Map.of("boost_amount",
                 rooms.calcRequiredBoost(roomId, userId, desiredProbability));

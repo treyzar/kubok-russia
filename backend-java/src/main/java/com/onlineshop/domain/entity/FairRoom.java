@@ -49,5 +49,6 @@ public class FairRoom {
     @Transient
     private long playerCount;
 
+    @PrePersist public void prePersistTimestamps() { Instant n=Instant.now(); if(createdAt==null) createdAt=n; if(updatedAt==null) updatedAt=n; }
     @PreUpdate public void touch() { this.updatedAt = Instant.now(); }
 }

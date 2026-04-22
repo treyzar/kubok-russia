@@ -46,21 +46,25 @@ public class RoomService {
      */
     @Transactional
     public Room create(CreateRoomRequest req) {
-        int playersNeeded = req.playersNeeded();
-        int entryCost = req.entryCost();
-        int minPlayers, winnerPct, roundDuration, startDelay;
+        int minPlayers, winnerPct, roundDuration, startDelay, playersNeeded, entryCost;
         GameType gameType;
         Integer templateId = req.templateId();
 
         if (templateId != null) {
             RoomTemplate t = templateRepo.findById(templateId)
                     .orElseThrow(() -> new NoSuchElementException("template not found"));
+            playersNeeded = req.playersNeeded() != null ? req.playersNeeded() : t.getPlayersNeeded();
+            entryCost = req.entryCost() != null ? req.entryCost() : t.getEntryCost();
             minPlayers = t.getMinPlayers();
             winnerPct = t.getWinnerPct();
             roundDuration = t.getRoundDurationSeconds();
             startDelay = t.getStartDelaySeconds();
             gameType = t.getGameType();
         } else {
+            if (req.playersNeeded() == null || req.entryCost() == null)
+                throw new IllegalArgumentException("players_needed and entry_cost are required when no template_id is provided");
+            playersNeeded = req.playersNeeded();
+            entryCost = req.entryCost();
             minPlayers = req.minPlayers() != null ? req.minPlayers() : 1;
             if (minPlayers > playersNeeded)
                 throw new IllegalArgumentException("min_players cannot be greater than players_needed");

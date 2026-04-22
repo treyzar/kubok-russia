@@ -20,7 +20,10 @@ public class RoomBoost {
     private Integer amount;
 
     @Column(name = "boosted_at", nullable = false, updatable = false)
-    private Instant boostedAt = Instant.now();
+    private Instant boostedAt;
+
+    @PrePersist
+    void prePersist() { if (boostedAt == null) boostedAt = Instant.now(); }
 
     @Data @NoArgsConstructor @AllArgsConstructor
     public static class PK implements Serializable {

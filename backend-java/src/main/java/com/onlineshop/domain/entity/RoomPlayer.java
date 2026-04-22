@@ -22,7 +22,10 @@ public class RoomPlayer {
     @Id @Column(name = "place_id") private Integer placeId;
 
     @Column(name = "joined_at", nullable = false, updatable = false)
-    private Instant joinedAt = Instant.now();
+    private Instant joinedAt;
+
+    @PrePersist
+    void prePersist() { if (joinedAt == null) joinedAt = Instant.now(); }
 
     @Data @NoArgsConstructor @AllArgsConstructor
     public static class PK implements Serializable {

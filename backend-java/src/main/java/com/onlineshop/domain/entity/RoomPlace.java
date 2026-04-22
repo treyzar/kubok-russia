@@ -20,7 +20,10 @@ public class RoomPlace {
     private Integer userId;
 
     @Column(name = "created_at", nullable = false, updatable = false)
-    private Instant createdAt = Instant.now();
+    private Instant createdAt;
+
+    @PrePersist
+    void prePersist() { if (createdAt == null) createdAt = Instant.now(); }
 
     @Data @NoArgsConstructor @AllArgsConstructor
     public static class PK implements Serializable {

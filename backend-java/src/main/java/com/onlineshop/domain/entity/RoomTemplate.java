@@ -47,5 +47,6 @@ public class RoomTemplate {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt = Instant.now();
 
+    @PrePersist public void prePersistTimestamps() { Instant n=Instant.now(); if(createdAt==null) createdAt=n; if(updatedAt==null) updatedAt=n; }
     @PreUpdate public void touch() { this.updatedAt = Instant.now(); }
 }

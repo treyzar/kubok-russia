@@ -7,8 +7,11 @@ import com.onlineshop.repository.*;
 import com.onlineshop.service.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
@@ -43,10 +46,13 @@ public class RoomStarterJob {
     private final UserService users;
     private final EventPublisher events;
 
+    @Autowired @Lazy
+    private RoomStarterJob self;
+
     @Scheduled(fixedRateString = "${app.scheduler.room-starter-fixed-rate:1000}")
     public void tick() {
         Instant now = Instant.now();
-        List<Room> arming = roomRepo.findAllByStatus(RoomStatus.STARTING_SOON);
+        List<Room> arming = self.fetchArmingRooms();
         for (Room r : arming) {
             try {
                 if (r.getStartTime() == null) continue;
@@ -54,11 +60,16 @@ public class RoomStarterJob {
                     events.publishRoomStarting(r.getRoomId(), r.getStartTime());
                     continue;
                 }
-                fillWithBotsAndStart(r.getRoomId());
+                self.fillWithBotsAndStart(r.getRoomId());
             } catch (Exception e) {
                 log.warn("RoomStarter failed for room {}: {}", r.getRoomId(), e.getMessage());
             }
         }
+    }
+
+    @Transactional(readOnly = true)
+    public List<Room> fetchArmingRooms() {
+        return roomRepo.findAllByStatus(RoomStatus.STARTING_SOON);
     }
 
     /**
@@ -66,7 +77,7 @@ public class RoomStarterJob {
      * bots are available, the entire transaction is rolled back and the room
      * stays in STARTING_SOON for the next tick to retry.
      */
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void fillWithBotsAndStart(Integer roomId) {
         Room room = roomRepo.findByIdForUpdate(roomId)
                 .orElseThrow();
