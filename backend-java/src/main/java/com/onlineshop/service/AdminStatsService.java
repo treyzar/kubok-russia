@@ -3,6 +3,7 @@ package com.onlineshop.service;
 import com.onlineshop.dto.AdminDtos.*;
 import com.onlineshop.dto.TemplateDto;
 import com.onlineshop.repository.RoomTemplateRepository;
+import java.util.ArrayList;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
@@ -83,6 +84,38 @@ public class AdminStatsService {
 
     @Transactional(readOnly = true)
     public boolean checkDuplicate(TemplateDto dto) {
+        return templateRepo.existsDuplicate(
+                dto.playersNeeded(), dto.minPlayers(), dto.entryCost(), dto.winnerPct());
+    }
+
+    /**
+     * Mirrors Go {@code AdminStatsService.ValidateTemplate}:
+     * uses only the 5 fields available on the admin payload (no name/round/delay).
+     */
+    @Transactional(readOnly = true)
+    public List<Warning> validateAdminTemplate(AdminValidateTemplateRequest dto) {
+        HistoricalMetrics m = getHistoricalMetrics();
+        List<Warning> w = new ArrayList<>();
+
+        if (dto.playersNeeded() == 1)
+            w.add(new Warning("players_needed", "Player count is too low (1 player)", "warning"));
+        if (m.avgRealPlayersPerRoom() > 0 && dto.minPlayers() > m.avgRealPlayersPerRoom())
+            w.add(new Warning("min_players", "Minimum players exceeds average real player count per room from past week", "warning"));
+        if (m.avgRealPlayersPerRoom() > 0 && dto.playersNeeded() > 2 * m.avgRealPlayersPerRoom())
+            w.add(new Warning("players_needed", "Maximum players exceeds twice the average real player count per room from past week", "warning"));
+        if (m.avgEntryCost() > 0 && dto.entryCost() > 1.75 * m.avgEntryCost())
+            w.add(new Warning("entry_cost", "Entry cost is too high (exceeds 1.75x average)", "warning"));
+        if (m.avgEntryCost() > 0 && dto.entryCost() < 0.5 * m.avgEntryCost())
+            w.add(new Warning("entry_cost", "Entry cost is too low (less than 0.5x average)", "warning"));
+        if (dto.winnerPct() > 80)
+            w.add(new Warning("winner_pct", "Jackpot percentage is too high (exceeds 80%)", "warning"));
+        if (dto.winnerPct() < 50)
+            w.add(new Warning("winner_pct", "Jackpot percentage is too low (less than 50%)", "warning"));
+        return w;
+    }
+
+    @Transactional(readOnly = true)
+    public boolean checkDuplicateAdmin(AdminValidateTemplateRequest dto) {
         return templateRepo.existsDuplicate(
                 dto.playersNeeded(), dto.minPlayers(), dto.entryCost(), dto.winnerPct());
     }

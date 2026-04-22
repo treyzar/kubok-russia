@@ -37,14 +37,25 @@ public class GlobalExceptionHandler {
         return body(HttpStatus.PAYMENT_REQUIRED, e.getMessage());
     }
 
+    /** Structured 402 with required/current_balance/shortfall — matches Go. */
+    @ExceptionHandler(InsufficientBalanceForRoomException.class)
+    public ResponseEntity<?> handleStructuredPaymentRequired(InsufficientBalanceForRoomException e) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("message", e.getMessage());
+        m.put("required", e.getRequired());
+        m.put("current_balance", e.getCurrentBalance());
+        m.put("shortfall", e.getShortfall());
+        return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED).body(m);
+    }
+
     @ExceptionHandler({RoomFullException.class, RoomNotAcceptingException.class,
                        RoomNotWaitingException.class, PlayerNotInRoomException.class})
     public ResponseEntity<?> handleBadRequest(RuntimeException e) {
         return body(HttpStatus.BAD_REQUEST, e.getMessage());
     }
 
-    @ExceptionHandler({DuplicatePlayerException.class, TemplateInUseException.class,
-                       DataIntegrityViolationException.class})
+    @ExceptionHandler({DuplicatePlayerException.class, DuplicateBoostException.class,
+                       TemplateInUseException.class, DataIntegrityViolationException.class})
     public ResponseEntity<?> handleConflict(RuntimeException e) {
         return body(HttpStatus.CONFLICT, e.getMessage());
     }

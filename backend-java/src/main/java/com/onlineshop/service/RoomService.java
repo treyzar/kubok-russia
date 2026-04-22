@@ -1,7 +1,9 @@
 package com.onlineshop.service;
 
 import com.onlineshop.domain.entity.*;
+import com.onlineshop.domain.enums.GameType;
 import com.onlineshop.domain.enums.RoomStatus;
+import com.onlineshop.dto.RoomDtos.CreateRoomRequest;
 import com.onlineshop.events.EventPublisher;
 import com.onlineshop.exception.DomainExceptions.*;
 import com.onlineshop.repository.*;
@@ -30,48 +32,79 @@ public class RoomService {
     private final RoomWinnerRepository winnerRepo;
     private final RoomPlaceRepository placeRepo;
     private final RoomTemplateRepository templateRepo;
+    private final UserRepository userRepo;
     private final UserService userService;
     private final EventPublisher events;
     private final RngClient rng;
 
+    /**
+     * Mirrors Go {@code RoomHandler.Create}:
+     *  - if {@code templateId} is set, pull players_needed/min_players/entry_cost/
+     *    winner_pct/round_duration/start_delay/game_type from the template;
+     *  - otherwise apply per-field defaults
+     *    (min_players=1, winner_pct=80, round=30, delay=60, game_type=train).
+     */
     @Transactional
-    public Room createFromTemplate(Integer templateId) {
-        RoomTemplate t = templateRepo.findById(templateId)
-                .orElseThrow(() -> new NoSuchElementException("template not found"));
+    public Room create(CreateRoomRequest req) {
+        int playersNeeded = req.playersNeeded();
+        int entryCost = req.entryCost();
+        int minPlayers, winnerPct, roundDuration, startDelay;
+        GameType gameType;
+        Integer templateId = req.templateId();
+
+        if (templateId != null) {
+            RoomTemplate t = templateRepo.findById(templateId)
+                    .orElseThrow(() -> new NoSuchElementException("template not found"));
+            minPlayers = t.getMinPlayers();
+            winnerPct = t.getWinnerPct();
+            roundDuration = t.getRoundDurationSeconds();
+            startDelay = t.getStartDelaySeconds();
+            gameType = t.getGameType();
+        } else {
+            minPlayers = req.minPlayers() != null ? req.minPlayers() : 1;
+            if (minPlayers > playersNeeded)
+                throw new IllegalArgumentException("min_players cannot be greater than players_needed");
+            winnerPct = req.winnerPct() != null ? req.winnerPct() : 80;
+            roundDuration = req.roundDurationSeconds() != null ? req.roundDurationSeconds() : 30;
+            startDelay = req.startDelaySeconds() != null ? req.startDelaySeconds() : 60;
+            String gtRaw = req.gameType();
+            if (gtRaw != null && !gtRaw.isBlank()
+                    && !gtRaw.equals("train") && !gtRaw.equals("fridge")) {
+                throw new IllegalArgumentException("game_type must be one of: train, fridge");
+            }
+            gameType = (gtRaw == null || gtRaw.isBlank()) ? GameType.TRAIN : GameType.fromValue(gtRaw);
+        }
+
         Room room = Room.builder()
-                .jackpot(0)
-                .status(RoomStatus.NEW)
-                .playersNeeded(t.getPlayersNeeded())
-                .minPlayers(t.getMinPlayers())
-                .entryCost(t.getEntryCost())
-                .winnerPct(t.getWinnerPct())
-                .roundDurationSeconds(t.getRoundDurationSeconds())
-                .startDelaySeconds(t.getStartDelaySeconds())
-                .gameType(t.getGameType())
-                .templateId(t.getTemplateId())
+                .jackpot(req.jackpot() != null ? req.jackpot() : 0)
+                .startTime(req.startTime())
+                .status(req.status() != null && !req.status().isBlank()
+                        ? RoomStatus.fromValue(req.status()) : RoomStatus.NEW)
+                .playersNeeded(playersNeeded)
+                .minPlayers(minPlayers)
+                .entryCost(entryCost)
+                .winnerPct(winnerPct)
+                .roundDurationSeconds(roundDuration)
+                .startDelaySeconds(startDelay)
+                .gameType(gameType)
+                .templateId(templateId)
                 .createdAt(Instant.now())
                 .updatedAt(Instant.now())
                 .build();
         return roomRepo.save(room);
     }
 
+    /**
+     * Join with optional {@code places} (default 1). Mirrors Go JoinRoom:
+     *  - status must be NEW or STARTING_SOON;
+     *  - structured 402 with required/current/shortfall on insufficient balance;
+     *  - debits {@code entry_cost * places} and creates that many room_places;
+     *  - publishes {@code player_joined} with the actual {@code places} count.
+     */
     @Transactional
-    public Room createDirect(int playersNeeded, int minPlayers, int entryCost, int winnerPct,
-                             int roundDuration, int startDelay,
-                             com.onlineshop.domain.enums.GameType gameType) {
-        Room r = Room.builder()
-                .jackpot(0).status(RoomStatus.NEW)
-                .playersNeeded(playersNeeded).minPlayers(minPlayers)
-                .entryCost(entryCost).winnerPct(winnerPct)
-                .roundDurationSeconds(roundDuration).startDelaySeconds(startDelay)
-                .gameType(gameType)
-                .createdAt(Instant.now()).updatedAt(Instant.now())
-                .build();
-        return roomRepo.save(r);
-    }
+    public Room join(Integer roomId, Integer userId, Integer placesIn) {
+        int places = (placesIn == null || placesIn <= 0) ? 1 : placesIn;
 
-    @Transactional
-    public void join(Integer roomId, Integer userId) {
         Room room = roomRepo.findByIdForUpdate(roomId)
                 .orElseThrow(() -> new RoomNotFoundException("room not found"));
         if (room.getStatus() != RoomStatus.NEW && room.getStatus() != RoomStatus.STARTING_SOON)
@@ -80,33 +113,47 @@ public class RoomService {
         long count = playerRepo.countByRoomId(roomId);
         if (count >= room.getPlayersNeeded()) throw new RoomFullException();
 
-        int entryCost = room.getEntryCost();
-        if (entryCost > 0) userService.debit(userId, entryCost);
+        int totalCost = room.getEntryCost() * places;
 
-        // First place is bundled with the entry — create one room_places row.
-        int placeIndex = nextPlaceIndex(roomId);
-        placeRepo.save(RoomPlace.builder()
-                .roomId(roomId).userId(userId).placeIndex(placeIndex).build());
+        // Pre-check balance and respond with structured 402 on shortfall.
+        if (totalCost > 0) {
+            User u = userRepo.findById(userId)
+                    .orElseThrow(() -> new NoSuchElementException("user not found"));
+            if (u.getBalance() < totalCost) {
+                throw new InsufficientBalanceForRoomException(
+                        "Insufficient balance for entry", totalCost, u.getBalance());
+            }
+            userService.debit(userId, totalCost);
+        }
 
+        // Insert N place rows + a single room_players entry pinned to the first place.
+        int firstPlaceIndex = nextPlaceIndex(roomId);
+        for (int i = 0; i < places; i++) {
+            placeRepo.save(RoomPlace.builder()
+                    .roomId(roomId).userId(userId).placeIndex(firstPlaceIndex + i).build());
+        }
         playerRepo.save(RoomPlayer.builder()
-                .roomId(roomId).userId(userId).placeId(placeIndex).build());
+                .roomId(roomId).userId(userId).placeId(firstPlaceIndex).build());
 
-        room.setJackpot(room.getJackpot() + entryCost);
+        room.setJackpot(room.getJackpot() + totalCost);
 
         long newCount = count + 1;
         if (newCount >= room.getMinPlayers() && room.getStatus() == RoomStatus.NEW) {
             armStart(room);
         }
-        roomRepo.save(room);
-
-        events.publishPlayerJoined(roomId, userId, 1);
+        Room saved = roomRepo.save(room);
+        events.publishPlayerJoined(roomId, userId, places);
+        return saved;
     }
 
+    /**
+     * Leave allowed in NEW or STARTING_SOON (matches Go LeaveRoomAndUpdateStatus).
+     */
     @Transactional
-    public void leave(Integer roomId, Integer userId) {
+    public Room leave(Integer roomId, Integer userId) {
         Room room = roomRepo.findByIdForUpdate(roomId)
                 .orElseThrow(() -> new RoomNotFoundException("room not found"));
-        if (room.getStatus() != RoomStatus.NEW)
+        if (room.getStatus() != RoomStatus.NEW && room.getStatus() != RoomStatus.STARTING_SOON)
             throw new RoomNotAcceptingException();
         if (!playerRepo.existsByRoomIdAndUserId(roomId, userId))
             throw new PlayerNotInRoomException();
@@ -116,57 +163,55 @@ public class RoomService {
         int refund = (int) places * room.getEntryCost();
 
         playerRepo.deleteByRoomIdAndUserId(roomId, userId);
-        // FK ON DELETE CASCADE wipes places too via room_places? Actually room_places
-        // has no FK back from room_players; we delete explicitly.
         placeRepo.deleteAllByRoomIdAndUserId(roomId, userId);
 
         room.setJackpot(Math.max(0, room.getJackpot() - refund));
-        roomRepo.save(room);
+        Room saved = roomRepo.save(room);
 
         if (refund > 0) userService.credit(userId, refund);
+        return saved;
     }
 
+    /**
+     * Boost. Mirrors Go {@code BoostRoom}:
+     *  - structured 402 on insufficient balance;
+     *  - rejects duplicate boost from the same user with HTTP 409 ({@link DuplicateBoostException}).
+     */
     @Transactional
-    public void boost(Integer roomId, Integer userId, int amount) {
+    public Room boost(Integer roomId, Integer userId, int amount) {
         Room room = roomRepo.findByIdForUpdate(roomId)
                 .orElseThrow(() -> new RoomNotFoundException("room not found"));
         if (!playerRepo.existsByRoomIdAndUserId(roomId, userId))
             throw new PlayerNotInRoomException();
         if (amount <= 0) throw new IllegalArgumentException("amount must be positive");
 
+        // Pre-check balance with structured 402.
+        User u = userRepo.findById(userId)
+                .orElseThrow(() -> new NoSuchElementException("user not found"));
+        if (u.getBalance() < amount) {
+            throw new InsufficientBalanceForRoomException(
+                    "Insufficient balance for boost", amount, u.getBalance());
+        }
+
+        // Reject duplicate boost (Go returns 409).
+        if (boostRepo.findById(new RoomBoost.PK(roomId, userId)).isPresent()) {
+            throw new DuplicateBoostException();
+        }
+
         userService.debit(userId, amount);
-        boostRepo.findById(new RoomBoost.PK(roomId, userId)).ifPresentOrElse(
-                ex -> { ex.setAmount(ex.getAmount() + amount); boostRepo.save(ex); },
-                () -> boostRepo.save(RoomBoost.builder()
-                        .roomId(roomId).userId(userId).amount(amount).build())
-        );
+        boostRepo.save(RoomBoost.builder()
+                .roomId(roomId).userId(userId).amount(amount).build());
         room.setJackpot(room.getJackpot() + amount);
-        roomRepo.save(room);
+        Room saved = roomRepo.save(room);
 
         events.publishBoostApplied(roomId, userId, amount);
-    }
-
-    @Transactional
-    public void claimPlaces(Integer roomId, Integer userId, int count) {
-        Room room = roomRepo.findByIdForUpdate(roomId)
-                .orElseThrow(() -> new RoomNotFoundException("room not found"));
-        if (!playerRepo.existsByRoomIdAndUserId(roomId, userId))
-            throw new PlayerNotInRoomException();
-
-        int cost = room.getEntryCost() * count;
-        userService.debit(userId, cost);
-        int next = nextPlaceIndex(roomId);
-        for (int i = 0; i < count; i++) {
-            placeRepo.save(RoomPlace.builder()
-                    .roomId(roomId).userId(userId).placeIndex(next + i).build());
-        }
-        room.setJackpot(room.getJackpot() + cost);
-        roomRepo.save(room);
+        return saved;
     }
 
     /**
      * Settle a room: weighted RNG over (entry_cost*places + boost), award
-     * jackpot * winner_pct / 100, transition to FINISHED.
+     * jackpot * winner_pct / 100, transition to FINISHED. Internal use only —
+     * called by RoomFinisherJob (mirrors Go cron, no public HTTP endpoint).
      */
     @Transactional
     public void settle(Integer roomId) {
@@ -183,15 +228,10 @@ public class RoomService {
         List<RoomPlace> places = placeRepo.findAllByRoomId(roomId);
         List<RoomBoost> boosts = boostRepo.findAllByRoomId(roomId);
 
-        // Build weight per user: entry_cost * place_count + total boost
         java.util.Map<Integer, Integer> weights = new java.util.LinkedHashMap<>();
         for (RoomPlayer p : players) weights.put(p.getUserId(), 0);
-        for (RoomPlace pl : places) {
-            weights.merge(pl.getUserId(), room.getEntryCost(), Integer::sum);
-        }
-        for (RoomBoost b : boosts) {
-            weights.merge(b.getUserId(), b.getAmount(), Integer::sum);
-        }
+        for (RoomPlace pl : places) weights.merge(pl.getUserId(), room.getEntryCost(), Integer::sum);
+        for (RoomBoost b : boosts) weights.merge(b.getUserId(), b.getAmount(), Integer::sum);
 
         int totalWeight = weights.values().stream().mapToInt(Integer::intValue).sum();
         int pick = totalWeight > 0 ? rng.selectRandom(totalWeight, roomId, players.size()) : 0;
@@ -212,14 +252,20 @@ public class RoomService {
         events.publishGameFinished(roomId, winnerId, prize);
     }
 
-    // ------- boost calculations (matches Go) -------
+    // ------- boost calculations (mirrors Go roomCalcData/CalcProbability/CalcBoost) -------
 
     /**
-     * Probability (%) the user would win after adding `boost`:
-     * 100 * (totalPlayerAmount + boost) / (poolBase + acc + boost)
-     * where totalPlayerAmount is the user's stake (entry_cost*places + existing boost),
-     * poolBase is jackpot of all other players' entry_cost*places,
-     * acc is total of all other players' existing boosts.
+     * Probability (%) the user would win after adding {@code boost}.
+     *
+     * <p>Formula (matches Go):
+     * <pre>
+     *   poolBase = players_needed * entry_cost  // FIXED, the entire seat pool
+     *   acc      = SUM(boost) over ALL players in the room (including the user)
+     *   total    = entry_cost * places(user) + existing_boost(user)
+     *   p = 100 * (total + boost) / (poolBase + acc + boost)
+     * </pre>
+     * Note: there is NO subtraction of the user's own places/boost here — the
+     * pool denominator is the whole room.
      */
     public double calcBoostProbability(Integer roomId, Integer userId, int boost) {
         Room r = roomRepo.findById(roomId)
@@ -228,41 +274,43 @@ public class RoomService {
                 .filter(p -> userId.equals(p.getUserId())).count();
         int userBoost = boostRepo.findById(new RoomBoost.PK(roomId, userId))
                 .map(RoomBoost::getAmount).orElse(0);
-        int userTotal = (int) userPlaces * r.getEntryCost() + userBoost;
+        int total = (int) userPlaces * r.getEntryCost() + userBoost;
 
-        int totalEntry = (int) placeRepo.countByRoomId(roomId) * r.getEntryCost();
-        int totalBoost = boostRepo.findAllByRoomId(roomId).stream()
-                .mapToInt(RoomBoost::getAmount).sum();
-        int poolBase = totalEntry - (int) userPlaces * r.getEntryCost();
-        int acc = totalBoost - userBoost;
+        long poolBase = (long) r.getPlayersNeeded() * r.getEntryCost();
+        long acc = boostRepo.findAllByRoomId(roomId).stream()
+                .mapToLong(RoomBoost::getAmount).sum();
 
-        long denom = (long) poolBase + acc + userTotal + boost;
-        if (denom <= 0) return 0.0;
-        return 100.0 * (userTotal + boost) / denom;
+        double denom = poolBase + acc + boost;
+        if (denom <= 0) denom = 1;
+        return 100.0 * (total + boost) / denom;
     }
 
-    /** Required boost to reach probability p (0..100). */
+    /**
+     * Required boost to reach probability {@code p} (0 < p < 100), exclusive bounds.
+     *
+     * <p>Formula (matches Go):
+     * <pre>
+     *   ceil( (p*(poolBase + acc) - 100*total) / (100 - p) )
+     * </pre>
+     */
     public int calcRequiredBoost(Integer roomId, Integer userId, double p) {
-        if (p <= 0) return 0;
-        if (p >= 100) return Integer.MAX_VALUE;
+        if (p <= 0 || p >= 100)
+            throw new IllegalArgumentException("desired_probability must be between 0 and 100 (exclusive)");
         Room r = roomRepo.findById(roomId)
                 .orElseThrow(() -> new RoomNotFoundException("room not found"));
         long userPlaces = placeRepo.findAllByRoomId(roomId).stream()
                 .filter(p2 -> userId.equals(p2.getUserId())).count();
         int userBoost = boostRepo.findById(new RoomBoost.PK(roomId, userId))
                 .map(RoomBoost::getAmount).orElse(0);
-        int userTotal = (int) userPlaces * r.getEntryCost() + userBoost;
+        int total = (int) userPlaces * r.getEntryCost() + userBoost;
 
-        int totalEntry = (int) placeRepo.countByRoomId(roomId) * r.getEntryCost();
-        int totalBoost = boostRepo.findAllByRoomId(roomId).stream()
-                .mapToInt(RoomBoost::getAmount).sum();
-        int poolBase = totalEntry - (int) userPlaces * r.getEntryCost();
-        int acc = totalBoost - userBoost;
+        long poolBase = (long) r.getPlayersNeeded() * r.getEntryCost();
+        long acc = boostRepo.findAllByRoomId(roomId).stream()
+                .mapToLong(RoomBoost::getAmount).sum();
 
-        // ceil((p * (poolBase + acc) - 100 * userTotal) / (100 - p))
-        double num = p * (poolBase + acc) - 100.0 * userTotal;
-        double req = num / (100.0 - p);
-        return (int) Math.max(0, Math.ceil(req));
+        double raw = (p * (poolBase + acc) - 100.0 * total) / (100.0 - p);
+        if (raw < 0) raw = 0;
+        return (int) Math.ceil(raw);
     }
 
     // ------- helpers -------

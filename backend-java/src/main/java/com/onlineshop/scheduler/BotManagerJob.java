@@ -13,10 +13,10 @@ import java.security.SecureRandom;
 /**
  * Equivalent of services/bot_manager (10 s tick).
  *  - Maintains a target population of bots (default 50).
- *  - New bots are named with a random Russian first name + "_<rand1..9999>"
- *    and start with balance 500 (matches Go).
- *  - Bots whose balance drops below `LOW_BALANCE_THRESHOLD` are topped up by
- *    `REFILL_AMOUNT` to keep gameplay flowing.
+ *  - New bots are named with a random Russian first name + "_<rand 0..9999>"
+ *    and start with balance 500 (matches Go {@code rand.Intn(10000)} suffix).
+ *  - Bots whose balance drops below {@code LOW_BALANCE_THRESHOLD} are topped up
+ *    by {@code REFILL_AMOUNT}.
  */
 @Component
 @RequiredArgsConstructor
@@ -27,15 +27,18 @@ public class BotManagerJob {
     private static final int LOW_BALANCE_THRESHOLD = 500;
     private static final int REFILL_AMOUNT = 200;
 
-    /** 35 Russian first names — same list used by the Go service. */
+    /**
+     * 35 Russian first names — must match {@code backend/internal/crons/bot_manager.go}
+     * verbatim, including the letter ё in "Артём".
+     */
     private static final String[] RUSSIAN_NAMES = {
-        "Александр", "Алексей", "Анастасия", "Андрей", "Анна",
-        "Антон", "Артем", "Виктор", "Виктория", "Владимир",
-        "Дарья", "Дмитрий", "Евгений", "Екатерина", "Елена",
-        "Игорь", "Ирина", "Кирилл", "Константин", "Максим",
-        "Мария", "Михаил", "Наталья", "Николай", "Ольга",
-        "Павел", "Полина", "Роман", "Сергей", "София",
-        "Татьяна", "Юлия", "Юрий", "Яна", "Ярослав"
+        "Александр", "Дмитрий", "Максим", "Сергей", "Андрей",
+        "Алексей", "Артём", "Илья", "Кирилл", "Михаил",
+        "Никита", "Матвей", "Роман", "Егор", "Арсений",
+        "Иван", "Денис", "Евгений", "Даниил", "Тимофей",
+        "Владимир", "Павел", "Руслан", "Марк", "Глеб",
+        "Анна", "Мария", "Елена", "Ольга", "Наталья",
+        "Татьяна", "Ирина", "Екатерина", "Светлана", "Юлия"
     };
 
     private final UserRepository userRepo;
@@ -60,7 +63,8 @@ public class BotManagerJob {
         int missing = (int) (targetBotCount - current);
         for (int i = 0; i < missing; i++) {
             String first = RUSSIAN_NAMES[rnd.nextInt(RUSSIAN_NAMES.length)];
-            String name = first + "_" + (1 + rnd.nextInt(9999));
+            // Match Go's rand.Intn(10000) → range [0..9999] inclusive.
+            String name = first + "_" + rnd.nextInt(10000);
             users.create(name, INITIAL_BALANCE, true);
         }
         if (missing > 0) log.info("BotManager spawned {} bots (target={}, current={})",

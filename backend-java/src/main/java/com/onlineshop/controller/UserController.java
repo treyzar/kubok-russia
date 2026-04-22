@@ -26,7 +26,7 @@ public class UserController {
     }
 
     @GetMapping
-    public List<User> list() { return users.list(); }
+    public Map<String, List<User>> list() { return Map.of("users", users.list()); }
 
     @GetMapping("/{id}")
     public User get(@PathVariable Integer id) { return users.get(id); }

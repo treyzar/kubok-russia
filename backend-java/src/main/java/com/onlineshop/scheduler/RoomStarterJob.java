@@ -12,15 +12,24 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Equivalent of services/room_manager RoomStarter cron (1s tick).
+ * Equivalent of services/room_manager RoomStarter cron (1 s tick).
  *  - For STARTING_SOON rooms whose start_time is in the future: emit
  *    "room_starting" with the live countdown.
  *  - For STARTING_SOON rooms whose start_time has passed: top up missing
  *    seats with available bots (charging entry_cost per bot), then transition
  *    to PLAYING and emit "game_started".
+ *
+ * Mirrors {@code backend/internal/crons/room_starter.go}:
+ *  - If we cannot find ENOUGH bots to fill all missing seats, we abort and
+ *    retry on the next tick (no partial fill, no status change).
+ *  - We do NOT publish {@code player_joined} for bot fills — only the final
+ *    {@code game_started} event is emitted.
+ *  - {@code start_time} is NOT mutated when transitioning to PLAYING (Go's
+ *    {@code SetRoomStatus} only updates {@code status}).
  */
 @Component
 @RequiredArgsConstructor
@@ -35,7 +44,6 @@ public class RoomStarterJob {
     private final EventPublisher events;
 
     @Scheduled(fixedRateString = "${app.scheduler.room-starter-fixed-rate:1000}")
-    @Transactional
     public void tick() {
         Instant now = Instant.now();
         List<Room> arming = roomRepo.findAllByStatus(RoomStatus.STARTING_SOON);
@@ -46,39 +54,64 @@ public class RoomStarterJob {
                     events.publishRoomStarting(r.getRoomId(), r.getStartTime());
                     continue;
                 }
-                fillWithBotsAndStart(r);
+                fillWithBotsAndStart(r.getRoomId());
             } catch (Exception e) {
                 log.warn("RoomStarter failed for room {}: {}", r.getRoomId(), e.getMessage());
             }
         }
     }
 
-    private void fillWithBotsAndStart(Room room) {
-        int needed = (int) (room.getPlayersNeeded() - playerRepo.countByRoomId(room.getRoomId()));
-        if (needed > 0) {
-            List<User> bots = userRepo.findAvailableBots(room.getEntryCost());
-            int filled = 0;
-            for (User bot : bots) {
-                if (filled >= needed) break;
-                if (playerRepo.existsByRoomIdAndUserId(room.getRoomId(), bot.getId())) continue;
-                try {
-                    users.debit(bot.getId(), room.getEntryCost());
-                } catch (Exception e) {
-                    continue;
-                }
-                int placeIndex = placeRepo.findMaxIndexByRoomId(room.getRoomId()).orElse(0) + 1;
+    /**
+     * Single-transaction bot fill + status transition. If not enough eligible
+     * bots are available, the entire transaction is rolled back and the room
+     * stays in STARTING_SOON for the next tick to retry.
+     */
+    @Transactional
+    public void fillWithBotsAndStart(Integer roomId) {
+        Room room = roomRepo.findByIdForUpdate(roomId)
+                .orElseThrow();
+        if (room.getStatus() != RoomStatus.STARTING_SOON) return;
+
+        int currentPlayers = (int) playerRepo.countByRoomId(roomId);
+        int botsNeeded = room.getPlayersNeeded() - currentPlayers;
+        if (botsNeeded < 0) botsNeeded = 0;
+
+        if (botsNeeded > 0) {
+            // Find candidate bots: bot=true AND balance >= entry_cost AND not already in room.
+            List<User> candidates = userRepo.findAvailableBots(room.getEntryCost());
+            List<User> picked = new ArrayList<>(botsNeeded);
+            for (User b : candidates) {
+                if (playerRepo.existsByRoomIdAndUserId(roomId, b.getId())) continue;
+                picked.add(b);
+                if (picked.size() == botsNeeded) break;
+            }
+            if (picked.size() < botsNeeded) {
+                // Not enough bots — abort. Spring will rollback @Transactional via the
+                // RuntimeException thrown below.
+                log.info("[RoomStarter] Not enough bots for room {} (need {}, found {}); will retry",
+                        roomId, botsNeeded, picked.size());
+                throw new NotEnoughBotsException();
+            }
+
+            for (User bot : picked) {
+                users.debit(bot.getId(), room.getEntryCost());
+                int placeIndex = placeRepo.findMaxIndexByRoomId(roomId).orElse(0) + 1;
                 placeRepo.save(RoomPlace.builder()
-                        .roomId(room.getRoomId()).userId(bot.getId()).placeIndex(placeIndex).build());
+                        .roomId(roomId).userId(bot.getId()).placeIndex(placeIndex).build());
                 playerRepo.save(RoomPlayer.builder()
-                        .roomId(room.getRoomId()).userId(bot.getId()).placeId(placeIndex).build());
+                        .roomId(roomId).userId(bot.getId()).placeId(placeIndex).build());
                 room.setJackpot(room.getJackpot() + room.getEntryCost());
-                events.publishPlayerJoined(room.getRoomId(), bot.getId(), 1);
-                filled++;
             }
         }
+
         room.setStatus(RoomStatus.PLAYING);
-        room.setStartTime(Instant.now());
+        // NB: per Go SetRoomStatus, start_time is not modified here.
         roomRepo.save(room);
-        events.publishGameStarted(room.getRoomId());
+        events.publishGameStarted(roomId);
+    }
+
+    /** Sentinel exception used to roll back the @Transactional fill. */
+    public static class NotEnoughBotsException extends RuntimeException {
+        public NotEnoughBotsException() { super("not enough bots to start room"); }
     }
 }

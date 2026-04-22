@@ -4,19 +4,38 @@ import com.onlineshop.domain.entity.Room;
 import com.onlineshop.domain.entity.RoomBoost;
 import com.onlineshop.domain.entity.RoomPlayer;
 import com.onlineshop.domain.entity.RoomWinner;
-import com.onlineshop.dto.EconomicValidationResult;
 import com.onlineshop.dto.RoomDtos.*;
 import com.onlineshop.repository.*;
 import com.onlineshop.service.EconomicValidator;
 import com.onlineshop.service.RoomService;
+import com.onlineshop.dto.EconomicValidationResult;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 
+/**
+ * Mirrors {@code backend/handlers/room_handler.go} REST surface 1:1.
+ *
+ * Differences vs the prior Java port (now removed):
+ *  - {@code POST /rooms/from-template/{id}} removed. Go selects a template via
+ *    the {@code template_id} field of {@link CreateRoomRequest}.
+ *  - {@code POST /rooms/{id}/places} (claim places) removed — Go ships extra
+ *    seats only via {@code places} on the {@code POST /rooms/{id}/players}
+ *    (join) request.
+ *  - {@code POST /rooms/{id}/settle} removed — Go has no settle HTTP endpoint;
+ *    settle is invoked exclusively by the room-finisher cron.
+ *  - List endpoints are wrapped with the appropriate root key
+ *    ({@code rooms/players/winners/boosts}) to match Go's response envelopes.
+ *  - Mutating endpoints (join/leave/boost) return the full updated {@link Room}
+ *    object instead of {@code {message:"..."}}.
+ *  - {@code POST /rooms/validate} accepts only
+ *    {@code {players_needed, entry_cost, winner_pct}} and returns the same
+ *    economic-result fields Go does.
+ */
 @RestController
 @RequestMapping("/api/v1/rooms")
 @RequiredArgsConstructor
@@ -29,103 +48,88 @@ public class RoomController {
     private final RoomWinnerRepository winnerRepo;
     private final EconomicValidator economic;
 
-    @PostMapping("/from-template/{templateId}")
-    public Room createFromTemplate(@PathVariable Integer templateId) {
-        return rooms.createFromTemplate(templateId);
-    }
-
     @PostMapping
-    public Room create(@Valid @RequestBody CreateRoomRequest r) {
-        return rooms.createDirect(r.playersNeeded(), r.minPlayers(), r.entryCost(),
-                r.winnerPct(), r.roundDurationSeconds(), r.startDelaySeconds(), r.gameType());
+    public Room create(@Valid @RequestBody CreateRoomRequest req) {
+        return rooms.create(req);
     }
 
     @GetMapping
-    public List<Room> list() { return roomRepo.findAll(); }
+    public Map<String, List<Room>> list() {
+        return Map.of("rooms", roomRepo.findAll());
+    }
 
     @GetMapping("/{roomId}")
     public Room get(@PathVariable Integer roomId) {
-        return roomRepo.findById(roomId).orElseThrow();
+        return roomRepo.findById(roomId)
+                .orElseThrow(() -> new NoSuchElementException("room not found"));
     }
 
     @PostMapping("/validate")
-    public EconomicValidationResult validate(@Valid @RequestBody CreateRoomRequest r) {
-        return economic.validate(r.playersNeeded(), r.entryCost(), r.winnerPct());
+    public ValidateRoomResponse validate(@Valid @RequestBody ValidateRoomRequest req) {
+        EconomicValidationResult r = economic.validate(
+                req.playersNeeded(), req.entryCost(), req.winnerPct());
+        return new ValidateRoomResponse(
+                r.prizeFund(), r.organiserCut(), r.playerROI(), r.playerWinProb(), r.warnings());
     }
 
     // ----- players (room membership) -----
 
     @PostMapping("/{roomId}/players")
-    public ResponseEntity<Map<String, String>> join(@PathVariable Integer roomId,
-                                                    @Valid @RequestBody JoinRoomRequest req) {
-        rooms.join(roomId, req.userId());
-        return ResponseEntity.ok(Map.of("message", "joined"));
+    public Room join(@PathVariable Integer roomId,
+                     @Valid @RequestBody JoinRoomRequest req) {
+        return rooms.join(roomId, req.userId(), req.places());
     }
 
     @DeleteMapping("/{roomId}/players")
-    public ResponseEntity<Map<String, String>> leave(@PathVariable Integer roomId,
-                                                     @Valid @RequestBody LeaveRoomRequest req) {
-        rooms.leave(roomId, req.userId());
-        return ResponseEntity.ok(Map.of("message", "left"));
+    public Room leave(@PathVariable Integer roomId,
+                      @Valid @RequestBody LeaveRoomRequest req) {
+        return rooms.leave(roomId, req.userId());
     }
 
     @GetMapping("/{roomId}/players")
-    public List<RoomPlayer> listPlayers(@PathVariable Integer roomId) {
-        return playerRepo.findAllByRoomId(roomId);
+    public Map<String, List<RoomPlayer>> listPlayers(@PathVariable Integer roomId) {
+        return Map.of("players", playerRepo.findAllByRoomId(roomId));
     }
 
     // ----- winners -----
 
     @GetMapping("/{roomId}/winners")
-    public List<RoomWinner> listWinners(@PathVariable Integer roomId) {
-        return winnerRepo.findAllByRoomId(roomId);
+    public Map<String, List<RoomWinner>> listWinners(@PathVariable Integer roomId) {
+        return Map.of("winners", winnerRepo.findAllByRoomId(roomId));
     }
 
     @GetMapping("/{roomId}/winners/{userId}")
     public RoomWinner getWinner(@PathVariable Integer roomId, @PathVariable Integer userId) {
-        return winnerRepo.findById(new RoomWinner.PK(roomId, userId)).orElseThrow();
+        return winnerRepo.findById(new RoomWinner.PK(roomId, userId))
+                .orElseThrow(() -> new NoSuchElementException("winner not found"));
     }
 
     // ----- boosts -----
 
     @PostMapping("/{roomId}/boosts")
-    public ResponseEntity<Map<String, String>> boost(@PathVariable Integer roomId,
-                                                     @Valid @RequestBody BoostRequest req) {
-        rooms.boost(roomId, req.userId(), req.amount());
-        return ResponseEntity.ok(Map.of("message", "boosted"));
+    public Room boost(@PathVariable Integer roomId,
+                      @Valid @RequestBody BoostRequest req) {
+        return rooms.boost(roomId, req.userId(), req.amount());
     }
 
     @GetMapping("/{roomId}/boosts")
-    public List<RoomBoost> listBoosts(@PathVariable Integer roomId) {
-        return boostRepo.findAllByRoomId(roomId);
+    public Map<String, List<RoomBoost>> listBoosts(@PathVariable Integer roomId) {
+        return Map.of("boosts", boostRepo.findAllByRoomId(roomId));
     }
 
     @GetMapping("/{roomId}/boosts/calc/probability")
     public Map<String, Object> calcProbability(@PathVariable Integer roomId,
                                                 @RequestParam Integer userId,
-                                                @RequestParam(defaultValue = "0") Integer boost) {
-        return Map.of("probability", rooms.calcBoostProbability(roomId, userId, boost));
+                                                @RequestParam(name = "boost_amount", defaultValue = "0") Double boostAmount) {
+        return Map.of("probability",
+                rooms.calcBoostProbability(roomId, userId, (int) Math.round(boostAmount)));
     }
 
     @GetMapping("/{roomId}/boosts/calc/boost")
     public Map<String, Object> calcRequiredBoost(@PathVariable Integer roomId,
                                                   @RequestParam Integer userId,
-                                                  @RequestParam Double probability) {
-        return Map.of("boost", rooms.calcRequiredBoost(roomId, userId, probability));
-    }
-
-    // ----- places -----
-
-    @PostMapping("/{roomId}/places")
-    public ResponseEntity<Map<String, String>> claimPlaces(@PathVariable Integer roomId,
-                                                            @Valid @RequestBody ClaimPlaceRequest req) {
-        rooms.claimPlaces(roomId, req.userId(), req.count());
-        return ResponseEntity.ok(Map.of("message", "places_claimed"));
-    }
-
-    @PostMapping("/{roomId}/settle")
-    public ResponseEntity<Map<String, String>> settle(@PathVariable Integer roomId) {
-        rooms.settle(roomId);
-        return ResponseEntity.ok(Map.of("message", "settled"));
+                                                  @RequestParam(name = "desired_probability") Double desiredProbability) {
+        return Map.of("boost_amount",
+                rooms.calcRequiredBoost(roomId, userId, desiredProbability));
     }
 }

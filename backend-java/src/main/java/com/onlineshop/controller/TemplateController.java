@@ -13,6 +13,7 @@ import java.util.Map;
 
 /**
  * Mirrors backend/handlers/template_handler.go (CRUD path /room-templates).
+ * List endpoints are wrapped with {@code {templates: [...]}} to match Go.
  */
 @RestController
 @RequestMapping("/api/v1/room-templates")
@@ -25,7 +26,9 @@ public class TemplateController {
     public RoomTemplate create(@Valid @RequestBody TemplateDto dto) { return lifecycle.create(dto); }
 
     @GetMapping
-    public List<RoomTemplate> list() { return lifecycle.list(); }
+    public Map<String, List<RoomTemplate>> list() {
+        return Map.of("templates", lifecycle.list());
+    }
 
     @GetMapping("/{id}")
     public RoomTemplate get(@PathVariable("id") Integer id) { return lifecycle.get(id); }
