@@ -9,7 +9,7 @@ function normalizeApiBaseUrl(rawBaseUrl: string): string {
 }
 
 export const http = axios.create({
-  baseURL: normalizeApiBaseUrl(import.meta.env.VITE_API_URL ?? 'http://localhost:8888'),
+  baseURL: normalizeApiBaseUrl(import.meta.env.VITE_API_URL ?? ''),
   withCredentials: true,
   headers: {
     'Content-Type': 'application/json',

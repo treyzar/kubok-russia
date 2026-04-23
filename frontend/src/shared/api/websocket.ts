@@ -6,6 +6,11 @@ function getWsBaseUrl(rawApiUrl: string): string {
   const normalized = rawApiUrl.replace(/\/+$/, '')
   const withoutApiPrefix = normalized.endsWith('/api/v1') ? normalized.slice(0, -7) : normalized
 
+  if (!withoutApiPrefix) {
+    // Same-origin: use current page origin so the Vite proxy (or prod reverse proxy) can forward.
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    return `${proto}//${window.location.host}`
+  }
   if (withoutApiPrefix.startsWith('https://')) {
     return `wss://${withoutApiPrefix.slice('https://'.length)}`
   }
@@ -16,7 +21,7 @@ function getWsBaseUrl(rawApiUrl: string): string {
 }
 
 export function connectRoomWS(roomId: number, onSnapshot: RoomSnapshotListener): () => void {
-  const wsBaseUrl = getWsBaseUrl(import.meta.env.VITE_API_URL ?? 'http://localhost:8888')
+  const wsBaseUrl = getWsBaseUrl(import.meta.env.VITE_API_URL ?? '')
   const wsUrl = `${wsBaseUrl}/api/v1/rooms/${roomId}/ws`
 
   let socket: WebSocket | null = null

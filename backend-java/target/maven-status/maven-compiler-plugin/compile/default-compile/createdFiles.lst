@@ -101,6 +101,7 @@ com/onlineshop/config/OpenApiConfig.class
 com/onlineshop/dto/FairRoomDto.class
 com/onlineshop/exception/DomainExceptions$InsufficientBalanceForRoomException.class
 com/onlineshop/controller/TemplateController.class
+com/onlineshop/config/CorsConfig.class
 com/onlineshop/domain/entity/RoomBoost$RoomBoostBuilder.class
 com/onlineshop/dto/TemplateDto.class
 com/onlineshop/domain/entity/FairRoom$FairRoomBuilder.class
