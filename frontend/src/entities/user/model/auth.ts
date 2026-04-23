@@ -147,6 +147,11 @@ export function logoutMock(): void {
   storage?.removeItem(STORAGE_KEY)
 }
 
+export function setStoredUser(user: AuthUser): void {
+  const storage = getStorage()
+  storage?.setItem(STORAGE_KEY, JSON.stringify(user))
+}
+
 export function getMockPassword(username: string): string | null {
   const foundUser = MOCK_USERS.find((user) => user.username.toLowerCase() === username.trim().toLowerCase())
   return foundUser?.password ?? null

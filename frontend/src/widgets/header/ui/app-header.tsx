@@ -1,15 +1,15 @@
-import { Bell, ChevronDown, CircleDollarSign, Plus, Send } from 'lucide-react'
+import { Bell, ChevronDown, CircleDollarSign, LogOut, Plus, Send } from 'lucide-react'
 
 import { formatUserBalance } from '@entities/user'
 import { cn } from '@shared/lib'
-import { Avatar, AvatarFallback, AvatarImage, Button } from '@shared/ui'
+import { Avatar, AvatarFallback, AvatarImage, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@shared/ui'
 
 import { type AppHeaderProps } from '../model/types'
 
 const defaultContentClassName =
   'mx-auto grid w-full max-w-[1248px] grid-cols-1 items-center gap-3 px-3 py-3 sm:px-4 md:grid-cols-[1fr_auto_1fr] md:px-5 xl:px-0'
 
-export function AppHeader({ user, onCreateGame, onBrandClick, className, contentClassName }: AppHeaderProps) {
+export function AppHeader({ user, onCreateGame, onBrandClick, onLogout, className, contentClassName }: AppHeaderProps) {
   const brand = (
     <>
       <img alt="Ночной жор" className="h-[44px] w-[44px] rounded-full object-cover md:h-[46px] md:w-[46px]" src="/dev-assets/images/logo.svg" />
@@ -53,18 +53,35 @@ export function AppHeader({ user, onCreateGame, onBrandClick, className, content
         </div>
 
         <div className="flex items-center justify-center gap-2 md:justify-end">
-          <Button
-            className="h-[46px] gap-2 rounded-[8px] border border-[#7620F5] bg-[#2A1F44] px-2.5 text-[14px] text-[#F0ECFB] hover:bg-[#322453] md:h-[52px] md:px-3.5 md:text-[16px]"
-            type="button"
-            variant="outline"
-          >
-            <Avatar className="size-7">
-              <AvatarImage alt={user.name} src="/dev-assets/images/card_with_peoples.svg" />
-              <AvatarFallback>{user.name.slice(0, 1)}</AvatarFallback>
-            </Avatar>
-            <span className="max-w-[130px] truncate font-semibold md:max-w-[170px]">{user.name}</span>
-            <ChevronDown className="size-4" />
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                className="group h-[46px] gap-2 rounded-[8px] border border-[#7620F5] bg-[#2A1F44] px-2.5 text-[14px] text-[#F0ECFB] hover:bg-[#322453] md:h-[52px] md:px-3.5 md:text-[16px]"
+                type="button"
+                variant="outline"
+              >
+                <Avatar className="size-7">
+                  <AvatarImage alt={user.name} src="/dev-assets/images/card_with_peoples.svg" />
+                  <AvatarFallback>{user.name.slice(0, 1)}</AvatarFallback>
+                </Avatar>
+                <span className="max-w-[130px] truncate font-semibold md:max-w-[170px]">{user.name}</span>
+                <ChevronDown className="size-4 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              className="w-[236px] rounded-[10px] border-[#40345B] bg-[#1E1B2A] p-1.5 text-[#F5F2FF] shadow-[0_12px_24px_rgba(9,7,14,0.42)]"
+              sideOffset={8}
+            >
+              <DropdownMenuItem
+                className="cursor-pointer gap-2 rounded-[8px] px-3 py-2 text-[14px] font-medium transition-colors hover:bg-[#2C2640] focus:bg-[#2C2640] focus:text-[#F5F2FF]"
+                onClick={onLogout}
+              >
+                <LogOut className="size-4" />
+                Выход из аккаунта
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button
             className="h-[46px] w-[46px] rounded-[8px] border border-[#3A3B42] bg-[#1C1D24] p-0 text-[#ECEEF4] hover:bg-[#252731] md:h-[52px] md:w-[52px]"
             type="button"

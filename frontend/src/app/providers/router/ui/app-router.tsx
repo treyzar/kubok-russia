@@ -1,21 +1,21 @@
-import { Route, Routes, useNavigate } from 'react-router-dom'
+import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import { useAuthSession } from '@processes/auth-session'
 import { type AuthUser } from '@entities/user'
 import { AuthLandingHero, AuthLoginForm } from '@pages/auth'
 import { CreateGamePage } from '@pages/create-game'
-import FridgeGamePage from '@/pages/fridge-game/ui/fridge-game-page'
 import { HomePage } from '@pages/home'
 import { JoinGamePage } from '@pages/join-game'
 import { LobbyPage } from '@pages/lobby'
 import { NotFoundPage } from '@pages/not-found'
+import { FridgeGamePage } from '@pages/fridge-game/ui/fridge-game-page'
 
-import { routePaths } from '../config/route-paths'
+import { gamesLobbyPath, routePaths } from '../config/route-paths'
 import { PrivateRoute, PublicOnlyRoute } from './route-guards'
 
 export function AppRouter() {
   const navigate = useNavigate()
-  const { user, signIn, signOut } = useAuthSession()
+  const { user, signIn, signOut, updateUserBalance } = useAuthSession()
 
   function handleAuthSuccess(authUser: AuthUser): void {
     signIn(authUser)
@@ -39,8 +39,16 @@ export function AppRouter() {
     navigate(routePaths.games)
   }
 
-  function handleGoToLobby(): void {
-    navigate(routePaths.gamesLobby)
+  function handleGoToLobby(roomId: number): void {
+    navigate(gamesLobbyPath(roomId))
+  }
+
+  function handleStartGame(): void {
+    navigate(routePaths.fridgeGame)
+  }
+
+  function handleUserBalanceChange(balance: number): void {
+    updateUserBalance(balance)
   }
 
   return (
@@ -70,6 +78,7 @@ export function AppRouter() {
                 onBrandClick={handleBackToGames}
                 onCreateGame={handleGoToCreateGame}
                 onJoinGame={handleGoToJoinGame}
+                onJoinLobby={handleGoToLobby}
                 onLogout={handleLogout}
                 user={authorizedUser}
               />
@@ -103,6 +112,7 @@ export function AppRouter() {
                 onCreateGame={handleGoToCreateGame}
                 onOpenLobby={handleGoToLobby}
                 onLogout={handleLogout}
+                onUserBalanceChange={handleUserBalanceChange}
                 user={authorizedUser}
               />
             )}
@@ -114,10 +124,13 @@ export function AppRouter() {
         element={
           <PrivateRoute user={user}>
             {(authorizedUser) => (
-              <LobbyPage
+              <LobbyRoute
                 onBackToGames={handleBackToGames}
                 onCreateGame={handleGoToCreateGame}
-                onStartGame={handleBackToGames}
+                onLogout={handleLogout}
+                onPlayAgain={handleGoToJoinGame}
+                onStartGame={handleStartGame}
+                onUserBalanceChange={handleUserBalanceChange}
                 user={authorizedUser}
               />
             )}
@@ -128,11 +141,68 @@ export function AppRouter() {
         path={routePaths.fridgeGame}
         element={
           <PrivateRoute user={user}>
-            {() => <FridgeGamePage />}
+            {(authorizedUser) => (
+              <FridgeGameRoute
+                user={authorizedUser}
+                onUserBalanceChange={handleUserBalanceChange}
+              />
+            )}
           </PrivateRoute>
         }
       />
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
+  )
+}
+
+type LobbyRouteProps = {
+  user: AuthUser
+  onBackToGames: () => void
+  onCreateGame: () => void
+  onPlayAgain: () => void
+  onStartGame: () => void
+  onLogout: () => void
+  onUserBalanceChange: (balance: number) => void
+}
+
+function LobbyRoute({ user, onBackToGames, onCreateGame, onPlayAgain, onStartGame, onLogout, onUserBalanceChange }: LobbyRouteProps) {
+  const params = useParams<{ roomId: string }>()
+  const roomId = Number(params.roomId)
+
+  if (!Number.isInteger(roomId) || roomId <= 0) {
+    return <Navigate replace to={routePaths.games} />
+  }
+
+  return (
+    <LobbyPage
+      onBackToGames={onBackToGames}
+      onCreateGame={onCreateGame}
+      onLogout={onLogout}
+      onPlayAgain={onPlayAgain}
+      onStartGame={onStartGame}
+      onUserBalanceChange={onUserBalanceChange}
+      roomId={roomId}
+      user={user}
+    />
+  )
+}
+
+type FridgeGameRouteProps = {
+  user: AuthUser
+  onUserBalanceChange: (balance: number) => void
+}
+
+function FridgeGameRoute({ user, onUserBalanceChange }: FridgeGameRouteProps) {
+  const location = useLocation()
+  const roomId: number = (location.state as { roomId?: number } | null)?.roomId ?? 1
+
+  return (
+    <FridgeGamePage
+      roomId={roomId}
+      userId={user.id}
+      userName={user.name}
+      userBalance={user.balance}
+      onUserBalanceChange={onUserBalanceChange}
+    />
   )
 }

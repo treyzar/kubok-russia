@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"strings"
 
 	"github.com/SomeSuperCoder/OnlineShop/handlers"
 	"github.com/SomeSuperCoder/OnlineShop/internal"
@@ -26,6 +28,10 @@ func main() {
 	defer pool.Close()
 
 	r := gin.Default()
+	r.Use(corsMiddleware([]string{
+		"http://localhost:5173",
+		"http://127.0.0.1:5173",
+	}))
 
 	apiGroup := r.Group("/api/v1")
 	humaConfig := huma.DefaultConfig(
@@ -310,4 +316,35 @@ func MountRoutes(api huma.API, r *gin.Engine, repo *repository.Queries, pool *pg
 		Summary:     "Update template with safe room handling",
 		Tags:        []string{"admin"},
 	}, adminHandler.UpdateTemplate)
+}
+
+func corsMiddleware(allowedOrigins []string) gin.HandlerFunc {
+	allowed := make(map[string]struct{}, len(allowedOrigins))
+	for _, origin := range allowedOrigins {
+		trimmed := strings.TrimSpace(origin)
+		if trimmed == "" {
+			continue
+		}
+		allowed[trimmed] = struct{}{}
+	}
+
+	return func(c *gin.Context) {
+		origin := c.GetHeader("Origin")
+		if origin != "" {
+			if _, ok := allowed[origin]; ok {
+				c.Header("Access-Control-Allow-Origin", origin)
+				c.Header("Vary", "Origin")
+				c.Header("Access-Control-Allow-Credentials", "true")
+				c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
+				c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+			}
+		}
+
+		if c.Request.Method == http.MethodOptions {
+			c.AbortWithStatus(http.StatusNoContent)
+			return
+		}
+
+		c.Next()
+	}
 }

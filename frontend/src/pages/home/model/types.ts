@@ -6,6 +6,7 @@ export type HomePageProps = {
   onCreateGame: () => void
   onJoinGame: () => void
   onBrandClick: () => void
+  onJoinLobby: (roomId: number) => void
 }
 
 export type LastGameItem = {
