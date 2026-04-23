@@ -122,6 +122,21 @@ func (h *TemplateHandler) Create(ctx context.Context, req *CreateTemplateRequest
 		return nil, catchUniqueNameViolation(err)
 	}
 
+	// Auto-create one open room for the new template so players can join immediately.
+	tplID := t.TemplateID
+	_, _ = h.Repo.InsertRoom(ctx, repository.InsertRoomParams{
+		Jackpot:              0,
+		Status:               "new",
+		PlayersNeeded:        t.PlayersNeeded,
+		EntryCost:            t.EntryCost,
+		WinnerPct:            t.WinnerPct,
+		RoundDurationSeconds: t.RoundDurationSeconds,
+		StartDelaySeconds:    t.StartDelaySeconds,
+		GameType:             t.GameType,
+		MinPlayers:           t.MinPlayers,
+		TemplateID:           &tplID,
+	})
+
 	resp := &TemplateResponse{}
 	resp.Body = templateToItem(t)
 	return resp, nil

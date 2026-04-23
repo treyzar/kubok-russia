@@ -2,10 +2,12 @@ package com.onlineshop.service;
 
 import com.onlineshop.domain.entity.RoomTemplate;
 import com.onlineshop.dto.AdminDtos.TemplateStatus;
+import com.onlineshop.dto.RoomDtos.CreateRoomRequest;
 import com.onlineshop.dto.TemplateDto;
 import com.onlineshop.repository.RoomRepository;
 import com.onlineshop.repository.RoomTemplateRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -15,11 +17,13 @@ import java.util.NoSuchElementException;
 
 /** Mirrors internal/service/TemplateLifecycleManager. */
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class TemplateLifecycleService {
 
     private final RoomTemplateRepository templateRepo;
     private final RoomRepository roomRepo;
+    private final RoomService roomService;
 
     @Transactional(readOnly = true)
     public List<RoomTemplate> list() { return templateRepo.findActive(); }
@@ -69,7 +73,18 @@ public class TemplateLifecycleService {
         validateCrossField(dto);
         RoomTemplate t = new RoomTemplate();
         applyDto(t, dto);
-        return templateRepo.save(t);
+        RoomTemplate saved = templateRepo.save(t);
+
+        // Auto-create one open room for the new template so players can join immediately.
+        try {
+            roomService.create(new CreateRoomRequest(
+                    saved.getTemplateId(),
+                    null, null, null,
+                    null, null, null, null, null, null, null));
+        } catch (Exception e) {
+            log.warn("Failed to auto-create room for template {}: {}", saved.getTemplateId(), e.getMessage());
+        }
+        return saved;
     }
 
     /** Cross-field check on min/max. */

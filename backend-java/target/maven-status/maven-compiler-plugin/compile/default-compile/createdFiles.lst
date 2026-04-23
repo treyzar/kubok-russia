@@ -90,8 +90,8 @@ com/onlineshop/controller/HealthController.class
 com/onlineshop/dto/RoomDtos$ValidateRoomRequest.class
 com/onlineshop/exception/DomainExceptions$PlayerNotInRoomException.class
 com/onlineshop/scheduler/RoomFinisherJob.class
-com/onlineshop/repository/FairRoomRepository.class
 com/onlineshop/repository/RoomPlaceRepository.class
+com/onlineshop/repository/FairRoomRepository.class
 com/onlineshop/exception/DomainExceptions$RoomFullException.class
 com/onlineshop/domain/entity/RoomPlace$PK.class
 com/onlineshop/domain/entity/User.class
