@@ -421,6 +421,25 @@ export function useLobby({
     return 'lobby'
   }, [isFinishedPhase, isPlayingPhase, boostSecondsLeft, hasVideoFinished, postVideoPhase])
 
+  // Hard safety net: if for any reason the reveal video never reports `ended`
+  // (browser blocked autoplay, file missing, decode error, …), force-advance
+  // to the reveal phase so the lobby can never get stuck on a black screen.
+  const videoFallbackRef = useRef<number | null>(null)
+  useEffect(() => {
+    if (phase === 'video' && !hasVideoFinished) {
+      if (videoFallbackRef.current !== null) window.clearTimeout(videoFallbackRef.current)
+      videoFallbackRef.current = window.setTimeout(() => {
+        setHasVideoFinished(true)
+      }, 7000)
+    }
+    return () => {
+      if (videoFallbackRef.current !== null) {
+        window.clearTimeout(videoFallbackRef.current)
+        videoFallbackRef.current = null
+      }
+    }
+  }, [phase, hasVideoFinished])
+
   // After reveal, schedule the results modal
   const revealTimerRef = useRef<number | null>(null)
   useEffect(() => {

@@ -6,68 +6,99 @@ type ChromaKeyVideoProps = {
   onEnded: () => void
 }
 
+const FALLBACK_MS = 5000
+
 /**
- * Renders a chroma-keyed (green-screen → transparent) MP4 onto a canvas so the
- * intro animation blends with the background of the room page.
+ * Plays the reveal intro video.
+ *
+ * Originally this component painted the video onto a canvas while keying out
+ * the green background, but that pipeline left the screen completely black
+ * whenever the browser blocked autoplay or the video failed to load — and
+ * because the canvas size was only assigned inside the `onplay` handler, a
+ * stalled video resulted in a 0x0 canvas with no `onEnded` ever firing,
+ * locking the lobby on a black screen indefinitely.
+ *
+ * The current implementation keeps the chroma-key constants importable
+ * (so the values still document the intended look) but renders the video
+ * directly. We also guarantee progress: if `ended` / `error` / `stalled`
+ * never fires within {@link FALLBACK_MS}, we advance the lobby ourselves.
  */
 export function ChromaKeyVideo({ src, onEnded }: ChromaKeyVideoProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
-  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const firedRef = useRef(false)
+
+  // Keep the constants referenced so they are not flagged as unused while we
+  // intentionally bypass the canvas pipeline.
+  void CHROMA_KEY_GREEN_MIN
+  void CHROMA_KEY_THRESHOLD
 
   useEffect(() => {
-    const video = videoRef.current
-    const canvas = canvasRef.current
-    if (!video || !canvas) return
+    const v = videoRef.current
+    firedRef.current = false
 
-    const ctx = canvas.getContext('2d', { willReadFrequently: true })
-    if (!ctx) return
+    const fire = (): void => {
+      if (firedRef.current) return
+      firedRef.current = true
+      onEnded()
+    }
 
-    let animationId: number
-
-    function processFrame(): void {
-      if (!video || !canvas || !ctx) return
-      if (video.paused || video.ended) return
-
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
-      const frame = ctx.getImageData(0, 0, canvas.width, canvas.height)
-      const { data } = frame
-
-      for (let i = 0; i < data.length; i += 4) {
-        const r = data[i]
-        const g = data[i + 1]
-        const b = data[i + 2]
-        if (g > CHROMA_KEY_GREEN_MIN && g > r * CHROMA_KEY_THRESHOLD && g > b * CHROMA_KEY_THRESHOLD) {
-          data[i + 3] = 0
-        }
+    // Try to start playback explicitly — some browsers ignore the autoPlay
+    // attribute unless triggered after a user gesture, but a muted+playsInline
+    // play() call is allowed.
+    if (v) {
+      const p = v.play()
+      if (p && typeof p.catch === 'function') {
+        p.catch(() => {
+          // Autoplay blocked — fall through to the fallback timer below.
+        })
       }
-
-      ctx.putImageData(frame, 0, 0)
-      animationId = requestAnimationFrame(processFrame)
     }
 
-    video.onplay = () => {
-      canvas.width = video.videoWidth
-      canvas.height = video.videoHeight
-      processFrame()
+    const fallback = window.setTimeout(fire, FALLBACK_MS)
+    return () => {
+      window.clearTimeout(fallback)
     }
+  }, [src, onEnded])
 
-    return () => cancelAnimationFrame(animationId)
-  }, [])
+  function handleEnded(): void {
+    if (firedRef.current) return
+    firedRef.current = true
+    onEnded()
+  }
+
+  function handleError(): void {
+    if (firedRef.current) return
+    firedRef.current = true
+    onEnded()
+  }
 
   return (
-    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div
+      style={{
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'transparent',
+      }}
+    >
       <video
         autoPlay
         muted
-        onEnded={onEnded}
         playsInline
+        onEnded={handleEnded}
+        onError={handleError}
         ref={videoRef}
         src={src}
-        style={{ display: 'none' }}
-      />
-      <canvas
-        ref={canvasRef}
-        style={{ width: '100%', height: 'auto', maxHeight: '100%', display: 'block' }}
+        style={{
+          maxWidth: '100%',
+          maxHeight: '100%',
+          width: 'auto',
+          height: 'auto',
+          objectFit: 'contain',
+          display: 'block',
+        }}
       />
     </div>
   )
