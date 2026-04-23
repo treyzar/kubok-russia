@@ -3,15 +3,13 @@ import {
   ArrowRight,
   Clock,
   Coins,
-  Dice5,
   Filter,
   Flame,
   Loader2,
   Lock,
-  Refrigerator,
   Sparkles,
-  Swords,
   Users,
+  Wallet,
 } from 'lucide-react'
 
 import { resolveApiUserId } from '@processes/auth-session'
@@ -20,69 +18,45 @@ import { Button } from '@shared/ui'
 import { AppHeader } from '@widgets/header'
 
 import { type HomePageProps } from '../model'
+import { MECHANICS } from '../model/mechanics'
 import { useGameRooms, useQuickGame, type RoomsSortKey } from '../lib'
 import { LastGamesSection } from './last-games-section'
+import { MechanicSidebar } from './mechanic-sidebar'
+import { SegmentedControl } from './segmented-control'
 
-type Mechanic = {
-  id: string
-  name: string
-  short: string
-  description: string
-  badge: string
-  badgeBg: string
-  heroFrom: string
-  heroTo: string
-  available: boolean
-  Icon: typeof Refrigerator
+type PriceCap = 'any' | 100 | 500 | 2000
+type SeatsBucket = 'any' | 'small' | 'medium' | 'large'
+
+const PRICE_OPTIONS: ReadonlyArray<{ id: PriceCap; label: string }> = [
+  { id: 'any', label: 'Любая цена' },
+  { id: 100, label: 'до 100' },
+  { id: 500, label: 'до 500' },
+  { id: 2000, label: 'до 2000' },
+]
+
+const SEATS_OPTIONS: ReadonlyArray<{ id: SeatsBucket; label: string }> = [
+  { id: 'any', label: 'Все' },
+  { id: 'small', label: '2–3' },
+  { id: 'medium', label: '4–6' },
+  { id: 'large', label: '7+' },
+]
+
+const SORT_OPTIONS: ReadonlyArray<{ id: RoomsSortKey; label: string }> = [
+  { id: 'jackpot_desc', label: 'Крупный фонд' },
+  { id: 'entry_asc', label: 'Дешёвые' },
+  { id: 'players_asc', label: 'Меньше мест' },
+]
+
+function priceCapValue(cap: PriceCap): number | undefined {
+  return cap === 'any' ? undefined : cap
 }
 
-const MECHANICS: Mechanic[] = [
-  {
-    id: 'fridge',
-    name: 'Ночной жор',
-    short: 'Открой холодильник первым',
-    description:
-      'Быстрый раунд: до 6 игроков врываются в виртуальный холодильник. Кто схватит самое жирное блюдо — забирает фонд STL.',
-    badge: 'HOT',
-    badgeBg: 'bg-[#E5008C] text-white',
-    heroFrom: '#FFD400',
-    heroTo: '#FF8A00',
-    available: true,
-    Icon: Refrigerator,
-  },
-  {
-    id: 'wheel',
-    name: 'Колесо удачи',
-    short: 'Класический спин-раунд',
-    description:
-      'Колесо вращается, чем больше буст — тем больше сектор. В разработке: запуск в следующем спринте.',
-    badge: 'СКОРО',
-    badgeBg: 'bg-[#1666EC] text-white',
-    heroFrom: '#1666EC',
-    heroTo: '#0B3C9E',
-    available: false,
-    Icon: Dice5,
-  },
-  {
-    id: 'duel',
-    name: 'Дуэль карт',
-    short: '1×1 битва на бонусы',
-    description:
-      'Два игрока, одна колода, всё решает один раунд. В разработке: проектируем матчмейкинг для дуэлей.',
-    badge: 'СКОРО',
-    badgeBg: 'bg-[#1AB75A] text-white',
-    heroFrom: '#1AB75A',
-    heroTo: '#0F7A3A',
-    available: false,
-    Icon: Swords,
-  },
-]
-
-const SORT_OPTIONS: Array<{ id: RoomsSortKey; label: string }> = [
-  { id: 'jackpot_desc', label: 'Самый крупный фонд' },
-  { id: 'entry_asc', label: 'Сначала дешёвые' },
-  { id: 'players_asc', label: 'Меньше мест — быстрее старт' },
-]
+function seatsMatches(bucket: SeatsBucket, players: number): boolean {
+  if (bucket === 'any') return true
+  if (bucket === 'small') return players >= 2 && players <= 3
+  if (bucket === 'medium') return players >= 4 && players <= 6
+  return players >= 7
+}
 
 function formatStl(value: number): string {
   return `${value.toLocaleString('ru-RU')} STL`
@@ -91,18 +65,36 @@ function formatStl(value: number): string {
 export function HomePage({ onBrandClick, onJoinGame, onJoinLobby, user, onLogout }: HomePageProps) {
   const [selectedId, setSelectedId] = useState<string>(MECHANICS[0].id)
   const [sort, setSort] = useState<RoomsSortKey>('jackpot_desc')
-  const [maxEntry, setMaxEntry] = useState<number | undefined>(undefined)
+  const [priceCap, setPriceCap] = useState<PriceCap>('any')
+  const [seats, setSeats] = useState<SeatsBucket>('any')
+  const [onlyAffordable, setOnlyAffordable] = useState<boolean>(false)
   const [joiningRoomId, setJoiningRoomId] = useState<number | null>(null)
   const [joinError, setJoinError] = useState('')
 
-  const selected = useMemo(() => MECHANICS.find((m) => m.id === selectedId) ?? MECHANICS[0], [selectedId])
+  const selected = useMemo(
+    () => MECHANICS.find((m) => m.id === selectedId) ?? MECHANICS[0],
+    [selectedId],
+  )
 
   const {
-    rooms,
+    rooms: baseRooms,
     totalCount,
     isLoading: isRoomsLoading,
     isError: isRoomsError,
-  } = useGameRooms({ sort, maxEntryCost: maxEntry })
+  } = useGameRooms({ sort, maxEntryCost: priceCapValue(priceCap) })
+
+  const rooms = useMemo(() => {
+    return baseRooms.filter((room) => {
+      if (!seatsMatches(seats, room.players_needed)) return false
+      if (onlyAffordable && user.balance < room.entry_cost) return false
+      return true
+    })
+  }, [baseRooms, seats, onlyAffordable, user.balance])
+
+  const liveCounts = useMemo<Record<string, number>>(() => {
+    // Today only «Ночной жор» is live; other mechanics show «нет активных».
+    return { fridge: totalCount, wheel: 0, duel: 0 }
+  }, [totalCount])
 
   const { handleQuickGame, isLoading: isQuickGameLoading, error: quickGameError } = useQuickGame({
     userId: user.id,
@@ -142,9 +134,14 @@ export function HomePage({ onBrandClick, onJoinGame, onJoinLobby, user, onLogout
   }
 
   return (
-    <main className="min-h-svh bg-[#F7F8FA] text-[#111]">
+    <main
+      className="min-h-svh text-[#111] transition-[background-image] duration-700 ease-out"
+      style={{
+        backgroundImage: `linear-gradient(180deg, ${selected.bgFrom} 0%, ${selected.bgTo} 38%, #F7F8FA 100%)`,
+      }}
+    >
       {/* Top live strip */}
-      <div className="border-b border-[#ECECEC] bg-white">
+      <div className="border-b border-black/5 bg-white/70 backdrop-blur">
         <div className="mx-auto flex max-w-[1280px] items-center gap-4 overflow-x-auto px-4 py-2 text-[13px] sm:px-6 lg:px-8">
           <span className="shrink-0 inline-flex items-center gap-1.5 font-semibold text-[#E5008C]">
             <span className="size-1.5 rounded-full bg-[#E5008C]" />
@@ -163,53 +160,39 @@ export function HomePage({ onBrandClick, onJoinGame, onJoinLobby, user, onLogout
         </div>
       </div>
 
-      <AppHeader onBrandClick={onBrandClick} onLogout={onLogout} user={user} />
+      <AppHeader
+        onBrandClick={onBrandClick}
+        onLogout={onLogout}
+        user={user}
+        activeMechanic={{
+          name: selected.name.toUpperCase(),
+          letter: selected.letter,
+          Icon: selected.Icon,
+          from: selected.heroFrom,
+          to: selected.heroTo,
+          badge: selected.badge,
+          badgeBg: selected.badgeBg,
+        }}
+        liveStatusText={
+          selected.available
+            ? `${selected.name} · ${liveCounts[selected.id] ?? 0} ${pluralRooms(liveCounts[selected.id] ?? 0)} в эфире`
+            : `${selected.name} · скоро в эфире`
+        }
+      />
 
       <div className="mx-auto w-full max-w-[1280px] px-4 py-6 sm:px-6 lg:px-8">
-        <div className="grid gap-6 lg:grid-cols-[260px_1fr]">
+        <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
           {/* Sidebar — список механик */}
           <aside className="space-y-4">
-            <div className="rounded-2xl border border-[#ECECEC] bg-white p-3 shadow-[0_2px_12px_rgba(16,24,40,0.04)]">
-              <p className="px-2 pt-1 pb-2 text-[11px] font-bold uppercase tracking-wider text-[#7B7B7B]">
-                Игровые механики
-              </p>
-              <ul className="space-y-1">
-                {MECHANICS.map((m) => {
-                  const isActive = m.id === selectedId
-                  return (
-                    <li key={m.id}>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedId(m.id)}
-                        className={[
-                          'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition',
-                          isActive
-                            ? 'bg-[#FFF6CC] ring-1 ring-[#FFD400]'
-                            : 'hover:bg-[#F5F6F7]',
-                        ].join(' ')}
-                      >
-                        <span
-                          className="grid size-9 shrink-0 place-items-center rounded-lg text-white"
-                          style={{ background: `linear-gradient(135deg, ${m.heroFrom}, ${m.heroTo})` }}
-                        >
-                          <m.Icon className="size-4.5" />
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="flex items-center gap-1.5">
-                            <span className="truncate text-[14px] font-semibold text-[#111]">{m.name}</span>
-                            {!m.available && <Lock className="size-3 text-[#9A9A9A]" />}
-                          </span>
-                          <span className="block truncate text-[11px] text-[#7B7B7B]">{m.short}</span>
-                        </span>
-                      </button>
-                    </li>
-                  )
-                })}
-              </ul>
-            </div>
+            <MechanicSidebar
+              mechanics={MECHANICS}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+              liveCountByMechanic={liveCounts}
+            />
 
             {/* Quick game CTA */}
-            <div className="rounded-2xl bg-gradient-to-br from-[#111] to-[#2A2A2A] p-5 text-white shadow-[0_2px_12px_rgba(16,24,40,0.08)]">
+            <div className="rounded-2xl bg-gradient-to-br from-[#111] to-[#2A2A2A] p-5 text-white shadow-[0_8px_24px_rgba(16,24,40,0.10)]">
               <p className="text-[11px] font-bold uppercase tracking-wider text-[#FFD400]">Быстрая игра</p>
               <h3 className="mt-1.5 text-[18px] font-black leading-tight">
                 Подберём комнату <br /> за пару секунд
@@ -242,7 +225,7 @@ export function HomePage({ onBrandClick, onJoinGame, onJoinLobby, user, onLogout
           <section className="space-y-6">
             {/* Hero выбранной механики */}
             <div
-              className="relative overflow-hidden rounded-3xl px-6 py-8 text-white shadow-[0_18px_48px_rgba(16,24,40,0.18)] sm:px-10 sm:py-10"
+              className="relative overflow-hidden rounded-3xl px-6 py-8 text-white shadow-[0_18px_48px_rgba(16,24,40,0.18)] transition-[background-image] duration-700 sm:px-10 sm:py-10"
               style={{ background: `linear-gradient(135deg, ${selected.heroFrom}, ${selected.heroTo})` }}
             >
               <div className="relative z-10 max-w-[640px]">
@@ -295,43 +278,77 @@ export function HomePage({ onBrandClick, onJoinGame, onJoinLobby, user, onLogout
             {selected.available ? (
               <>
                 {/* Фильтры */}
-                <div className="rounded-2xl border border-[#ECECEC] bg-white p-4 shadow-[0_2px_12px_rgba(16,24,40,0.04)]">
-                  <div className="flex flex-wrap items-center gap-3">
+                <div className="rounded-2xl border border-white/60 bg-white/85 p-4 shadow-[0_8px_24px_rgba(16,24,40,0.06)] backdrop-blur">
+                  <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
                     <div className="inline-flex items-center gap-2 text-[13px] font-bold text-[#111]">
                       <Filter className="size-4 text-[#7B7B7B]" />
                       Фильтры
                     </div>
-                    <div className="inline-flex items-center gap-1.5 rounded-full bg-[#F5F6F7] p-1">
-                      {[undefined, 100, 500, 2000].map((cap) => (
-                        <button
-                          key={String(cap)}
-                          type="button"
-                          onClick={() => setMaxEntry(cap)}
-                          className={[
-                            'rounded-full px-3 py-1.5 text-[12px] font-semibold transition',
-                            maxEntry === cap ? 'bg-[#FFD400] text-[#111]' : 'text-[#7B7B7B] hover:text-[#111]',
-                          ].join(' ')}
-                        >
-                          {cap == null ? 'Любая цена' : `до ${cap} STL`}
-                        </button>
-                      ))}
+
+                    <div className="flex flex-col gap-1">
+                      <span className="px-1 text-[10.5px] font-bold uppercase tracking-wider text-[#9A9A9A]">
+                        Цена входа
+                      </span>
+                      <SegmentedControl
+                        options={PRICE_OPTIONS.map((o) => ({ id: String(o.id), label: o.label }))}
+                        value={String(priceCap)}
+                        onChange={(id) => setPriceCap(id === 'any' ? 'any' : (Number(id) as PriceCap))}
+                      />
                     </div>
-                    <div className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-[#F5F6F7] p-1">
-                      {SORT_OPTIONS.map((opt) => (
-                        <button
-                          key={opt.id}
-                          type="button"
-                          onClick={() => setSort(opt.id)}
-                          className={[
-                            'rounded-full px-3 py-1.5 text-[12px] font-semibold transition',
-                            sort === opt.id ? 'bg-[#111] text-white' : 'text-[#7B7B7B] hover:text-[#111]',
-                          ].join(' ')}
-                        >
-                          {opt.label}
-                        </button>
-                      ))}
+
+                    <div className="flex flex-col gap-1">
+                      <span className="px-1 text-[10.5px] font-bold uppercase tracking-wider text-[#9A9A9A]">
+                        Игроков
+                      </span>
+                      <SegmentedControl
+                        options={SEATS_OPTIONS.map((o) => ({ id: o.id, label: o.label }))}
+                        value={seats}
+                        onChange={(id) => setSeats(id as SeatsBucket)}
+                      />
                     </div>
+
+                    <div className="flex flex-col gap-1">
+                      <span className="px-1 text-[10.5px] font-bold uppercase tracking-wider text-[#9A9A9A]">
+                        Сортировка
+                      </span>
+                      <SegmentedControl
+                        options={SORT_OPTIONS.map((o) => ({ id: o.id, label: o.label }))}
+                        value={sort}
+                        onChange={(id) => setSort(id as RoomsSortKey)}
+                        highlight="#111"
+                        textActive="#fff"
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setOnlyAffordable((v) => !v)}
+                      className={[
+                        'ml-auto inline-flex items-center gap-2 rounded-full border px-3.5 py-2 text-[12.5px] font-semibold transition-all duration-200',
+                        onlyAffordable
+                          ? 'border-[#1AB75A] bg-[#E6F8EE] text-[#0F7A3A] shadow-[0_2px_10px_rgba(26,183,90,0.20)]'
+                          : 'border-[#ECECEC] bg-white text-[#7B7B7B] hover:border-[#D5D5D5] hover:text-[#111]',
+                      ].join(' ')}
+                      aria-pressed={onlyAffordable}
+                    >
+                      <Wallet className="size-3.5" />
+                      По моему балансу
+                      <span
+                        className={[
+                          'relative ml-1 h-4 w-7 rounded-full transition-colors duration-200',
+                          onlyAffordable ? 'bg-[#1AB75A]' : 'bg-[#D5D5D5]',
+                        ].join(' ')}
+                      >
+                        <span
+                          className={[
+                            'absolute top-0.5 size-3 rounded-full bg-white shadow transition-all duration-200',
+                            onlyAffordable ? 'left-3.5' : 'left-0.5',
+                          ].join(' ')}
+                        />
+                      </span>
+                    </button>
                   </div>
+
                   {joinError && (
                     <p className="mt-3 rounded-xl bg-[#FFEDED] px-3 py-2 text-[13px] font-medium text-[#C42929]">
                       {joinError}
@@ -425,7 +442,7 @@ export function HomePage({ onBrandClick, onJoinGame, onJoinLobby, user, onLogout
                 </div>
 
                 {/* Журнал */}
-                <div className="rounded-3xl border border-[#ECECEC] bg-white p-6 shadow-[0_2px_12px_rgba(16,24,40,0.04)]">
+                <div className="rounded-3xl border border-white/60 bg-white/85 p-6 shadow-[0_8px_24px_rgba(16,24,40,0.06)] backdrop-blur">
                   <LastGamesSection />
                 </div>
               </>
@@ -450,7 +467,7 @@ export function HomePage({ onBrandClick, onJoinGame, onJoinLobby, user, onLogout
         </div>
       </div>
 
-      <footer className="mt-10 border-t border-[#ECECEC] bg-white">
+      <footer className="mt-10 border-t border-black/5 bg-white/70 backdrop-blur">
         <div className="mx-auto flex max-w-[1280px] flex-col gap-2 px-4 py-6 text-[13px] text-[#7B7B7B] sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
           <p>© Столото VIP · Быстрые бонусные игры на STL</p>
           <p>MVP · Хакатон Кубок России по продуктовому программированию</p>

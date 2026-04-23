@@ -16,18 +16,26 @@ import {
 
 import { type AppHeaderProps } from '../model/types'
 
-const NAV_LINKS = ['Лотереи', 'Моментальные', 'Акции', 'Результаты'] as const
+const DEFAULT_BRAND = {
+  name: 'НОЧНОЙ ЖОР',
+  letter: 'Н',
+  from: '#FFD400',
+  to: '#FFB300',
+}
 
 export function AppHeader({
   user,
   onBrandClick,
   onLogout,
   onOpenAdmin,
+  activeMechanic,
+  liveStatusText,
   className,
   contentClassName,
 }: AppHeaderProps) {
   const navigate = useNavigate()
   const isAdmin = user.role === 'ADMIN'
+  const brandData = activeMechanic ?? DEFAULT_BRAND
 
   function handleOpenAdmin() {
     if (onOpenAdmin) onOpenAdmin()
@@ -36,17 +44,37 @@ export function AppHeader({
 
   const brand = (
     <>
-      <span className="grid h-10 w-10 place-items-center rounded-full bg-[#FFD400] text-[#111] shadow-[0_4px_12px_rgba(255,212,0,0.4)]">
-        <span className="text-[18px] font-black leading-none">Н</span>
+      <span
+        className="relative grid h-10 w-10 place-items-center rounded-full text-white shadow-[0_4px_14px_rgba(16,24,40,0.18)] transition-all duration-500"
+        style={{ background: `linear-gradient(135deg, ${brandData.from}, ${brandData.to})` }}
+      >
+        {activeMechanic?.Icon ? (
+          <activeMechanic.Icon className="size-5" />
+        ) : (
+          <span className="text-[18px] font-black leading-none">{brandData.letter}</span>
+        )}
+        <span className="pointer-events-none absolute inset-x-1 top-1 h-1/2 rounded-full bg-white/30 blur-[2px]" />
       </span>
-      <span className="text-[20px] leading-none font-black tracking-[0.04em] text-[#111] sm:text-[22px]">
-        НОЧНОЙ&nbsp;ЖОР
+      <span className="flex flex-col items-start leading-none">
+        <span className="text-[20px] font-black tracking-[0.04em] text-[#111] transition-colors duration-300 sm:text-[22px]">
+          {brandData.name}
+        </span>
+        {activeMechanic?.badge ? (
+          <span
+            className={cn(
+              'mt-1 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider',
+              activeMechanic.badgeBg ?? 'bg-[#111] text-white',
+            )}
+          >
+            {activeMechanic.badge}
+          </span>
+        ) : null}
       </span>
     </>
   )
 
   return (
-    <header className={cn('border-b border-[#ECECEC] bg-white', className)}>
+    <header className={cn('border-b border-black/5 bg-white/85 backdrop-blur', className)}>
       <div
         className={cn(
           'mx-auto flex w-full max-w-[1280px] items-center gap-4 px-4 py-3 sm:px-6 lg:px-8',
@@ -66,17 +94,20 @@ export function AppHeader({
           <div className="inline-flex items-center gap-3">{brand}</div>
         )}
 
-        <nav className="hidden flex-1 items-center justify-center gap-7 lg:flex">
-          {NAV_LINKS.map((link) => (
-            <button
-              key={link}
-              type="button"
-              className="cursor-pointer text-[15px] font-semibold text-[#3A3A3A] transition hover:text-[#111]"
-            >
-              {link}
-            </button>
-          ))}
-        </nav>
+        {/* Center area — useful live status (no broken nav links). */}
+        {liveStatusText ? (
+          <div className="hidden flex-1 items-center justify-center lg:flex">
+            <span className="inline-flex items-center gap-2 rounded-full border border-black/5 bg-white/70 px-3.5 py-1.5 text-[12.5px] font-semibold text-[#3A3A3A] shadow-[0_2px_10px_rgba(16,24,40,0.04)]">
+              <span className="relative flex size-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#E5008C] opacity-60" />
+                <span className="relative inline-flex size-2 rounded-full bg-[#E5008C]" />
+              </span>
+              {liveStatusText}
+            </span>
+          </div>
+        ) : (
+          <div className="flex-1" />
+        )}
 
         <div className="ml-auto flex items-center gap-2">
           <Button
