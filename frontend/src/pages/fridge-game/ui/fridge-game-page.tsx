@@ -39,46 +39,53 @@ function BoostPhase({ game }: { game: ReturnType<typeof useFridgeGame> }) {
     hasPurchasedBoost,
     boostAmount,
     setBoostAmount,
-    desiredProbability,
-    setDesiredProbability,
-    boostProbabilityPreview,
-    requiredBoostAmount,
+    boostPreviewProbability,
     buyBoostMutation,
     boostError,
     seatAssignments,
     apiUserId,
-    userName,
+    onBackToGames,
   } = game
 
   const jackpot = room?.jackpot ?? 0
-  const totalSeats = room?.players_needed ?? 0
+  const roundDuration = room?.round_duration_seconds ?? 30
 
-  const timerPct = boostSecondsLeft !== null && room?.round_duration_seconds
-    ? (boostSecondsLeft / room.round_duration_seconds) * 100
-    : 100
-
+  const timerPct = boostSecondsLeft !== null ? Math.min(100, (boostSecondsLeft / roundDuration) * 100) : 100
   const timerColor = timerPct > 50 ? '#22C55E' : timerPct > 25 ? '#F59E0B' : '#EF4444'
+  const totalSeats = room?.players_needed ?? 0
 
   return (
     <>
+      {/* Top bar */}
       <div className="flex items-center justify-between border-b border-white/5 bg-black/40 px-6 py-3 backdrop-blur-sm">
         <div className="flex items-center gap-3">
+          <button
+            className="flex items-center gap-1.5 rounded-[8px] border border-white/10 bg-white/5 px-3 py-1.5 text-[12px] font-medium text-[#9CA3AF] transition hover:bg-white/10"
+            onClick={onBackToGames}
+            type="button"
+          >
+            ← Все комнаты
+          </button>
           <span className="inline-flex h-2 w-2 animate-pulse rounded-full bg-[#FF008A]" />
-          <span className="text-[14px] font-semibold uppercase tracking-widest text-[#FF008A]">Покупка бустов</span>
+          <span className="text-[13px] font-semibold uppercase tracking-widest text-[#FF008A]">Фаза бустов</span>
         </div>
+
         {boostSecondsLeft !== null && (
           <div className="flex items-center gap-3">
-            <div className="h-1.5 w-[120px] overflow-hidden rounded-full bg-white/10">
+            <div className="h-1.5 w-[100px] overflow-hidden rounded-full bg-white/10">
               <div
                 className="h-full rounded-full transition-all duration-500"
                 style={{ width: `${timerPct}%`, backgroundColor: timerColor }}
               />
             </div>
-            <div className="flex items-center gap-1.5 rounded-[8px] border px-3 py-1.5" style={{ borderColor: `${timerColor}40`, backgroundColor: `${timerColor}15` }}>
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" style={{ color: timerColor }}>
+            <div
+              className="flex items-center gap-1.5 rounded-[8px] border px-3 py-1.5"
+              style={{ borderColor: `${timerColor}40`, backgroundColor: `${timerColor}15` }}
+            >
+              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" style={{ color: timerColor }}>
                 <circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" />
               </svg>
-              <span className="text-[16px] font-black tabular-nums" style={{ color: timerColor }}>
+              <span className="text-[15px] font-black tabular-nums" style={{ color: timerColor }}>
                 {String(Math.floor((boostSecondsLeft ?? 0) / 60)).padStart(2, '0')}:{String((boostSecondsLeft ?? 0) % 60).padStart(2, '0')}
               </span>
             </div>
@@ -86,111 +93,131 @@ function BoostPhase({ game }: { game: ReturnType<typeof useFridgeGame> }) {
         )}
       </div>
 
+      {/* Main content */}
       <div className="flex flex-1 overflow-hidden gap-4 p-4 md:gap-6 md:p-6">
+
+        {/* Fridge with seat plates */}
         <div className="flex flex-1 flex-col items-center justify-center">
-          <div className="relative w-full max-w-[320px]">
+          <div className="relative w-full max-w-[300px]">
             <img
               alt="Холодильник"
               className="w-full select-none"
               draggable={false}
               src={ASSETS.fridge}
+              style={{ display: 'block' }}
             />
-            <div
-              className="absolute"
-              style={{
-                inset: '12% 18% 8% 18%',
-                display: 'grid',
-                gridTemplateColumns: totalSeats <= 6 ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)',
-                gap: '5px',
-                padding: '4px',
-              }}
-            >
-              {seatAssignments.map((seat) => {
-                const isMe = seat.userId === apiUserId
-                const player = seat.userId !== null
-                  ? game.playersWithProbabilities.find((p) => p.userId === seat.userId)
-                  : null
 
-                let bg = 'rgba(255, 0, 138, 0.10)'
-                let border = 'rgba(255, 0, 138, 0.3)'
-                let color = 'rgba(255,255,255,0.5)'
+            {seatAssignments.length > 0 && (
+              <div
+                className="absolute"
+                style={{
+                  top: '13%',
+                  left: '15%',
+                  right: '15%',
+                  bottom: '5%',
+                  display: 'grid',
+                  gridTemplateColumns: `repeat(${totalSeats <= 6 ? 2 : 3}, 1fr)`,
+                  gap: '5px',
+                  padding: '5px',
+                }}
+              >
+                {seatAssignments.map((seat) => {
+                  const isMe = seat.userId === apiUserId
+                  const player = seat.userId !== null
+                    ? playersWithProbabilities.find((p) => p.userId === seat.userId)
+                    : null
 
-                if (isMe) {
-                  bg = 'rgba(34, 197, 94, 0.2)'
-                  border = 'rgba(34, 197, 94, 0.7)'
-                  color = '#22C55E'
-                } else if (seat.userId !== null) {
-                  bg = 'rgba(255, 255, 255, 0.05)'
-                  border = 'rgba(255, 255, 255, 0.15)'
-                  color = 'rgba(255,255,255,0.35)'
-                }
+                  let bg: string
+                  let border: string
+                  let color: string
 
-                return (
-                  <div
-                    key={seat.seatNumber}
-                    style={{
-                      background: bg,
-                      border: `1.5px solid ${border}`,
-                      borderRadius: 7,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: 10,
-                      fontWeight: 700,
-                      color,
-                      backdropFilter: 'blur(4px)',
-                      minHeight: 30,
-                      padding: '2px',
-                    }}
-                  >
-                    <span style={{ fontSize: 11 }}>{seat.seatNumber}</span>
-                    {player && (
-                      <span style={{ fontSize: 9, opacity: 0.8 }}>{player.probability.toFixed(0)}%</span>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
+                  if (isMe) {
+                    bg = 'rgba(34, 197, 94, 0.45)'
+                    border = 'rgba(34, 197, 94, 0.9)'
+                    color = '#86EFAC'
+                  } else if (seat.userId !== null) {
+                    bg = 'rgba(255, 255, 255, 0.12)'
+                    border = 'rgba(255, 255, 255, 0.30)'
+                    color = 'rgba(255,255,255,0.65)'
+                  } else {
+                    bg = 'rgba(255, 0, 138, 0.30)'
+                    border = 'rgba(255, 0, 138, 0.75)'
+                    color = 'rgba(255, 200, 230, 0.9)'
+                  }
+
+                  return (
+                    <div
+                      key={seat.seatNumber}
+                      style={{
+                        background: bg,
+                        border: `1.5px solid ${border}`,
+                        borderRadius: 6,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backdropFilter: 'blur(6px)',
+                        minHeight: 28,
+                        padding: '2px',
+                        boxShadow: isMe ? '0 0 8px rgba(34,197,94,0.35)' : 'none',
+                      }}
+                    >
+                      <span style={{ fontSize: 11, fontWeight: 800, color }}>{seat.seatNumber}</span>
+                      {player && (
+                        <span style={{ fontSize: 9, fontWeight: 600, color, opacity: 0.85 }}>
+                          {player.probability.toFixed(0)}%
+                        </span>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
         </div>
 
-        <div className="flex w-[300px] flex-col gap-3 xl:w-[360px]">
+        {/* Right panel */}
+        <div className="flex w-[280px] flex-col gap-3 xl:w-[340px]">
+
+          {/* Bank + my probability */}
           <div className="rounded-[14px] border border-white/5 bg-[#1A1B22]/90 p-4 backdrop-blur-sm">
             <p className="text-[10px] uppercase tracking-widest text-[#6B7280]">Общий банк</p>
-            <p className="mt-0.5 text-[26px] font-black leading-none text-[#FFD700]">
+            <p className="mt-0.5 text-[24px] font-black leading-none text-[#FFD700]">
               {jackpot.toLocaleString('ru-RU')}
               <span className="ml-1.5 text-[13px] font-medium text-[#9CA3AF]">STL</span>
             </p>
             {myProbability !== null && (
               <div className="mt-2 flex items-center gap-2 rounded-[8px] bg-white/5 px-3 py-2">
-                <span className="text-[12px] text-[#9CA3AF]">Твой шанс:</span>
-                <span className="ml-auto text-[16px] font-bold text-[#A78BFA]">{myProbability.toFixed(1)}%</span>
+                <span className="text-[12px] text-[#9CA3AF]">Ваш шанс победы:</span>
+                <span className="ml-auto text-[15px] font-bold text-[#A78BFA]">{myProbability.toFixed(1)}%</span>
               </div>
             )}
           </div>
 
+          {/* Players leaderboard */}
           <div className="flex-1 overflow-hidden rounded-[14px] border border-white/5 bg-[#1A1B22]/90 backdrop-blur-sm">
             <div className="border-b border-white/5 px-4 py-2.5">
-              <p className="text-[12px] font-semibold text-[#F2F3F5]">Игроки & вероятности</p>
+              <p className="text-[12px] font-semibold text-[#F2F3F5]">Вероятности победы</p>
+              <p className="text-[10px] text-[#6B7280]">с учётом незанятых мест</p>
             </div>
-            <div className="max-h-[200px] overflow-y-auto p-3">
-              <ul className="space-y-1.5">
-                {[...game.playersWithProbabilities]
-                  .sort((a, b) => b.probability - a.probability)
-                  .map((player, idx) => {
-                    const barWidth = Math.min(100, player.probability)
-                    return (
+            <div className="max-h-[180px] overflow-y-auto p-3">
+              {playersWithProbabilities.length === 0 ? (
+                <p className="text-[12px] text-[#6B7280]">Нет данных...</p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {[...playersWithProbabilities]
+                    .sort((a, b) => b.probability - a.probability)
+                    .map((player, idx) => (
                       <li
                         key={player.userId}
-                        className={`relative overflow-hidden rounded-[8px] px-3 py-2 ${player.isMe ? 'border border-[#A78BFA]/30 bg-[#A78BFA]/10' : 'bg-white/3'}`}
+                        className={`relative overflow-hidden rounded-[8px] px-3 py-2 ${player.isMe ? 'border border-[#A78BFA]/30 bg-[#A78BFA]/10' : 'bg-white/5'}`}
                       >
                         <div className="relative z-10 flex items-center gap-2">
                           <span className={`text-[11px] font-bold ${idx === 0 ? 'text-[#FFD700]' : 'text-[#6B7280]'}`}>
-                            {idx === 0 ? '🏆' : `#${idx + 1}`}
+                            #{idx + 1}
                           </span>
-                          <span className="flex-1 text-[12px] font-medium text-[#D1D5DB] truncate">
-                            {player.isMe ? (apiUserId !== null ? '← Вы' : 'Вы') : `Игрок ${player.userId}`}
+                          <span className="flex-1 truncate text-[12px] font-medium text-[#D1D5DB]">
+                            {player.isMe ? '← Вы' : `Игрок ${player.userId}`}
                           </span>
                           {player.boostAmount > 0 && (
                             <span className="text-[10px] text-[#22C55E]">🚀</span>
@@ -200,51 +227,42 @@ function BoostPhase({ game }: { game: ReturnType<typeof useFridgeGame> }) {
                           </span>
                         </div>
                         <div
-                          className="absolute bottom-0 left-0 h-0.5 rounded-full bg-current opacity-30 transition-all duration-700"
-                          style={{ width: `${barWidth}%`, color: player.isMe ? '#A78BFA' : '#6B7280' }}
+                          className="absolute bottom-0 left-0 h-0.5 rounded-full opacity-30 transition-all duration-700"
+                          style={{
+                            width: `${Math.min(100, player.probability)}%`,
+                            backgroundColor: player.isMe ? '#A78BFA' : '#6B7280',
+                          }}
                         />
                       </li>
-                    )
-                  })}
-              </ul>
+                    ))}
+                </ul>
+              )}
             </div>
           </div>
 
-          {!hasPurchasedBoost && (
+          {/* Boost panel */}
+          {!hasPurchasedBoost ? (
             <div className="rounded-[14px] border border-[#A78BFA]/20 bg-[#1A1B22]/90 p-4 backdrop-blur-sm">
-              <p className="mb-3 text-[12px] font-semibold text-[#F2F3F5]">Купить буст</p>
+              <p className="mb-2 text-[12px] font-semibold text-[#F2F3F5]">⚡ Купить буст</p>
 
-              <div className="mb-2 space-y-2">
-                <div>
-                  <label className="mb-1 block text-[11px] text-[#6B7280]">Сумма буста (STL)</label>
-                  <input
-                    className="w-full rounded-[8px] border border-white/10 bg-white/5 px-3 py-2 text-[14px] text-white placeholder-[#4B5563] outline-none focus:border-[#A78BFA]/50"
-                    min={1}
-                    onChange={(e) => setBoostAmount(e.target.value)}
-                    placeholder="Введите сумму..."
-                    type="number"
-                    value={boostAmount}
-                  />
-                  {boostProbabilityPreview !== null && (
-                    <p className="mt-1 text-[11px] text-[#A78BFA]">→ Шанс победы: {boostProbabilityPreview.toFixed(1)}%</p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-[11px] text-[#6B7280]">Или укажи желаемый шанс (%)</label>
-                  <input
-                    className="w-full rounded-[8px] border border-white/10 bg-white/5 px-3 py-2 text-[14px] text-white placeholder-[#4B5563] outline-none focus:border-[#22C55E]/50"
-                    max={99}
-                    min={1}
-                    onChange={(e) => setDesiredProbability(e.target.value)}
-                    placeholder="Напр. 30"
-                    type="number"
-                    value={desiredProbability}
-                  />
-                  {requiredBoostAmount !== null && (
-                    <p className="mt-1 text-[11px] text-[#22C55E]">→ Нужно потратить: {requiredBoostAmount.toLocaleString('ru-RU')} STL</p>
-                  )}
-                </div>
+              <div className="mb-3">
+                <label className="mb-1 block text-[11px] text-[#6B7280]">Сумма буста (STL)</label>
+                <input
+                  className="w-full rounded-[8px] border border-white/10 bg-white/5 px-3 py-2 text-[14px] text-white placeholder-[#4B5563] outline-none focus:border-[#A78BFA]/50"
+                  min={1}
+                  onChange={(e) => setBoostAmount(e.target.value)}
+                  placeholder="Введите сумму..."
+                  type="number"
+                  value={boostAmount}
+                />
+                {boostPreviewProbability !== null && (
+                  <p className="mt-1 text-[11px] text-[#A78BFA]">
+                    → Шанс с бустом: <strong>{boostPreviewProbability.toFixed(1)}%</strong>
+                    {myProbability !== null && (
+                      <span className="ml-1 text-[#22C55E]">(+{Math.max(0, boostPreviewProbability - myProbability).toFixed(1)}%)</span>
+                    )}
+                  </p>
+                )}
               </div>
 
               {boostError && (
@@ -257,12 +275,10 @@ function BoostPhase({ game }: { game: ReturnType<typeof useFridgeGame> }) {
                 onClick={() => { void buyBoostMutation.mutate() }}
                 type="button"
               >
-                {buyBoostMutation.isPending ? 'Покупка...' : '⚡ Купить буст'}
+                {buyBoostMutation.isPending ? 'Покупка...' : 'Применить буст'}
               </button>
             </div>
-          )}
-
-          {hasPurchasedBoost && (
+          ) : (
             <div className="rounded-[14px] border border-[#22C55E]/20 bg-[#22C55E]/5 p-4">
               <div className="flex items-center gap-2">
                 <svg className="h-5 w-5 text-[#22C55E]" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
@@ -295,22 +311,26 @@ function RevealPhase({ game }: { game: ReturnType<typeof useFridgeGame> }) {
 
   return (
     <div className="flex flex-1 items-center justify-center p-6">
-      <div className="relative w-full max-w-[400px]">
+      <div className="relative w-full max-w-[380px]">
         <img
           alt="Холодильник открыт"
-          className="w-full select-none drop-shadow-[0_0_60px_rgba(255,200,0,0.2)]"
+          className="w-full select-none"
           draggable={false}
           src={ASSETS.fridge}
+          style={{ display: 'block' }}
         />
 
         <div
           className="absolute"
           style={{
-            inset: '12% 18% 8% 18%',
+            top: '13%',
+            left: '15%',
+            right: '15%',
+            bottom: '5%',
             display: 'grid',
-            gridTemplateColumns: totalSeats <= 6 ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)',
+            gridTemplateColumns: `repeat(${totalSeats <= 6 ? 2 : 3}, 1fr)`,
             gap: '6px',
-            padding: '4px',
+            padding: '5px',
           }}
         >
           {seatAssignments.map((seat, idx) => {
@@ -320,26 +340,37 @@ function RevealPhase({ game }: { game: ReturnType<typeof useFridgeGame> }) {
             return (
               <div
                 key={seat.seatNumber}
-                className="reveal-seat flex flex-col items-center justify-center rounded-[8px] p-1"
                 style={{
-                  background: isWinnerSeat ? 'rgba(255, 215, 0, 0.2)' : 'rgba(0,0,0,0.4)',
-                  border: `2px solid ${isWinnerSeat ? 'rgba(255,215,0,0.8)' : 'rgba(255,255,255,0.1)'}`,
-                  boxShadow: isWinnerSeat ? '0 0 20px rgba(255,215,0,0.4)' : 'none',
-                  animationDelay: `${idx * 0.12}s`,
+                  background: isWinnerSeat ? 'rgba(255, 215, 0, 0.25)' : 'rgba(0,0,0,0.55)',
+                  border: `2px solid ${isWinnerSeat ? 'rgba(255,215,0,0.9)' : 'rgba(255,255,255,0.15)'}`,
+                  borderRadius: 7,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: isWinnerSeat ? '0 0 20px rgba(255,215,0,0.5)' : 'none',
+                  backdropFilter: 'blur(4px)',
+                  minHeight: 36,
+                  padding: '2px',
                   opacity: 0,
                   animation: 'revealSeat 0.4s ease forwards',
-                  minHeight: 36,
+                  animationDelay: `${idx * 0.1}s`,
                 }}
               >
                 <img
                   alt={product.label}
-                  className="w-full select-none"
                   draggable={false}
                   src={product.src}
                   style={{
-                    filter: isWinnerSeat ? 'drop-shadow(0 0 8px rgba(255,215,0,0.8))' : seat.userId === null ? 'grayscale(0.8) opacity(0.4)' : 'none',
+                    filter: isWinnerSeat
+                      ? 'drop-shadow(0 0 8px rgba(255,215,0,0.9))'
+                      : seat.userId === null
+                      ? 'grayscale(0.7) opacity(0.5)'
+                      : 'none',
                     maxHeight: 28,
+                    maxWidth: '80%',
                     objectFit: 'contain',
+                    display: 'block',
                   }}
                 />
               </div>
@@ -350,8 +381,8 @@ function RevealPhase({ game }: { game: ReturnType<typeof useFridgeGame> }) {
 
       <style>{`
         @keyframes revealSeat {
-          from { opacity: 0; transform: scale(0.5); }
-          to { opacity: 1; transform: scale(1); }
+          from { opacity: 0; transform: scale(0.5) rotate(-10deg); }
+          to   { opacity: 1; transform: scale(1) rotate(0deg); }
         }
       `}</style>
     </div>
@@ -359,7 +390,7 @@ function RevealPhase({ game }: { game: ReturnType<typeof useFridgeGame> }) {
 }
 
 function ResultsOverlay({ game }: { game: ReturnType<typeof useFridgeGame> }) {
-  const { isWinner, winner, apiUserId, onPlayAgain, onBackToGames } = game
+  const { isWinner, winner, onPlayAgain, onBackToGames } = game
   const prize = winner?.prize ?? 0
 
   return (
@@ -367,11 +398,11 @@ function ResultsOverlay({ game }: { game: ReturnType<typeof useFridgeGame> }) {
       {isWinner && <Confetti />}
 
       <div
-        className="relative w-full max-w-[480px] overflow-hidden rounded-[24px] border p-8 text-center shadow-2xl"
+        className="relative w-full max-w-[460px] overflow-hidden rounded-[24px] border p-8 text-center shadow-2xl"
         style={{
           background: isWinner
             ? 'linear-gradient(135deg, #1a2a0a 0%, #0f1a06 100%)'
-            : 'linear-gradient(135deg, #1a0a1a 0%, #0f060f 100%)',
+            : 'linear-gradient(135deg, #1a1020 0%, #0f0818 100%)',
           borderColor: isWinner ? 'rgba(255,215,0,0.4)' : 'rgba(255,255,255,0.08)',
           boxShadow: isWinner
             ? '0 0 60px rgba(255,215,0,0.15), inset 0 0 60px rgba(0,0,0,0.5)'
@@ -380,30 +411,28 @@ function ResultsOverlay({ game }: { game: ReturnType<typeof useFridgeGame> }) {
       >
         {isWinner ? (
           <>
-            <div className="mb-4 text-[64px] leading-none">🏆</div>
-            <h2 className="mb-2 text-[36px] font-black text-[#FFD700]" style={{ textShadow: '0 0 30px rgba(255,215,0,0.5)' }}>
+            <div className="mb-4 text-[60px] leading-none">🏆</div>
+            <h2 className="mb-2 text-[32px] font-black text-[#FFD700]" style={{ textShadow: '0 0 30px rgba(255,215,0,0.5)' }}>
               ВЫ ПОБЕДИЛИ!
             </h2>
-            <p className="mb-6 text-[16px] text-[#9CA3AF]">Поздравляем с победой!</p>
+            <p className="mb-5 text-[15px] text-[#9CA3AF]">Поздравляем с победой!</p>
             <div className="mb-6 rounded-[16px] border border-[#FFD700]/20 bg-[#FFD700]/10 px-6 py-4">
-              <p className="text-[13px] uppercase tracking-widest text-[#9CA3AF]">Ваш приз</p>
-              <p className="mt-1 text-[40px] font-black text-[#FFD700]">
+              <p className="text-[11px] uppercase tracking-widest text-[#9CA3AF]">Ваш приз</p>
+              <p className="mt-1 text-[36px] font-black text-[#FFD700]">
                 {prize.toLocaleString('ru-RU')} STL
               </p>
             </div>
           </>
         ) : (
           <>
-            <div className="mb-4 text-[64px] leading-none">😔</div>
-            <h2 className="mb-2 text-[32px] font-black text-[#F2F3F5]">В этот раз не повезло</h2>
-            <p className="mb-6 text-[15px] text-[#6B7280]">
-              Удача улыбнулась другому игроку
-            </p>
+            <div className="mb-4 text-[60px] leading-none">😔</div>
+            <h2 className="mb-2 text-[28px] font-black text-[#F2F3F5]">В этот раз не повезло</h2>
+            <p className="mb-5 text-[14px] text-[#6B7280]">Удача улыбнулась другому</p>
             {winner && (
               <div className="mb-6 rounded-[16px] border border-white/10 bg-white/5 px-6 py-4">
-                <p className="text-[13px] uppercase tracking-widest text-[#6B7280]">Победитель</p>
-                <p className="mt-1 text-[20px] font-bold text-[#F2F3F5]">Игрок {winner.user_id}</p>
-                <p className="text-[15px] text-[#FFD700]">{prize.toLocaleString('ru-RU')} STL</p>
+                <p className="text-[11px] uppercase tracking-widest text-[#6B7280]">Победитель</p>
+                <p className="mt-1 text-[18px] font-bold text-[#F2F3F5]">Игрок {winner.user_id}</p>
+                <p className="text-[14px] text-[#FFD700]">{prize.toLocaleString('ru-RU')} STL</p>
               </div>
             )}
           </>
@@ -422,7 +451,7 @@ function ResultsOverlay({ game }: { game: ReturnType<typeof useFridgeGame> }) {
             onClick={onBackToGames}
             type="button"
           >
-            На главную
+            Все комнаты
           </button>
         </div>
       </div>
@@ -435,11 +464,11 @@ function Confetti() {
   const pieces = Array.from({ length: 60 }, (_, i) => ({
     id: i,
     color: COLORS[i % COLORS.length],
-    left: `${Math.random() * 100}%`,
-    animDuration: `${2 + Math.random() * 3}s`,
-    animDelay: `${Math.random() * 2}s`,
-    size: `${6 + Math.random() * 8}px`,
-    shape: i % 3 === 0 ? 'circle' : i % 3 === 1 ? 'square' : 'rect',
+    left: `${(i * 1.7) % 100}%`,
+    animDuration: `${2.5 + (i % 5) * 0.5}s`,
+    animDelay: `${(i % 8) * 0.25}s`,
+    size: `${6 + (i % 5)}px`,
+    shape: i % 3,
   }))
 
   return (
@@ -457,10 +486,10 @@ function Confetti() {
             position: 'fixed',
             top: -20,
             left: p.left,
-            width: p.shape === 'rect' ? `${parseInt(p.size) * 2}px` : p.size,
+            width: p.shape === 2 ? `${parseInt(p.size) * 2}px` : p.size,
             height: p.size,
             backgroundColor: p.color,
-            borderRadius: p.shape === 'circle' ? '50%' : '2px',
+            borderRadius: p.shape === 0 ? '50%' : '2px',
             animation: `confettiFall ${p.animDuration} ${p.animDelay} ease-in forwards`,
             pointerEvents: 'none',
             zIndex: 60,

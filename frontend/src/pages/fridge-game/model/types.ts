@@ -4,7 +4,7 @@ export type PlayerWithProbability = {
   userId: number
   places: number
   boostAmount: number
-  totalStake: number
+  weight: number
   probability: number
   isMe: boolean
 }

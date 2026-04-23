@@ -3,8 +3,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ApiClientError,
   buyRoomBoost,
-  calcRoomBoostAmount,
-  calcRoomBoostProbability,
   connectRoomWS,
   getRoom,
   getUser,
@@ -35,16 +33,15 @@ export function useFridgeGame({ roomId, userId, userName, userBalance, onUserBal
   const [liveRoom, setLiveRoom] = useState<Room | null>(null)
   const [apiUserId, setApiUserId] = useState<number | null>(null)
   const [boostAmount, setBoostAmount] = useState('1000')
-  const [desiredProbability, setDesiredProbability] = useState('20')
   const [debouncedBoostAmount, setDebouncedBoostAmount] = useState('1000')
-  const [debouncedDesiredProbability, setDebouncedDesiredProbability] = useState('20')
   const [boostError, setBoostError] = useState('')
-  const hasTransitionedToVideoRef = useRef(false)
+  const hasTransitionedRef = useRef(false)
   const queryClient = useQueryClient()
 
   const roomQuery = useQuery({
     queryKey: ['fridge-room', roomId],
     queryFn: () => getRoom(roomId),
+    staleTime: 0,
   })
 
   const playersQuery = useQuery({
@@ -62,23 +59,10 @@ export function useFridgeGame({ roomId, userId, userName, userBalance, onUserBal
   const winnersQuery = useQuery({
     queryKey: ['fridge-winners', roomId],
     queryFn: () => listRoomWinners(roomId),
-    refetchInterval: phase === 'boost' ? 5000 : false,
+    refetchInterval: phase === 'boost' ? 5000 : 3000,
   })
 
   const parsedBoostAmount = Number(debouncedBoostAmount)
-  const parsedDesiredProbability = Number(debouncedDesiredProbability)
-
-  const probabilityQuery = useQuery({
-    queryKey: ['fridge-boost-probability', roomId, apiUserId, parsedBoostAmount],
-    enabled: apiUserId !== null && Number.isFinite(parsedBoostAmount) && parsedBoostAmount >= 0 && phase === 'boost',
-    queryFn: () => calcRoomBoostProbability(roomId, apiUserId as number, parsedBoostAmount),
-  })
-
-  const requiredBoostQuery = useQuery({
-    queryKey: ['fridge-boost-required', roomId, apiUserId, parsedDesiredProbability],
-    enabled: apiUserId !== null && Number.isFinite(parsedDesiredProbability) && parsedDesiredProbability > 0 && parsedDesiredProbability < 100 && phase === 'boost',
-    queryFn: () => calcRoomBoostAmount(roomId, apiUserId as number, parsedDesiredProbability),
-  })
 
   const buyBoostMutation = useMutation({
     mutationFn: async () => {
@@ -132,11 +116,6 @@ export function useFridgeGame({ roomId, userId, userName, userBalance, onUserBal
   }, [boostAmount])
 
   useEffect(() => {
-    const id = window.setTimeout(() => setDebouncedDesiredProbability(desiredProbability), BOOST_CALC_DEBOUNCE_MS)
-    return () => window.clearTimeout(id)
-  }, [desiredProbability])
-
-  useEffect(() => {
     return connectRoomWS(roomId, (snapshot) => {
       setLiveRoom(snapshot)
       queryClient.setQueryData(['fridge-room', roomId], snapshot)
@@ -154,25 +133,24 @@ export function useFridgeGame({ roomId, userId, userName, userBalance, onUserBal
   }, [room?.start_time, room?.round_duration_seconds])
 
   const boostSecondsLeft = useMemo(() => {
-    if (!boostEndTime) return null
+    if (boostEndTime === null) return null
     return Math.max(0, Math.floor((boostEndTime - nowTick) / 1000))
   }, [boostEndTime, nowTick])
 
+  // Transition to video when timer ends
   useEffect(() => {
     if (phase !== 'boost') return
-    if (boostSecondsLeft === null) return
-    if (boostSecondsLeft <= 0 && !hasTransitionedToVideoRef.current) {
-      hasTransitionedToVideoRef.current = true
+    if (boostSecondsLeft !== null && boostSecondsLeft <= 0 && !hasTransitionedRef.current) {
+      hasTransitionedRef.current = true
       setPhase('video')
     }
   }, [boostSecondsLeft, phase])
 
+  // Also transition if room finishes without timer
   useEffect(() => {
-    if (phase === 'boost' && (room?.status === 'finished')) {
-      if (!hasTransitionedToVideoRef.current) {
-        hasTransitionedToVideoRef.current = true
-        setPhase('video')
-      }
+    if (phase === 'boost' && room?.status === 'finished' && !hasTransitionedRef.current) {
+      hasTransitionedRef.current = true
+      setPhase('video')
     }
   }, [room?.status, phase])
 
@@ -181,23 +159,67 @@ export function useFridgeGame({ roomId, userId, userName, userBalance, onUserBal
     setTimeout(() => setPhase('results'), 5000)
   }
 
+  /**
+   * Probability formula matching backend settle (with bot-fill adjustment):
+   *   weight_i = places_i * entry_cost + boost_i
+   *   bot_weight = freeSeats * entry_cost  (remaining seats filled by bots)
+   *   denominator = sum(player_weights) + bot_weight
+   *   probability_i = weight_i / denominator * 100
+   *
+   * This gives accurate probabilities accounting for how bots fill empty seats.
+   */
   const playersWithProbabilities: PlayerWithProbability[] = useMemo(() => {
     const boostByUser = new Map(boosts.map((b) => [b.user_id, b.amount]))
     const entryCost = room?.entry_cost ?? 0
-    const withStakes = players.map((p) => ({
+    const totalSeats = room?.players_needed ?? 0
+    const filledSeats = players.reduce((sum, p) => sum + p.places, 0)
+    const botSeats = Math.max(0, totalSeats - filledSeats)
+
+    const withWeights = players.map((p) => ({
       userId: p.user_id,
       places: p.places,
       boostAmount: boostByUser.get(p.user_id) ?? 0,
-      totalStake: entryCost * p.places + (boostByUser.get(p.user_id) ?? 0),
+      weight: entryCost * p.places + (boostByUser.get(p.user_id) ?? 0),
       isMe: p.user_id === apiUserId,
       probability: 0,
     }))
-    const totalStakes = withStakes.reduce((sum, p) => sum + p.totalStake, 0)
-    return withStakes.map((p) => ({
+
+    const playerWeightSum = withWeights.reduce((sum, p) => sum + p.weight, 0)
+    const botWeight = botSeats * entryCost
+    const denominator = playerWeightSum + botWeight
+
+    return withWeights.map((p) => ({
       ...p,
-      probability: totalStakes > 0 ? (p.totalStake / totalStakes) * 100 : players.length > 0 ? 100 / players.length : 0,
+      probability: denominator > 0 ? (p.weight / denominator) * 100 : 0,
     }))
-  }, [players, boosts, room?.entry_cost, apiUserId])
+  }, [players, boosts, room?.entry_cost, room?.players_needed, apiUserId])
+
+  /**
+   * Preview: what would be user's probability after adding boostAmount?
+   * Uses same settle formula with bot fill.
+   */
+  const boostPreviewProbability = useMemo(() => {
+    if (!Number.isFinite(parsedBoostAmount) || parsedBoostAmount <= 0) return null
+    if (apiUserId === null) return null
+    const entryCost = room?.entry_cost ?? 0
+    const totalSeats = room?.players_needed ?? 0
+    const boostByUser = new Map(boosts.map((b) => [b.user_id, b.amount]))
+    const filledSeats = players.reduce((sum, p) => sum + p.places, 0)
+    const botSeats = Math.max(0, totalSeats - filledSeats)
+
+    const myPlaces = players.find((p) => p.user_id === apiUserId)?.places ?? 0
+    const myCurrentBoost = boostByUser.get(apiUserId) ?? 0
+    const myNewWeight = entryCost * myPlaces + myCurrentBoost + parsedBoostAmount
+
+    const withWeights = players.map((p) => {
+      const isMe = p.user_id === apiUserId
+      return isMe ? myNewWeight : (entryCost * p.places + (boostByUser.get(p.user_id) ?? 0))
+    })
+    const playerWeightSum = withWeights.reduce((sum, w) => sum + w, 0)
+    const botWeight = botSeats * entryCost
+    const denominator = playerWeightSum + botWeight
+    return denominator > 0 ? (myNewWeight / denominator) * 100 : null
+  }, [parsedBoostAmount, apiUserId, players, boosts, room?.entry_cost, room?.players_needed])
 
   const myProbability = playersWithProbabilities.find((p) => p.isMe)?.probability ?? null
   const hasPurchasedBoost = apiUserId !== null ? boosts.some((b) => b.user_id === apiUserId) : false
@@ -208,7 +230,7 @@ export function useFridgeGame({ roomId, userId, userName, userBalance, onUserBal
   const totalSeats = room?.players_needed ?? 0
   const seatProducts = useMemo(() => {
     const shuffled = seededShuffle(PRODUCTS, roomId)
-    return Array.from({ length: totalSeats }, (_, i) => shuffled[i % shuffled.length])
+    return Array.from({ length: Math.max(totalSeats, 1) }, (_, i) => shuffled[i % shuffled.length])
   }, [roomId, totalSeats])
 
   const seatAssignments = useMemo(() => {
@@ -239,10 +261,7 @@ export function useFridgeGame({ roomId, userId, userName, userBalance, onUserBal
     hasPurchasedBoost,
     boostAmount,
     setBoostAmount,
-    desiredProbability,
-    setDesiredProbability,
-    boostProbabilityPreview: probabilityQuery.data?.probability ?? null,
-    requiredBoostAmount: requiredBoostQuery.data?.boost_amount ?? null,
+    boostPreviewProbability,
     buyBoostMutation,
     boostError,
     handleVideoEnded,

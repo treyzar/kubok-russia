@@ -1,4 +1,5 @@
-import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { useState } from 'react'
+import { Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom'
 
 import { useAuthSession } from '@processes/auth-session'
 import { type AuthUser } from '@entities/user'
@@ -38,10 +39,6 @@ export function AppRouter() {
 
   function handleGoToLobby(roomId: number): void {
     navigate(gamesLobbyPath(roomId))
-  }
-
-  function handleStartGame(roomId: number): void {
-    navigate(routePaths.fridgeGame, { state: { roomId } })
   }
 
   function handleUserBalanceChange(balance: number): void {
@@ -112,33 +109,19 @@ export function AppRouter() {
           </PrivateRoute>
         }
       />
+
+      {/* Lobby + embedded game — same URL, no separate /fridge-game route */}
       <Route
         path={routePaths.gamesLobby}
         element={
           <PrivateRoute user={user}>
             {(authorizedUser) => (
-              <LobbyRoute
+              <LobbyWithGame
                 onBackToGames={handleBackToGames}
                 onLogout={handleLogout}
-                onPlayAgain={handleGoToJoinGame}
-                onStartGame={handleStartGame}
+                onGoToJoin={handleGoToJoinGame}
                 onUserBalanceChange={handleUserBalanceChange}
                 user={authorizedUser}
-              />
-            )}
-          </PrivateRoute>
-        }
-      />
-      <Route
-        path={routePaths.fridgeGame}
-        element={
-          <PrivateRoute user={user}>
-            {(authorizedUser) => (
-              <FridgeGameRoute
-                user={authorizedUser}
-                onBackToGames={handleBackToGames}
-                onPlayAgain={handleGoToJoinGame}
-                onUserBalanceChange={handleUserBalanceChange}
               />
             )}
           </PrivateRoute>
@@ -183,60 +166,56 @@ export function AppRouter() {
   )
 }
 
-type LobbyRouteProps = {
+type LobbyWithGameProps = {
   user: AuthUser
   onBackToGames: () => void
-  onPlayAgain: () => void
-  onStartGame: (roomId: number) => void
   onLogout: () => void
+  onGoToJoin: () => void
   onUserBalanceChange: (balance: number) => void
 }
 
-function LobbyRoute({ user, onBackToGames, onPlayAgain, onStartGame, onLogout, onUserBalanceChange }: LobbyRouteProps) {
+/**
+ * Manages the lobby → game transition on a SINGLE URL (/games/lobby/:roomId).
+ * When the room moves to "playing", LobbyPage calls onStartGame() which
+ * switches the rendered component to FridgeGamePage — no URL change.
+ * If the user navigates away and returns, LobbyPage mounts again, detects
+ * the room is already playing, and calls onStartGame() automatically.
+ */
+function LobbyWithGame({ user, onBackToGames, onLogout, onGoToJoin, onUserBalanceChange }: LobbyWithGameProps) {
   const params = useParams<{ roomId: string }>()
   const roomId = Number(params.roomId)
+  const [gameStarted, setGameStarted] = useState(false)
 
   if (!Number.isInteger(roomId) || roomId <= 0) {
     return <Navigate replace to={routePaths.games} />
+  }
+
+  if (gameStarted) {
+    return (
+      <FridgeGamePage
+        roomId={roomId}
+        userId={user.id}
+        userName={user.name}
+        userBalance={user.balance}
+        onUserBalanceChange={onUserBalanceChange}
+        onBackToGames={onBackToGames}
+        onPlayAgain={() => {
+          setGameStarted(false)
+          onGoToJoin()
+        }}
+      />
+    )
   }
 
   return (
     <LobbyPage
       onBackToGames={onBackToGames}
       onLogout={onLogout}
-      onPlayAgain={onPlayAgain}
-      onStartGame={onStartGame}
+      onPlayAgain={onGoToJoin}
+      onStartGame={() => setGameStarted(true)}
       onUserBalanceChange={onUserBalanceChange}
       roomId={roomId}
       user={user}
-    />
-  )
-}
-
-type FridgeGameRouteProps = {
-  user: AuthUser
-  onBackToGames: () => void
-  onPlayAgain: () => void
-  onUserBalanceChange: (balance: number) => void
-}
-
-function FridgeGameRoute({ user, onBackToGames, onPlayAgain, onUserBalanceChange }: FridgeGameRouteProps) {
-  const location = useLocation()
-  const roomId: number = (location.state as { roomId?: number } | null)?.roomId ?? 0
-
-  if (!roomId) {
-    return <Navigate replace to={routePaths.games} />
-  }
-
-  return (
-    <FridgeGamePage
-      roomId={roomId}
-      userId={user.id}
-      userName={user.name}
-      userBalance={user.balance}
-      onUserBalanceChange={onUserBalanceChange}
-      onBackToGames={onBackToGames}
-      onPlayAgain={onPlayAgain}
     />
   )
 }

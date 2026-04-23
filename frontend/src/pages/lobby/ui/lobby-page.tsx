@@ -1,12 +1,18 @@
-import { useState } from 'react'
-
 import { useBodyScrollLock } from '@shared/lib'
 import { AppHeader } from '@widgets/header'
 
 import { useLobby } from '../lib'
 import type { LobbyPageProps, SeatInfo } from '../model'
 
-export function LobbyPage({ roomId, onBackToGames, onPlayAgain, onStartGame, onLogout, onUserBalanceChange, user }: LobbyPageProps) {
+export function LobbyPage({
+  roomId,
+  onBackToGames,
+  onPlayAgain,
+  onStartGame,
+  onLogout,
+  onUserBalanceChange,
+  user,
+}: LobbyPageProps) {
   useBodyScrollLock()
 
   const {
@@ -15,10 +21,11 @@ export function LobbyPage({ roomId, onBackToGames, onPlayAgain, onStartGame, onL
     seats,
     players,
     boostsCount,
-    hasPurchasedSeats,
+    hasJoined,
+    myPlaces,
     isLoadingLobby,
     lobbyError,
-    isLeavingLobby,
+    isLeavingRoom,
     countdownLabel,
     handleBuySeats,
     handleLeaveRoomAndExit,
@@ -28,13 +35,14 @@ export function LobbyPage({ roomId, onBackToGames, onPlayAgain, onStartGame, onL
     setPlacesToBuy,
     maxPlacesToBuy,
     freeSeats,
+    totalSeats,
     apiUserId,
   } = useLobby({ roomId, onStartGame, userId: user.id, userName: user.name, userBalance: user.balance, onUserBalanceChange })
 
   const jackpot = room?.jackpot ?? 0
   const entryCost = room?.entry_cost ?? 0
-  const playersNeeded = room?.players_needed ?? 0
   const playersJoined = players.reduce((sum, p) => sum + p.places, 0)
+  const totalCost = entryCost * placesToBuy
 
   const statusLabel: Record<string, string> = {
     new: 'Набор игроков',
@@ -43,9 +51,12 @@ export function LobbyPage({ roomId, onBackToGames, onPlayAgain, onStartGame, onL
     finished: 'Завершено',
   }
 
-  const totalCost = entryCost * placesToBuy
-
-  const myPlaces = players.find((p) => p.user_id === apiUserId)?.places ?? 0
+  const dotClass = {
+    new: 'animate-pulse bg-yellow-400',
+    starting_soon: 'animate-pulse bg-orange-400',
+    playing: 'bg-green-400',
+    finished: 'bg-gray-400',
+  }[roomStatus] ?? 'bg-gray-400'
 
   return (
     <main className="fixed inset-0 flex flex-col overflow-hidden bg-[#0E0F14] text-[#F2F3F5]">
@@ -61,13 +72,14 @@ export function LobbyPage({ roomId, onBackToGames, onPlayAgain, onStartGame, onL
         />
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#0E0F14]/60 via-transparent to-[#0E0F14]/80" />
 
-        <div className="relative z-10 flex flex-1 flex-col gap-0 overflow-auto p-4 md:flex-row md:gap-6 md:p-6">
+        <div className="relative z-10 flex flex-1 flex-col gap-4 overflow-auto p-4 md:flex-row md:p-6">
 
+          {/* Left: fridge */}
           <div className="flex flex-col gap-4 md:flex-1">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[13px] font-medium text-[#C8CDD8]">
-                  <span className={`inline-block h-2 w-2 rounded-full ${roomStatus === 'new' ? 'animate-pulse bg-yellow-400' : roomStatus === 'starting_soon' ? 'animate-pulse bg-orange-400' : 'bg-green-400'}`} />
+                  <span className={`inline-block h-2 w-2 rounded-full ${dotClass}`} />
                   {statusLabel[roomStatus] ?? roomStatus}
                 </span>
                 <span className="text-[13px] text-[#6B7280]">Комната #{roomId}</span>
@@ -87,41 +99,26 @@ export function LobbyPage({ roomId, onBackToGames, onPlayAgain, onStartGame, onL
               <div className="flex h-full flex-col items-center justify-center p-4">
                 <p className="mb-4 text-[14px] font-medium uppercase tracking-widest text-[#6B7280]">Места в игре</p>
 
-                <div className="relative w-full max-w-[340px]">
-                  <img
-                    alt="Холодильник"
-                    className="w-full select-none"
-                    draggable={false}
-                    src="/dev-assets/big_fridge.svg"
-                  />
-
-                  <div
-                    className="absolute"
-                    style={{
-                      inset: '12% 18% 8% 18%',
-                      display: 'grid',
-                      gridTemplateColumns: seats.length <= 6 ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)',
-                      gap: '6px',
-                      padding: '4px',
-                    }}
-                  >
-                    {seats.map((seat) => (
-                      <SeatPlate key={seat.seatNumber} seat={seat} />
-                    ))}
+                {isLoadingLobby && totalSeats === 0 ? (
+                  <div className="flex flex-col items-center gap-4">
+                    <div className="h-6 w-6 animate-spin rounded-full border-2 border-[#FF008A] border-t-transparent" />
+                    <p className="text-[13px] text-[#6B7280]">Загружаем комнату...</p>
                   </div>
-                </div>
+                ) : (
+                  <FridgeWithSeats seats={seats} totalSeats={totalSeats} />
+                )}
 
-                <div className="mt-4 flex items-center gap-3 text-[13px] text-[#9CA3AF]">
+                <div className="mt-4 flex items-center gap-4 text-[13px] text-[#9CA3AF]">
                   <span className="flex items-center gap-1.5">
-                    <span className="inline-block h-2.5 w-2.5 rounded-sm bg-[#FF008A]/70" />
+                    <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: 'rgba(255,0,138,0.7)', border: '1px solid rgba(255,0,138,0.9)' }} />
                     Свободно
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <span className="inline-block h-2.5 w-2.5 rounded-sm bg-[#22C55E]/70" />
-                    Ваши места
+                    <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: 'rgba(34,197,94,0.7)', border: '1px solid rgba(34,197,94,0.9)' }} />
+                    Ваши
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <span className="inline-block h-2.5 w-2.5 rounded-sm bg-white/20" />
+                    <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.35)' }} />
                     Занято
                   </span>
                 </div>
@@ -129,7 +126,10 @@ export function LobbyPage({ roomId, onBackToGames, onPlayAgain, onStartGame, onL
             </div>
           </div>
 
+          {/* Right: info panel */}
           <div className="flex w-full flex-col gap-4 md:w-[320px] xl:w-[360px]">
+
+            {/* Bank */}
             <div className="rounded-[16px] border border-white/5 bg-[#1A1B22]/90 p-5 backdrop-blur-sm">
               <p className="mb-1 text-[11px] uppercase tracking-widest text-[#6B7280]">Банк комнаты</p>
               <p className="text-[32px] font-black leading-none text-[#FFD700]">
@@ -142,12 +142,13 @@ export function LobbyPage({ roomId, onBackToGames, onPlayAgain, onStartGame, onL
               </div>
             </div>
 
+            {/* Players */}
             <div className="flex-1 overflow-hidden rounded-[16px] border border-white/5 bg-[#1A1B22]/90 backdrop-blur-sm">
               <div className="flex items-center justify-between border-b border-white/5 px-4 py-3">
                 <p className="text-[13px] font-semibold text-[#F2F3F5]">Игроки</p>
-                <span className="text-[13px] text-[#6B7280]">{playersJoined} / {playersNeeded} мест</span>
+                <span className="text-[13px] text-[#6B7280]">{playersJoined} / {room?.players_needed ?? '?'} мест</span>
               </div>
-              <div className="max-h-[220px] overflow-y-auto px-4 py-3">
+              <div className="max-h-[200px] overflow-y-auto px-4 py-3">
                 {isLoadingLobby && players.length === 0 ? (
                   <p className="text-[13px] text-[#6B7280]">Загрузка...</p>
                 ) : players.length === 0 ? (
@@ -157,7 +158,10 @@ export function LobbyPage({ roomId, onBackToGames, onPlayAgain, onStartGame, onL
                     {players.map((player) => {
                       const isMe = player.user_id === apiUserId
                       return (
-                        <li key={player.user_id} className={`flex items-center justify-between rounded-[8px] px-3 py-2 ${isMe ? 'bg-[#22C55E]/10 border border-[#22C55E]/20' : 'bg-white/3'}`}>
+                        <li
+                          key={player.user_id}
+                          className={`flex items-center justify-between rounded-[8px] px-3 py-2 ${isMe ? 'border border-[#22C55E]/20 bg-[#22C55E]/10' : 'bg-white/5'}`}
+                        >
                           <div className="flex items-center gap-2">
                             <div className={`flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold ${isMe ? 'bg-[#22C55E] text-black' : 'bg-white/10 text-[#9CA3AF]'}`}>
                               {isMe ? 'Я' : player.user_id.toString().slice(-2)}
@@ -166,7 +170,9 @@ export function LobbyPage({ roomId, onBackToGames, onPlayAgain, onStartGame, onL
                               {isMe ? user.name : `Игрок ${player.user_id}`}
                             </span>
                           </div>
-                          <span className="text-[12px] text-[#6B7280]">{player.places} {player.places === 1 ? 'место' : 'места'}</span>
+                          <span className="text-[12px] text-[#6B7280]">
+                            {player.places} {player.places === 1 ? 'место' : 'места'}
+                          </span>
                         </li>
                       )
                     })}
@@ -175,7 +181,8 @@ export function LobbyPage({ roomId, onBackToGames, onPlayAgain, onStartGame, onL
               </div>
             </div>
 
-            {!hasPurchasedSeats && myPlaces === 0 && (roomStatus === 'new' || roomStatus === 'starting_soon') && freeSeats > 0 && (
+            {/* Buy seats */}
+            {!hasJoined && (roomStatus === 'new' || roomStatus === 'starting_soon') && freeSeats > 0 && (
               <div className="rounded-[16px] border border-[#FF008A]/20 bg-[#1A1B22]/90 p-5 backdrop-blur-sm">
                 <p className="mb-3 text-[13px] font-semibold text-[#F2F3F5]">Купить места</p>
 
@@ -202,7 +209,7 @@ export function LobbyPage({ roomId, onBackToGames, onPlayAgain, onStartGame, onL
                   </button>
                 </div>
 
-                <div className="mb-3 rounded-[10px] bg-white/3 px-3 py-2">
+                <div className="mb-3 rounded-[10px] bg-white/5 px-3 py-2">
                   <div className="flex justify-between text-[13px]">
                     <span className="text-[#6B7280]">Цена за место</span>
                     <span className="text-[#F2F3F5]">{entryCost.toLocaleString('ru-RU')} STL</span>
@@ -228,21 +235,23 @@ export function LobbyPage({ roomId, onBackToGames, onPlayAgain, onStartGame, onL
               </div>
             )}
 
-            {(hasPurchasedSeats || myPlaces > 0) && (roomStatus === 'new' || roomStatus === 'starting_soon') && (
+            {/* Joined status */}
+            {hasJoined && (roomStatus === 'new' || roomStatus === 'starting_soon') && (
               <div className="rounded-[16px] border border-[#22C55E]/20 bg-[#22C55E]/5 p-4">
                 <div className="flex items-center gap-2">
                   <svg className="h-5 w-5 text-[#22C55E]" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
                     <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                   <p className="text-[13px] font-semibold text-[#22C55E]">
-                    Вы заняли {myPlaces > 0 ? myPlaces : placesToBuy} {(myPlaces > 0 ? myPlaces : placesToBuy) === 1 ? 'место' : 'места'}
+                    Вы заняли {myPlaces} {myPlaces === 1 ? 'место' : 'места'}
                   </p>
                 </div>
                 <p className="mt-1 text-[12px] text-[#6B7280]">Ожидаем начала игры...</p>
               </div>
             )}
 
-            {freeSeats === 0 && roomStatus !== 'playing' && roomStatus !== 'finished' && (
+            {/* All seats taken */}
+            {freeSeats === 0 && !hasJoined && roomStatus !== 'playing' && roomStatus !== 'finished' && totalSeats > 0 && (
               <div className="rounded-[16px] border border-yellow-500/20 bg-yellow-500/5 p-4">
                 <p className="text-[13px] font-semibold text-yellow-400">Все места заняты</p>
                 <p className="mt-1 text-[12px] text-[#6B7280]">Скоро начнётся игра</p>
@@ -255,15 +264,18 @@ export function LobbyPage({ roomId, onBackToGames, onPlayAgain, onStartGame, onL
 
             <button
               className="mt-auto flex h-11 items-center justify-center gap-2 rounded-[12px] border border-[#B24B4B]/50 bg-[#5A2323]/40 text-[14px] font-bold text-[#FF9999] transition hover:bg-[#6D2B2B]/60 disabled:opacity-50"
-              disabled={isLeavingLobby}
+              disabled={isLeavingRoom}
               onClick={() => {
-                if (window.confirm('Покинуть лобби? Ваши занятые места освободятся.')) {
+                const confirmMsg = hasJoined
+                  ? 'Покинуть лобби? Ваши занятые места освободятся.'
+                  : 'Покинуть лобби?'
+                if (window.confirm(confirmMsg)) {
                   void handleLeaveRoomAndExit(onBackToGames)
                 }
               }}
               type="button"
             >
-              {isLeavingLobby ? 'Выходим...' : '← Покинуть лобби'}
+              {isLeavingRoom ? 'Выходим...' : '← Покинуть лобби'}
             </button>
           </div>
         </div>
@@ -272,37 +284,93 @@ export function LobbyPage({ roomId, onBackToGames, onPlayAgain, onStartGame, onL
   )
 }
 
+function FridgeWithSeats({ seats, totalSeats }: { seats: SeatInfo[]; totalSeats: number }) {
+  const cols = totalSeats <= 6 ? 2 : 3
+
+  return (
+    <div className="relative w-full max-w-[340px]">
+      {/* Fridge image */}
+      <img
+        alt="Холодильник"
+        className="w-full select-none"
+        draggable={false}
+        src="/dev-assets/big_fridge.svg"
+        style={{ display: 'block' }}
+      />
+
+      {/* Seat plates overlay — calibrated to the fridge door area */}
+      {seats.length > 0 && (
+        <div
+          className="absolute"
+          style={{
+            top: '13%',
+            left: '15%',
+            right: '15%',
+            bottom: '5%',
+            display: 'grid',
+            gridTemplateColumns: `repeat(${cols}, 1fr)`,
+            gap: '6px',
+            padding: '6px',
+          }}
+        >
+          {seats.map((seat) => (
+            <SeatPlate key={seat.seatNumber} seat={seat} />
+          ))}
+        </div>
+      )}
+
+      {/* Loading skeleton if no seats yet */}
+      {seats.length === 0 && totalSeats === 0 && (
+        <div
+          className="absolute"
+          style={{ top: '13%', left: '15%', right: '15%', bottom: '5%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <div className="rounded-[10px] border border-white/10 bg-black/40 px-4 py-3 text-center backdrop-blur-sm">
+            <p className="text-[12px] text-[#6B7280]">Загрузка...</p>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function SeatPlate({ seat }: { seat: SeatInfo }) {
-  let bgColor = 'rgba(255, 0, 138, 0.12)'
-  let borderColor = 'rgba(255, 0, 138, 0.4)'
-  let textColor = 'rgba(255, 255, 255, 0.85)'
+  let bg: string
+  let border: string
+  let textColor: string
+  let glow = ''
 
   if (seat.isMe) {
-    bgColor = 'rgba(34, 197, 94, 0.2)'
-    borderColor = 'rgba(34, 197, 94, 0.6)'
-    textColor = '#22C55E'
+    bg = 'rgba(34, 197, 94, 0.45)'
+    border = 'rgba(34, 197, 94, 0.95)'
+    textColor = '#86EFAC'
+    glow = '0 0 8px rgba(34,197,94,0.4)'
   } else if (seat.userId !== null) {
-    bgColor = 'rgba(255, 255, 255, 0.06)'
-    borderColor = 'rgba(255, 255, 255, 0.15)'
-    textColor = 'rgba(255, 255, 255, 0.4)'
+    bg = 'rgba(255, 255, 255, 0.12)'
+    border = 'rgba(255, 255, 255, 0.30)'
+    textColor = 'rgba(255, 255, 255, 0.55)'
+  } else {
+    bg = 'rgba(255, 0, 138, 0.30)'
+    border = 'rgba(255, 0, 138, 0.75)'
+    textColor = 'rgba(255, 200, 230, 0.95)'
   }
 
   return (
     <div
       style={{
-        background: bgColor,
-        border: `1.5px solid ${borderColor}`,
-        borderRadius: 8,
+        background: bg,
+        border: `1.5px solid ${border}`,
+        borderRadius: 7,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        fontSize: 13,
-        fontWeight: 700,
+        fontSize: 12,
+        fontWeight: 800,
         color: textColor,
-        backdropFilter: 'blur(4px)',
-        transition: 'all 0.2s',
-        minHeight: 32,
-        cursor: seat.userId === null ? 'default' : 'default',
+        backdropFilter: 'blur(6px)',
+        boxShadow: glow || 'none',
+        minHeight: 28,
+        userSelect: 'none',
       }}
     >
       {seat.seatNumber}
