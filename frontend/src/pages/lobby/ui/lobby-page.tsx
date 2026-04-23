@@ -195,6 +195,24 @@ export function LobbyPage({ roomId, onBackToGames, onCreateGame, onPlayAgain, on
         >
           Журнал раундов
         </button>
+        <button
+          aria-label="Открыть симуляцию раунда"
+          className="absolute z-20 inline-flex h-[56px] items-center justify-center rounded-[10px] border border-[#7A52FF] bg-[#5B35D2] px-6 text-[22px] leading-none font-extrabold tracking-[0.01em] text-white shadow-[0_8px_14px_rgba(0,0,0,0.28)] transition hover:brightness-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#D6C7FF]"
+          onClick={() => setIsSimulationOpen(true)}
+          style={{ bottom: '3.8%', left: '50%', transform: 'translateX(-50%)' }}
+          type="button"
+        >
+          Симуляция раунда
+        </button>
+        <button
+          aria-label="Открыть журнал раундов"
+          className="absolute z-20 inline-flex h-[48px] items-center justify-center rounded-[10px] border border-[#4E6689] bg-[#233752] px-4 text-[18px] font-bold text-[#DDEAFF] shadow-[0_8px_14px_rgba(0,0,0,0.28)] transition hover:brightness-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B9D7FF]"
+          onClick={() => setIsJournalOpen(true)}
+          style={{ bottom: '12.2%', left: '50%', transform: 'translateX(-50%)' }}
+          type="button"
+        >
+          Журнал раундов
+        </button>
 
         {copied ? (
           <div className="pointer-events-none absolute bottom-[14%] left-1/2 z-30 -translate-x-1/2 rounded-[10px] bg-black/82 px-4 py-2 text-[14px] font-semibold text-white">Код комнаты скопирован</div>

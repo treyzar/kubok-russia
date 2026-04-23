@@ -188,8 +188,8 @@ export function CreateGamePage({ onBackToGames, onJoinGame, onOpenLobby, onLogou
               <p className="mt-3 rounded-[10px] border border-[#AA4242] bg-[#3A2020] px-3 py-2 text-[14px] text-[#FFD3D3]">{actionError}</p>
             ) : null}
           </div>
-        </section>
-      </section>
+        </div>
+      ) : null}
 
       {isConfiguratorOpen ? (
         <ConfiguratorModal
