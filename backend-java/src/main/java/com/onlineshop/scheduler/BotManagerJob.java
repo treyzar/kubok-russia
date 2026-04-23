@@ -1,5 +1,6 @@
 package com.onlineshop.scheduler;
 
+import com.onlineshop.repository.RoomTemplateRepository;
 import com.onlineshop.repository.UserRepository;
 import com.onlineshop.service.UserService;
 import lombok.RequiredArgsConstructor;
@@ -23,9 +24,9 @@ import java.security.SecureRandom;
 @Slf4j
 public class BotManagerJob {
 
-    private static final int INITIAL_BALANCE = 500;
-    private static final int LOW_BALANCE_THRESHOLD = 500;
-    private static final int REFILL_AMOUNT = 200;
+    private static final int BASE_BALANCE = 500;
+    /** Safety floor in case there are no active rooms / templates yet. */
+    private static final int MIN_TARGET_BALANCE = 500;
 
     /**
      * 35 Russian first names — must match {@code backend/internal/crons/bot_manager.go}
@@ -43,6 +44,7 @@ public class BotManagerJob {
 
     private final UserRepository userRepo;
     private final UserService users;
+    private final RoomTemplateRepository templateRepo;
     private final SecureRandom rnd = new SecureRandom();
 
     @Value("${app.bots.target-count:50}")
@@ -51,31 +53,52 @@ public class BotManagerJob {
     @Scheduled(fixedRateString = "${app.scheduler.bot-manager-fixed-rate:10000}")
     public void tick() {
         try {
-            spawnIfNeeded();
-            refillLowBalance();
+            int targetBalance = computeTargetBalance();
+            spawnIfNeeded(targetBalance);
+            refillLowBalance(targetBalance);
         } catch (Exception e) {
             log.warn("BotManager tick failed: {}", e.getMessage());
         }
     }
 
-    private void spawnIfNeeded() {
+    /**
+     * Bots must always have enough cash to fill the most expensive joinable
+     * room (and we keep a comfortable headroom of a couple of buy-ins so a
+     * single losing streak doesn't sideline them). We look at both currently
+     * active rooms and active templates so freshly-created rooms are also
+     * covered.
+     */
+    private int computeTargetBalance() {
+        int maxEntry = MIN_TARGET_BALANCE;
+        for (var t : templateRepo.findActive()) {
+            maxEntry = Math.max(maxEntry, t.getEntryCost());
+        }
+        // Two full buy-ins of headroom so bots aren't kicked out after one loss.
+        return Math.max(MIN_TARGET_BALANCE, maxEntry * 2);
+    }
+
+    private void spawnIfNeeded(int targetBalance) {
         long current = userRepo.countByBotTrue();
         int missing = (int) (targetBotCount - current);
+        // New bots are spawned with at least the target balance so they can
+        // immediately participate in the highest-stakes room.
+        int startBalance = Math.max(BASE_BALANCE, targetBalance);
         for (int i = 0; i < missing; i++) {
             String first = RUSSIAN_NAMES[rnd.nextInt(RUSSIAN_NAMES.length)];
             // Match Go's rand.Intn(10000) → range [0..9999] inclusive.
             String name = first + "_" + rnd.nextInt(10000);
-            users.create(name, INITIAL_BALANCE, true);
+            users.create(name, startBalance, true);
         }
-        if (missing > 0) log.info("BotManager spawned {} bots (target={}, current={})",
-                missing, targetBotCount, current);
+        if (missing > 0) log.info("BotManager spawned {} bots (target={}, current={}, startBalance={})",
+                missing, targetBotCount, current, startBalance);
     }
 
-    private void refillLowBalance() {
-        var lows = userRepo.findBotsBelowBalance(LOW_BALANCE_THRESHOLD);
+    private void refillLowBalance(int targetBalance) {
+        var lows = userRepo.findBotsBelowBalance(targetBalance);
         for (var b : lows) {
-            users.credit(b.getId(), REFILL_AMOUNT);
+            int delta = targetBalance - b.getBalance();
+            if (delta > 0) users.credit(b.getId(), delta);
         }
-        if (!lows.isEmpty()) log.debug("BotManager refilled {} low-balance bots", lows.size());
+        if (!lows.isEmpty()) log.info("BotManager topped up {} bots to balance {}", lows.size(), targetBalance);
     }
 }
