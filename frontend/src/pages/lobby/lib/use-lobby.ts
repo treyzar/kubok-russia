@@ -411,34 +411,28 @@ export function useLobby({
   const isPlayingPhase = roomStatus === 'playing'
   const isFinishedPhase = roomStatus === 'finished'
 
+  // Phase machine.
+  //
+  // The intro fridge video used to play between the boost phase and the plate
+  // reveal, but the user explicitly requested that we skip it and go straight
+  // from "boost timer ended" → "open plates". The 'video' phase is therefore
+  // intentionally never produced anymore; we keep `hasVideoFinished` /
+  // `postVideoPhase` around to preserve the existing reveal → results
+  // transition.
   const phase: GamePhase = useMemo(() => {
     if (isFinishedPhase || (isPlayingPhase && boostSecondsLeft !== null && boostSecondsLeft <= 0)) {
       if (postVideoPhase === 'results') return 'results'
-      if (hasVideoFinished) return 'reveal'
-      return 'video'
+      return 'reveal'
     }
     if (isPlayingPhase) return 'boost'
     return 'lobby'
-  }, [isFinishedPhase, isPlayingPhase, boostSecondsLeft, hasVideoFinished, postVideoPhase])
+  }, [isFinishedPhase, isPlayingPhase, boostSecondsLeft, postVideoPhase])
 
-  // Hard safety net: if for any reason the reveal video never reports `ended`
-  // (browser blocked autoplay, file missing, decode error, …), force-advance
-  // to the reveal phase so the lobby can never get stuck on a black screen.
-  const videoFallbackRef = useRef<number | null>(null)
+  // The reveal phase no longer waits on a video event — keep the marker
+  // permanently true so any legacy code paths that look at it are happy.
   useEffect(() => {
-    if (phase === 'video' && !hasVideoFinished) {
-      if (videoFallbackRef.current !== null) window.clearTimeout(videoFallbackRef.current)
-      videoFallbackRef.current = window.setTimeout(() => {
-        setHasVideoFinished(true)
-      }, 7000)
-    }
-    return () => {
-      if (videoFallbackRef.current !== null) {
-        window.clearTimeout(videoFallbackRef.current)
-        videoFallbackRef.current = null
-      }
-    }
-  }, [phase, hasVideoFinished])
+    if (!hasVideoFinished) setHasVideoFinished(true)
+  }, [hasVideoFinished])
 
   // After reveal, schedule the results modal
   const revealTimerRef = useRef<number | null>(null)

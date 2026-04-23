@@ -98,11 +98,14 @@ public class RoomStarterJob {
                 if (picked.size() == botsNeeded) break;
             }
             if (picked.size() < botsNeeded) {
-                // Not enough bots — abort. Spring will rollback @Transactional via the
-                // RuntimeException thrown below.
-                log.info("[RoomStarter] Not enough bots for room {} (need {}, found {}); will retry",
+                // Partial fill: rather than blocking the room indefinitely while we
+                // wait for bots that may never qualify (e.g. entry_cost > all bot
+                // balances), we proceed with whatever bots we found and start the
+                // game with a smaller table. The room already passed the
+                // min_players threshold, so a smaller-than-target draw is still
+                // a valid game.
+                log.info("[RoomStarter] Partial bot fill for room {} (need {}, found {}); starting anyway",
                         roomId, botsNeeded, picked.size());
-                throw new NotEnoughBotsException();
             }
 
             for (User bot : picked) {
