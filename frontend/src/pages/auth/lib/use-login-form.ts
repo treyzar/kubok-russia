@@ -15,18 +15,17 @@ type UseLoginFormOptions = {
 
 export function useLoginForm({ onSuccess }: UseLoginFormOptions) {
   const users = getMockUsers()
+  const [method, setMethod] = useState<'phone' | 'email'>('email')
   const [isApiLoading, setIsApiLoading] = useState(false)
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      method: 'email',
+      method,
       username: users[0]?.email ?? '',
       password: '',
     },
   })
-
-  const method = form.watch('method')
 
   async function onSubmit(values: LoginFormValues): Promise<void> {
     const authUser = loginWithMock(values.username, values.password, values.method)
@@ -51,6 +50,7 @@ export function useLoginForm({ onSuccess }: UseLoginFormOptions) {
   }
 
   function switchMethod(next: 'phone' | 'email'): void {
+    setMethod(next)
     form.setValue('method', next)
     const firstUser = users[0]
     if (firstUser) {

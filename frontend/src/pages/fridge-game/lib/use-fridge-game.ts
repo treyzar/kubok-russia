@@ -67,7 +67,7 @@ export function useFridgeGame({ roomId, userId, userName, userBalance, onUserBal
     return () => {
       cancelled = true
     }
-  }, [roomId])
+  }, [roomId, userBalance, userId, userName])
 
   useEffect(() => {
     if (gameState !== 'bonus_added' || selectedCell === null || timeLeft <= 0) return
