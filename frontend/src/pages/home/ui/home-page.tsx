@@ -14,8 +14,6 @@ import {
   Wallet,
 } from 'lucide-react'
 
-import { resolveApiUserId } from '@processes/auth-session'
-import { ApiClientError, joinRoom } from '@shared/api'
 import type { RoomStatus } from '@shared/types'
 import { Button } from '@shared/ui'
 import { AppHeader } from '@widgets/header'
@@ -218,25 +216,14 @@ function HomeRoomsView({ onBrandClick, onJoinGame, onJoinLobby, user, onLogout }
       setJoinError(`Недостаточно баллов: нужно ${entryCost} STL, доступно ${user.balance} STL`)
       return
     }
+    // NB: do NOT auto-join here. The lobby page is responsible for plate selection
+    // and the actual join (with the chosen number of plates).
     setJoiningRoomId(roomId)
     setJoinError('')
     try {
-      const apiUserId = await resolveApiUserId(user.id, user.name, user.balance)
-      await joinRoom(roomId, { user_id: apiUserId, places: 1 })
       onJoinLobby(roomId)
     } catch (err) {
-      if (err instanceof ApiClientError && err.status === 402) {
-        const d = err.details as { needed?: number; available?: number } | null
-        setJoinError(
-          d?.needed != null
-            ? `Недостаточно баллов: нужно ${d.needed} STL, доступно ${d.available ?? 0} STL`
-            : 'Недостаточно баллов для входа в комнату.',
-        )
-      } else if (err instanceof ApiClientError && err.status === 409) {
-        setJoinError('Комната уже заполнена. Выберите другую.')
-      } else {
-        setJoinError(err instanceof Error ? err.message : 'Не удалось войти в комнату.')
-      }
+      setJoinError(err instanceof Error ? err.message : 'Не удалось открыть лобби.')
     } finally {
       setJoiningRoomId(null)
     }

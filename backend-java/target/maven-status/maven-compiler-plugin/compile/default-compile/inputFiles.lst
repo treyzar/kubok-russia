@@ -1,5 +1,6 @@
 /home/runner/workspace/backend-java/src/main/java/com/onlineshop/OnlineShopApplication.java
 /home/runner/workspace/backend-java/src/main/java/com/onlineshop/config/CorsConfig.java
+/home/runner/workspace/backend-java/src/main/java/com/onlineshop/config/DataSeeder.java
 /home/runner/workspace/backend-java/src/main/java/com/onlineshop/config/JacksonConfig.java
 /home/runner/workspace/backend-java/src/main/java/com/onlineshop/config/OpenApiConfig.java
 /home/runner/workspace/backend-java/src/main/java/com/onlineshop/config/RedisConfig.java
