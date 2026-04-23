@@ -1,4 +1,4 @@
-import { Bell, ChevronDown, CircleDollarSign, LogOut, Send, ShieldCheck } from 'lucide-react'
+import { Bell, ChevronDown, LogOut, ShieldCheck, Wallet } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 import { formatUserBalance } from '@entities/user'
@@ -16,8 +16,7 @@ import {
 
 import { type AppHeaderProps } from '../model/types'
 
-const defaultContentClassName =
-  'mx-auto grid w-full max-w-[1248px] grid-cols-1 items-center gap-3 px-3 py-3 sm:px-4 md:grid-cols-[1fr_auto_1fr] md:px-5 xl:px-0'
+const NAV_LINKS = ['Лотереи', 'Моментальные', 'Акции', 'Результаты'] as const
 
 export function AppHeader({
   user,
@@ -31,90 +30,110 @@ export function AppHeader({
   const isAdmin = user.role === 'ADMIN'
 
   function handleOpenAdmin() {
-    if (onOpenAdmin) {
-      onOpenAdmin()
-    } else {
-      navigate('/admin')
-    }
+    if (onOpenAdmin) onOpenAdmin()
+    else navigate('/admin')
   }
 
   const brand = (
     <>
-      <img
-        alt="Ночной жор"
-        className="h-[44px] w-[44px] rounded-full object-cover md:h-[46px] md:w-[46px]"
-        src="/dev-assets/images/logo.svg"
-      />
-      <span className="text-[26px] leading-none font-bold tracking-[0.01em] sm:text-[30px] lg:text-[34px]">
-        НОЧНОЙ ЖОР
+      <span className="grid h-10 w-10 place-items-center rounded-full bg-[#FFD400] text-[#111] shadow-[0_4px_12px_rgba(255,212,0,0.4)]">
+        <span className="text-[18px] font-black leading-none">Н</span>
+      </span>
+      <span className="text-[20px] leading-none font-black tracking-[0.04em] text-[#111] sm:text-[22px]">
+        НОЧНОЙ&nbsp;ЖОР
       </span>
     </>
   )
 
   return (
-    <header className={cn('border-b border-[#2A2B31] bg-[#1D1E23]', className)}>
-      <div className={cn(defaultContentClassName, contentClassName)}>
+    <header className={cn('border-b border-[#ECECEC] bg-white', className)}>
+      <div
+        className={cn(
+          'mx-auto flex w-full max-w-[1280px] items-center gap-4 px-4 py-3 sm:px-6 lg:px-8',
+          contentClassName,
+        )}
+      >
         {onBrandClick ? (
           <button
-            aria-label="Перейти на главную"
-            className="inline-flex w-fit justify-self-start cursor-pointer items-center justify-center gap-3 rounded-[8px] border-0 bg-transparent px-1 py-1 text-[#F5F6F9] transition hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#A8E45E] md:justify-start"
+            aria-label="На главную"
+            className="inline-flex items-center gap-3 rounded-xl px-1 py-1 transition hover:bg-black/[0.03] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#FFD400]"
             onClick={onBrandClick}
             type="button"
           >
             {brand}
           </button>
         ) : (
-          <div className="inline-flex items-center justify-center gap-3 text-[#F5F6F9] md:justify-start">{brand}</div>
+          <div className="inline-flex items-center gap-3">{brand}</div>
         )}
 
-        <div className="flex items-center justify-center gap-2">
+        <nav className="hidden flex-1 items-center justify-center gap-7 lg:flex">
+          {NAV_LINKS.map((link) => (
+            <button
+              key={link}
+              type="button"
+              className="cursor-pointer text-[15px] font-semibold text-[#3A3A3A] transition hover:text-[#111]"
+            >
+              {link}
+            </button>
+          ))}
+        </nav>
+
+        <div className="ml-auto flex items-center gap-2">
           <Button
-            className="h-[46px] gap-2 rounded-[8px] border border-[#F21795] bg-[#3B2254] px-3 text-[14px] font-semibold text-[#F0EAFB] hover:bg-[#4D2C6E] md:h-[52px] md:px-4 md:text-[16px]"
+            className="hidden h-11 gap-2 rounded-full border-[#ECECEC] bg-[#F5F6F7] px-4 text-[15px] font-semibold text-[#111] shadow-none hover:bg-[#EFF0F2] sm:inline-flex"
             type="button"
             variant="outline"
           >
-            <CircleDollarSign className="size-4 text-[#7D3EFF]" />
+            <Wallet className="size-4 text-[#111]" />
             {formatUserBalance(user.balance)}
-            <ChevronDown className="size-4" />
           </Button>
-        </div>
 
-        <div className="flex items-center justify-center gap-2 md:justify-end">
+          <Button
+            aria-label="Уведомления"
+            className="h-11 w-11 rounded-full border-[#ECECEC] bg-white p-0 text-[#111] shadow-none hover:bg-[#F5F6F7]"
+            type="button"
+            variant="outline"
+          >
+            <Bell className="size-5" />
+          </Button>
+
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
-                className="group h-[46px] gap-2 rounded-[8px] border border-[#7620F5] bg-[#2A1F44] px-2.5 text-[14px] text-[#F0ECFB] hover:bg-[#322453] md:h-[52px] md:px-3.5 md:text-[16px]"
+                className="group h-11 gap-2 rounded-full border-[#ECECEC] bg-white px-2.5 text-[14px] font-semibold text-[#111] shadow-none hover:bg-[#F5F6F7]"
                 type="button"
                 variant="outline"
               >
                 <Avatar className="size-7">
                   <AvatarImage alt={user.name} src="/dev-assets/images/card_with_peoples.svg" />
-                  <AvatarFallback>{user.name.slice(0, 1)}</AvatarFallback>
+                  <AvatarFallback className="bg-[#FFD400] text-[#111]">
+                    {user.name.slice(0, 1).toUpperCase()}
+                  </AvatarFallback>
                 </Avatar>
-                <span className="max-w-[130px] truncate font-semibold md:max-w-[170px]">{user.name}</span>
-                <ChevronDown className="size-4 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                <span className="max-w-[140px] truncate">{user.name}</span>
+                <ChevronDown className="size-4 transition-transform group-data-[state=open]:rotate-180" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent
               align="end"
-              className="w-[260px] rounded-[10px] border-[#40345B] bg-[#1E1B2A] p-1.5 text-[#F5F2FF] shadow-[0_12px_24px_rgba(9,7,14,0.42)]"
+              className="w-[260px] rounded-2xl border-[#ECECEC] bg-white p-1.5 text-[#111] shadow-[0_12px_28px_rgba(16,24,40,0.12)]"
               sideOffset={8}
             >
               <div className="px-3 pt-2 pb-1.5">
-                <p className="text-[13px] font-semibold leading-tight">{user.name}</p>
-                <p className="mt-0.5 text-[11px] uppercase tracking-wide text-[#A8A1C3]">{user.displayRole}</p>
+                <p className="text-[14px] font-semibold leading-tight">{user.name}</p>
+                <p className="mt-0.5 text-[11px] uppercase tracking-wide text-[#7B7B7B]">{user.displayRole}</p>
               </div>
               {isAdmin ? (
                 <DropdownMenuItem
-                  className="cursor-pointer gap-2 rounded-[8px] px-3 py-2 text-[14px] font-medium text-[#A8E45E] transition-colors hover:bg-[#2C2640] focus:bg-[#2C2640] focus:text-[#A8E45E]"
+                  className="cursor-pointer gap-2 rounded-xl px-3 py-2 text-[14px] font-medium text-[#111] hover:bg-[#FFF6CC] focus:bg-[#FFF6CC]"
                   onClick={handleOpenAdmin}
                 >
-                  <ShieldCheck className="size-4" />
+                  <ShieldCheck className="size-4 text-[#FFC400]" />
                   Админ-панель
                 </DropdownMenuItem>
               ) : null}
               <DropdownMenuItem
-                className="cursor-pointer gap-2 rounded-[8px] px-3 py-2 text-[14px] font-medium transition-colors hover:bg-[#2C2640] focus:bg-[#2C2640] focus:text-[#F5F2FF]"
+                className="cursor-pointer gap-2 rounded-xl px-3 py-2 text-[14px] font-medium text-[#111] hover:bg-[#F5F6F7] focus:bg-[#F5F6F7]"
                 onClick={onLogout}
               >
                 <LogOut className="size-4" />
@@ -122,20 +141,6 @@ export function AppHeader({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button
-            className="h-[46px] w-[46px] rounded-[8px] border border-[#3A3B42] bg-[#1C1D24] p-0 text-[#ECEEF4] hover:bg-[#252731] md:h-[52px] md:w-[52px]"
-            type="button"
-            variant="outline"
-          >
-            <Send className="size-5" />
-          </Button>
-          <Button
-            className="h-[46px] w-[46px] rounded-[8px] border border-[#3A3B42] bg-[#1C1D24] p-0 text-[#ECEEF4] hover:bg-[#252731] md:h-[52px] md:w-[52px]"
-            type="button"
-            variant="outline"
-          >
-            <Bell className="size-5" />
-          </Button>
         </div>
       </div>
     </header>

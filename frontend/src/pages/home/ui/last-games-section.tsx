@@ -1,63 +1,51 @@
-import { ArrowLeft, ArrowRight, Trophy } from 'lucide-react'
-import { Button } from '@shared/ui'
+import { ArrowRight, Trophy } from 'lucide-react'
 import { useLastGames } from '../lib/use-last-games'
 
 export function LastGamesSection() {
   const { rounds, isLoading, isError } = useLastGames()
 
   return (
-    <div className="mt-6">
-      <h2 className="inline-flex items-center gap-2 text-[2rem] font-semibold text-[#A8E45E]">
-        <Trophy className="size-6" />
-        Последние игры
-      </h2>
-
-      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        {isLoading && (
-          <p className="col-span-full text-[#A9ACB4]">Загрузка...</p>
-        )}
-        {isError && (
-          <p className="col-span-full text-red-400">Не удалось загрузить последние игры</p>
-        )}
-        {!isLoading && !isError && rounds.length === 0 && (
-          <p className="col-span-full text-[#A9ACB4]">Игр пока нет</p>
-        )}
-        {!isLoading && !isError && rounds.map((round) => (
-          <article key={round.room_id}>
-            <div className="overflow-hidden rounded-[14px] bg-[#1A1B21] p-3">
-              <p className="text-xs text-[#A9ACB4]">Комната #{round.room_id}</p>
-              <p className="mt-1 text-[1rem] font-semibold text-[#A8E45E]">{round.jackpot} ₽</p>
-              <p className="text-xs text-[#A9ACB4]">Взнос: {round.entry_cost} ₽</p>
-            </div>
-            <p className="mt-2 text-[0.85rem] text-[#A9ACB4]">
-              {new Date(round.start_time).toLocaleDateString('ru-RU')}
-            </p>
-          </article>
-        ))}
-      </div>
-
-      <div className="mt-4 flex items-center justify-between">
-        <Button
-          className="h-9 w-9 rounded-[8px] border border-[#3A3B42] bg-[#1A1B21] p-0"
+    <div>
+      <div className="flex items-center justify-between">
+        <h2 className="inline-flex items-center gap-2 text-[20px] font-black text-[#111]">
+          <Trophy className="size-5 text-[#FFC400]" />
+          Последние игры
+        </h2>
+        <button
           type="button"
-          variant="outline"
-        >
-          <ArrowLeft className="size-4" />
-        </Button>
-        <Button
-          className="h-9 rounded-[8px] border border-[#3A3B42] bg-[#1A1B21] px-4 text-[0.95rem]"
-          type="button"
-          variant="outline"
+          className="inline-flex items-center gap-1 text-[13px] font-semibold text-[#7B7B7B] hover:text-[#111]"
         >
           Все игры
-        </Button>
-        <Button
-          className="h-9 w-9 rounded-[8px] border border-[#3A3B42] bg-[#1A1B21] p-0"
-          type="button"
-          variant="outline"
-        >
-          <ArrowRight className="size-4" />
-        </Button>
+          <ArrowRight className="size-3.5" />
+        </button>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {isLoading && <p className="col-span-full text-[#7B7B7B]">Загрузка...</p>}
+        {isError && <p className="col-span-full text-[#E73B3B]">Не удалось загрузить последние игры</p>}
+        {!isLoading && !isError && rounds.length === 0 && (
+          <p className="col-span-full text-[#7B7B7B]">Игр пока нет</p>
+        )}
+        {!isLoading &&
+          !isError &&
+          rounds.slice(0, 6).map((round) => (
+            <article
+              key={round.room_id}
+              className="overflow-hidden rounded-2xl border border-[#ECECEC] bg-[#FAFBFC] p-4 transition hover:-translate-y-0.5 hover:border-[#FFD400] hover:shadow-[0_8px_24px_rgba(16,24,40,0.06)]"
+            >
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-[#7B7B7B]">
+                Комната #{round.room_id}
+              </p>
+              <p className="mt-1 text-[18px] font-black text-[#111]">{round.jackpot} ₽</p>
+              <div className="mt-2 flex items-center justify-between text-[12px]">
+                <span className="text-[#7B7B7B]">Взнос</span>
+                <span className="font-semibold text-[#111]">{round.entry_cost} ₽</span>
+              </div>
+              <p className="mt-2 text-[11px] text-[#7B7B7B]">
+                {new Date(round.start_time).toLocaleDateString('ru-RU')}
+              </p>
+            </article>
+          ))}
       </div>
     </div>
   )
