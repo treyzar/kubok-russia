@@ -5,12 +5,11 @@ export const routePaths = {
   gamesCreate: "/games/create",
   gamesJoin: "/games/join",
   gamesLobby: "/games/lobby/:roomId",
-  fridgeGame: "/games/fridge",
   admin: "/admin",
   adminTemplates: "/admin/templates",
   adminStats: "/admin/stats",
   adminStatsTemplate: "/admin/stats/:templateId",
-} as const;
+} as const
 
 export function adminStatsTemplatePath(templateId: number): string {
   return `/admin/stats/${templateId}`

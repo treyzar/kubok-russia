@@ -5,27 +5,37 @@ export type LobbyPageProps = {
   roomId: number
   onBackToGames: () => void
   onPlayAgain: () => void
-  onStartGame: () => void
   onLogout: () => void
   onUserBalanceChange: (balance: number) => void
 }
 
-export type PlayerFace = 'smile' | 'beard'
-
-export type SidePlayer = {
-  id: string
-  top: string
-  right: string
-  face: PlayerFace
-}
-
-export type PlayerAvatarProps = {
-  face: PlayerFace
-  size: string
-}
+export type GamePhase = 'lobby' | 'boost' | 'video' | 'reveal' | 'results'
 
 export type SeatInfo = {
   seatNumber: number
   userId: number | null
   isMe: boolean
+}
+
+export type SeatVisualState = 'free' | 'mine' | 'taken'
+
+export type RevealSeatInfo = SeatInfo & {
+  isWinner: boolean
+  productSrc: string
+  productLabel: string
+}
+
+export type PlayerWithProbability = {
+  userId: number
+  places: number
+  boostAmount: number
+  weight: number
+  probability: number
+  isMe: boolean
+}
+
+export type ProductItem = {
+  id: string
+  src: string
+  label: string
 }

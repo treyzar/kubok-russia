@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom'
 
 import { useAuthSession } from '@processes/auth-session'
@@ -10,7 +9,6 @@ import { HomePage } from '@pages/home'
 import { JoinGamePage } from '@pages/join-game'
 import { LobbyPage } from '@pages/lobby'
 import { NotFoundPage } from '@pages/not-found'
-import { FridgeGamePage } from '@pages/fridge-game/ui/fridge-game-page'
 
 import { gamesLobbyPath, routePaths } from '../config/route-paths'
 import { PrivateRoute, PublicOnlyRoute } from './route-guards'
@@ -110,16 +108,19 @@ export function AppRouter() {
         }
       />
 
-      {/* Lobby + embedded game — same URL, no separate /fridge-game route */}
+      {/*
+        Single URL hosts the entire room experience: plate selection, boost
+        phase, video, reveal, and results all happen on /games/lobby/:roomId.
+       */}
       <Route
         path={routePaths.gamesLobby}
         element={
           <PrivateRoute user={user}>
             {(authorizedUser) => (
-              <LobbyWithGame
+              <LobbyRoute
                 onBackToGames={handleBackToGames}
                 onLogout={handleLogout}
-                onGoToJoin={handleGoToJoinGame}
+                onPlayAgain={handleGoToJoinGame}
                 onUserBalanceChange={handleUserBalanceChange}
                 user={authorizedUser}
               />
@@ -166,53 +167,27 @@ export function AppRouter() {
   )
 }
 
-type LobbyWithGameProps = {
+type LobbyRouteProps = {
   user: AuthUser
   onBackToGames: () => void
   onLogout: () => void
-  onGoToJoin: () => void
+  onPlayAgain: () => void
   onUserBalanceChange: (balance: number) => void
 }
 
-/**
- * Manages the lobby → game transition on a SINGLE URL (/games/lobby/:roomId).
- * When the room moves to "playing", LobbyPage calls onStartGame() which
- * switches the rendered component to FridgeGamePage — no URL change.
- * If the user navigates away and returns, LobbyPage mounts again, detects
- * the room is already playing, and calls onStartGame() automatically.
- */
-function LobbyWithGame({ user, onBackToGames, onLogout, onGoToJoin, onUserBalanceChange }: LobbyWithGameProps) {
+function LobbyRoute({ user, onBackToGames, onLogout, onPlayAgain, onUserBalanceChange }: LobbyRouteProps) {
   const params = useParams<{ roomId: string }>()
   const roomId = Number(params.roomId)
-  const [gameStarted, setGameStarted] = useState(false)
 
   if (!Number.isInteger(roomId) || roomId <= 0) {
     return <Navigate replace to={routePaths.games} />
-  }
-
-  if (gameStarted) {
-    return (
-      <FridgeGamePage
-        roomId={roomId}
-        userId={user.id}
-        userName={user.name}
-        userBalance={user.balance}
-        onUserBalanceChange={onUserBalanceChange}
-        onBackToGames={onBackToGames}
-        onPlayAgain={() => {
-          setGameStarted(false)
-          onGoToJoin()
-        }}
-      />
-    )
   }
 
   return (
     <LobbyPage
       onBackToGames={onBackToGames}
       onLogout={onLogout}
-      onPlayAgain={onGoToJoin}
-      onStartGame={() => setGameStarted(true)}
+      onPlayAgain={onPlayAgain}
       onUserBalanceChange={onUserBalanceChange}
       roomId={roomId}
       user={user}

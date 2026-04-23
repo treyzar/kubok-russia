@@ -1,12 +1,15 @@
 import { useEffect, useRef } from 'react'
 import { CHROMA_KEY_GREEN_MIN, CHROMA_KEY_THRESHOLD } from '../model/constants'
-import { styles } from '../model/styles'
 
 type ChromaKeyVideoProps = {
   src: string
   onEnded: () => void
 }
 
+/**
+ * Renders a chroma-keyed (green-screen → transparent) MP4 onto a canvas so the
+ * intro animation blends with the background of the room page.
+ */
 export function ChromaKeyVideo({ src, onEnded }: ChromaKeyVideoProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -52,7 +55,7 @@ export function ChromaKeyVideo({ src, onEnded }: ChromaKeyVideoProps) {
   }, [])
 
   return (
-    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center' }}>
+    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <video
         autoPlay
         muted
@@ -62,7 +65,10 @@ export function ChromaKeyVideo({ src, onEnded }: ChromaKeyVideoProps) {
         src={src}
         style={{ display: 'none' }}
       />
-      <canvas ref={canvasRef} style={styles.canvas} />
+      <canvas
+        ref={canvasRef}
+        style={{ width: '100%', height: 'auto', maxHeight: '100%', display: 'block' }}
+      />
     </div>
   )
 }
