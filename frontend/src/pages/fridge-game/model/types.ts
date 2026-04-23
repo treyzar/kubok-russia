@@ -1,8 +1,16 @@
-export type GameState = 'video' | 'initial' | 'bonus_added' | 'finished'
+export type GamePhase = 'boost' | 'video' | 'reveal' | 'results'
 
-export type Player = {
-  id: number
-  name: string
-  amount: number
-  isUser?: boolean
+export type PlayerWithProbability = {
+  userId: number
+  places: number
+  boostAmount: number
+  totalStake: number
+  probability: number
+  isMe: boolean
+}
+
+export type ProductItem = {
+  id: string
+  src: string
+  label: string
 }

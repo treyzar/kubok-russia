@@ -1,297 +1,311 @@
-﻿import { Settings } from 'lucide-react'
+import { useState } from 'react'
 
 import { useBodyScrollLock } from '@shared/lib'
 import { AppHeader } from '@widgets/header'
 
 import { useLobby } from '../lib'
-import { SIDE_PLAYERS, type LobbyPageProps } from '../model'
-import { JournalModal } from './journal-modal'
-import { PlayerAvatar } from './player-avatar'
-import { SimulationModal } from './simulation-modal'
-
-const JOIN_PREFILL_AFFORDABLE_KEY = 'kubok26.join.prefill.affordable'
+import type { LobbyPageProps, SeatInfo } from '../model'
 
 export function LobbyPage({ roomId, onBackToGames, onPlayAgain, onStartGame, onLogout, onUserBalanceChange, user }: LobbyPageProps) {
   useBodyScrollLock()
 
   const {
-    copied,
-    isSimulationOpen,
-    setIsSimulationOpen,
-    isJournalOpen,
-    setIsJournalOpen,
-    handleCopyCode,
-    handleLeaveRoomAndExit,
     room,
-    playersCount,
+    roomStatus,
+    seats,
+    players,
     boostsCount,
+    hasPurchasedSeats,
     isLoadingLobby,
     lobbyError,
-    boostAmount,
-    setBoostAmount,
-    handleBuyBoost,
-    isBuyingBoost,
-    hasPurchasedBoost,
-    boostError,
-    winners,
-    rounds,
     isLeavingLobby,
     countdownLabel,
-    desiredProbability,
-    setDesiredProbability,
-    boostProbability,
-    requiredBoostAmount,
-    insufficientFunds,
-    closeInsufficientFunds,
+    handleBuySeats,
+    handleLeaveRoomAndExit,
+    isBuyingSeats,
+    seatError,
+    placesToBuy,
+    setPlacesToBuy,
+    maxPlacesToBuy,
+    freeSeats,
+    apiUserId,
   } = useLobby({ roomId, onStartGame, userId: user.id, userName: user.name, userBalance: user.balance, onUserBalanceChange })
 
-  const roomStatus = room?.status ?? 'new'
-  const activeRoomId = room?.room_id ?? roomId
-  const roomJackpot = room?.jackpot ?? 0
-  const latestWinner = winners[0] ?? null
-  const isFinished = roomStatus === 'finished'
+  const jackpot = room?.jackpot ?? 0
+  const entryCost = room?.entry_cost ?? 0
+  const playersNeeded = room?.players_needed ?? 0
+  const playersJoined = players.reduce((sum, p) => sum + p.places, 0)
+
+  const statusLabel: Record<string, string> = {
+    new: 'Набор игроков',
+    starting_soon: 'Скоро начнётся',
+    playing: 'Игра идёт',
+    finished: 'Завершено',
+  }
+
+  const totalCost = entryCost * placesToBuy
+
+  const myPlaces = players.find((p) => p.user_id === apiUserId)?.places ?? 0
 
   return (
-    <main className="fixed inset-0 flex min-h-dvh flex-col overflow-hidden bg-[#15161C] text-[#F2F3F5]">
+    <main className="fixed inset-0 flex flex-col overflow-hidden bg-[#0E0F14] text-[#F2F3F5]">
       <AppHeader onBrandClick={onBackToGames} onLogout={onLogout} user={user} />
 
-      <section className="relative flex-1 overflow-hidden bg-[#D5D8DA]">
+      <section className="relative flex flex-1 flex-col overflow-hidden">
         <img
-          alt="Лобби игры"
-          className="pointer-events-none absolute inset-0 h-full w-full select-none object-cover object-center"
+          alt=""
+          aria-hidden
+          className="pointer-events-none absolute inset-0 h-full w-full select-none object-cover object-center opacity-40"
           draggable={false}
-          src="/dev-assets/lobby_background.svg"
+          src="/dev-assets/images/game_background.jpg"
         />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#0E0F14]/60 via-transparent to-[#0E0F14]/80" />
 
-        <div
-          className="absolute z-20 inline-flex items-center gap-2 rounded-[12px] border border-[#41454F] bg-[#2A2D33] px-4 py-2.5 text-[clamp(17px,2vw,30px)] leading-none text-[#EEF1F7] shadow-[0_6px_16px_rgba(0,0,0,0.34)]"
-          style={{ left: '50%', top: '2.2%', transform: 'translateX(-50%)' }}
-        >
-          <span className="font-medium">До начала:</span>
-          <span className="font-extrabold">{countdownLabel}</span>
-        </div>
+        <div className="relative z-10 flex flex-1 flex-col gap-0 overflow-auto p-4 md:flex-row md:gap-6 md:p-6">
 
-        <div className="absolute left-[2.5%] top-[12.5%] z-20 w-[min(420px,80vw)] rounded-[12px] border border-[#41454F] bg-[#2A2D33]/92 px-3 py-2 text-[13px] text-[#EEF1F7] shadow-[0_6px_16px_rgba(0,0,0,0.34)]">
-          <p>
-            Комната: {activeRoomId} · Статус: {roomStatus}
-          </p>
-          <p>
-            Игроков: {playersCount} · Бустов: {boostsCount} · Джекпот: {roomJackpot.toLocaleString('ru-RU')}
-          </p>
-          {latestWinner ? <p>Последний победитель: ID {latestWinner.user_id}, приз {latestWinner.prize.toLocaleString('ru-RU')}</p> : null}
-          {isLoadingLobby ? <p className="text-[#C8CDD8]">Загружаем данные лобби...</p> : null}
-          {lobbyError ? <p className="text-[#FFD3D3]">{lobbyError}</p> : null}
+          <div className="flex flex-col gap-4 md:flex-1">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[13px] font-medium text-[#C8CDD8]">
+                  <span className={`inline-block h-2 w-2 rounded-full ${roomStatus === 'new' ? 'animate-pulse bg-yellow-400' : roomStatus === 'starting_soon' ? 'animate-pulse bg-orange-400' : 'bg-green-400'}`} />
+                  {statusLabel[roomStatus] ?? roomStatus}
+                </span>
+                <span className="text-[13px] text-[#6B7280]">Комната #{roomId}</span>
+              </div>
 
-          <div className="mt-2 flex items-center gap-2">
-            <input
-              className="h-8 w-[120px] rounded-[8px] border border-[#4A4F5B] bg-[#17191E] px-2 text-[#EEF1F7]"
-              onChange={(e) => setBoostAmount(e.target.value)}
-              value={boostAmount}
-            />
-            <button
-              className="h-8 rounded-[8px] border border-[#8A62FF] bg-[#3E2A6B] px-3 text-[12px] font-semibold text-white hover:bg-[#4B3380]"
-              disabled={isBuyingBoost || hasPurchasedBoost}
-              onClick={() => {
-                void handleBuyBoost()
-              }}
-              type="button"
-            >
-              {isBuyingBoost ? 'Покупка...' : hasPurchasedBoost ? 'Буст уже куплен' : 'Купить буст'}
-            </button>
-          </div>
-          {hasPurchasedBoost ? <p className="mt-1 text-[#C8CDD8]">Вы уже купили буст для этой комнаты.</p> : null}
-
-          <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
-            <label className="text-[12px] text-[#C8CDD8]">
-              Целевая вероятность, %
-              <input
-                className="mt-1 h-8 w-full rounded-[8px] border border-[#4A4F5B] bg-[#17191E] px-2 text-[#EEF1F7]"
-                onChange={(e) => setDesiredProbability(e.target.value)}
-                value={desiredProbability}
-              />
-            </label>
-            <div className="text-[12px] text-[#C8CDD8]">
-              <p>Оценка шанса: {boostProbability !== null ? `${boostProbability.toFixed(2)}%` : '—'}</p>
-              <p>Нужно для цели: {requiredBoostAmount !== null ? requiredBoostAmount.toLocaleString('ru-RU') : '—'}</p>
-            </div>
-          </div>
-          {boostError ? <p className="mt-1 text-[#FFD3D3]">{boostError}</p> : null}
-        </div>
-
-        <div className="pointer-events-none absolute inset-0 z-20 max-[900px]:hidden">
-          {SIDE_PLAYERS.map((player) => (
-            <div className="absolute" key={player.id} style={{ right: player.right, top: player.top }}>
-              <PlayerAvatar face={player.face} size="72px" />
-            </div>
-          ))}
-          <div
-            className="absolute flex h-[72px] w-[72px] items-center justify-center rounded-full border-[4px] border-dashed border-black text-[38px] leading-none font-black text-black"
-            style={{ right: '12.5%', top: '65.0%' }}
-          >
-            +3
-          </div>
-        </div>
-
-        <button
-          aria-label="Открыть настройки"
-          className="absolute z-20 inline-flex h-[50px] w-[50px] cursor-pointer items-center justify-center rounded-[9px] border border-white/12 bg-[#1F2025] text-[#F3F4F8] shadow-[0_4px_12px_rgba(0,0,0,0.42)] transition hover:bg-[#282A30]"
-          style={{ bottom: '3.8%', left: '2.5%' }}
-          type="button"
-        >
-          <Settings className="size-[25px]" strokeWidth={2.4} />
-        </button>
-
-        <button
-          aria-label="Покинуть лобби"
-          className="absolute z-20 inline-flex h-[50px] cursor-pointer items-center justify-center rounded-[9px] border border-[#B24B4B] bg-[#5A2323] px-3 text-[14px] font-bold text-white shadow-[0_4px_12px_rgba(0,0,0,0.42)] transition hover:bg-[#6D2B2B]"
-          disabled={isLeavingLobby}
-          onClick={() => {
-            const shouldLeave = window.confirm('Точно покинуть лобби?')
-            if (!shouldLeave) return
-            void handleLeaveRoomAndExit(onBackToGames)
-          }}
-          style={{ bottom: '3.8%', left: '7.5%' }}
-          type="button"
-        >
-          {isLeavingLobby ? 'Выходим...' : 'Покинуть лобби'}
-        </button>
-
-        <button
-          aria-label="Скопировать код комнаты"
-          className="absolute z-10 cursor-pointer rounded-[12px] bg-transparent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#A8E45E]"
-          onClick={handleCopyCode}
-          style={{ height: '12.6%', left: '34.3%', top: '47.8%', width: '28.5%' }}
-          type="button"
-        />
-
-        <button
-          aria-label="Начать игру"
-          className="absolute z-20 inline-flex h-[80px] cursor-pointer items-center gap-3 rounded-[10px] border border-[#8FCA4B] bg-[#ACE45D] px-3.5 text-[32px] leading-none font-extrabold tracking-[0.01em] text-[#111212] shadow-[0_8px_14px_rgba(0,0,0,0.28)] transition hover:brightness-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#F4FFD8]"
-          disabled={isFinished}
-          onClick={onStartGame}
-          style={{ bottom: '3.8%', right: '2.5%' }}
-          type="button"
-        >
-          <span className="inline-flex h-[46px] w-[46px] items-center justify-center rounded-[7px] border border-white/20 bg-[#15171B] text-[30px] font-black text-[#F5F6F8]">E</span>
-          <span className="whitespace-nowrap uppercase">{isFinished ? 'Раунд завершён' : 'Начать игру'}</span>
-        </button>
-
-        <button
-          aria-label="Открыть симуляцию раунда"
-          className="absolute z-20 inline-flex h-[56px] items-center justify-center rounded-[10px] border border-[#7A52FF] bg-[#5B35D2] px-6 text-[22px] leading-none font-extrabold tracking-[0.01em] text-white shadow-[0_8px_14px_rgba(0,0,0,0.28)] transition hover:brightness-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#D6C7FF]"
-          onClick={() => setIsSimulationOpen(true)}
-          style={{ bottom: '3.8%', left: '50%', transform: 'translateX(-50%)' }}
-          type="button"
-        >
-          Симуляция раунда
-        </button>
-
-        <button
-          aria-label="Открыть журнал раундов"
-          className="absolute z-20 inline-flex h-[48px] items-center justify-center rounded-[10px] border border-[#4E6689] bg-[#233752] px-4 text-[18px] font-bold text-[#DDEAFF] shadow-[0_8px_14px_rgba(0,0,0,0.28)] transition hover:brightness-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B9D7FF]"
-          onClick={() => setIsJournalOpen(true)}
-          style={{ bottom: '12.2%', left: '50%', transform: 'translateX(-50%)' }}
-          type="button"
-        >
-          Журнал раундов
-        </button>
-        <button
-          aria-label="Открыть симуляцию раунда"
-          className="absolute z-20 inline-flex h-[56px] items-center justify-center rounded-[10px] border border-[#7A52FF] bg-[#5B35D2] px-6 text-[22px] leading-none font-extrabold tracking-[0.01em] text-white shadow-[0_8px_14px_rgba(0,0,0,0.28)] transition hover:brightness-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#D6C7FF]"
-          onClick={() => setIsSimulationOpen(true)}
-          style={{ bottom: '3.8%', left: '50%', transform: 'translateX(-50%)' }}
-          type="button"
-        >
-          Симуляция раунда
-        </button>
-        <button
-          aria-label="Открыть журнал раундов"
-          className="absolute z-20 inline-flex h-[48px] items-center justify-center rounded-[10px] border border-[#4E6689] bg-[#233752] px-4 text-[18px] font-bold text-[#DDEAFF] shadow-[0_8px_14px_rgba(0,0,0,0.28)] transition hover:brightness-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B9D7FF]"
-          onClick={() => setIsJournalOpen(true)}
-          style={{ bottom: '12.2%', left: '50%', transform: 'translateX(-50%)' }}
-          type="button"
-        >
-          Журнал раундов
-        </button>
-
-        {copied ? (
-          <div className="pointer-events-none absolute bottom-[14%] left-1/2 z-30 -translate-x-1/2 rounded-[10px] bg-black/82 px-4 py-2 text-[14px] font-semibold text-white">Код комнаты скопирован</div>
-        ) : null}
-
-        {isFinished ? (
-          <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/55 p-4">
-            <div className="w-full max-w-[520px] rounded-[16px] border border-[#4E6689] bg-[#172334] p-5 text-[#EAF2FF] shadow-[0_14px_36px_rgba(0,0,0,0.45)]">
-              <p className="text-[12px] uppercase tracking-[0.08em] text-[#9EB7D7]">Раунд завершён</p>
-              <h3 className="mt-1 text-[28px] font-extrabold">Итоги игры</h3>
-              {latestWinner ? (
-                <div className="mt-3 rounded-[12px] border border-[#3A4C67] bg-[#1D2A3C] px-4 py-3">
-                  <p>Победитель: ID {latestWinner.user_id}</p>
-                  <p>Приз: {latestWinner.prize.toLocaleString('ru-RU')}</p>
-                  <p>{new Date(latestWinner.won_at).toLocaleString('ru-RU')}</p>
+              {countdownLabel && roomStatus === 'starting_soon' && (
+                <div className="flex items-center gap-2 rounded-[10px] border border-orange-400/30 bg-orange-400/10 px-4 py-2">
+                  <svg className="h-4 w-4 text-orange-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" />
+                  </svg>
+                  <span className="text-[15px] font-bold text-orange-300">До начала: {countdownLabel}</span>
                 </div>
-              ) : (
-                <p className="mt-3 rounded-[12px] border border-[#3A4C67] bg-[#1D2A3C] px-4 py-3">Данные победителя пока недоступны.</p>
               )}
+            </div>
 
-              <div className="mt-4 flex flex-wrap items-center gap-2">
-                <button
-                  className="h-10 rounded-[10px] border border-[#7A52FF] bg-[#5B35D2] px-4 text-[14px] font-bold text-white hover:brightness-105"
-                  onClick={onPlayAgain}
-                  type="button"
-                >
-                  Играть снова
-                </button>
-                <button
-                  className="h-10 rounded-[10px] border border-[#4E6689] bg-[#233752] px-4 text-[14px] font-bold text-[#DDEAFF] hover:brightness-105"
-                  onClick={onBackToGames}
-                  type="button"
-                >
-                  На главную
-                </button>
+            <div className="relative flex-1 overflow-hidden rounded-[20px] border border-white/5 bg-black/20 backdrop-blur-sm">
+              <div className="flex h-full flex-col items-center justify-center p-4">
+                <p className="mb-4 text-[14px] font-medium uppercase tracking-widest text-[#6B7280]">Места в игре</p>
+
+                <div className="relative w-full max-w-[340px]">
+                  <img
+                    alt="Холодильник"
+                    className="w-full select-none"
+                    draggable={false}
+                    src="/dev-assets/big_fridge.svg"
+                  />
+
+                  <div
+                    className="absolute"
+                    style={{
+                      inset: '12% 18% 8% 18%',
+                      display: 'grid',
+                      gridTemplateColumns: seats.length <= 6 ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)',
+                      gap: '6px',
+                      padding: '4px',
+                    }}
+                  >
+                    {seats.map((seat) => (
+                      <SeatPlate key={seat.seatNumber} seat={seat} />
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mt-4 flex items-center gap-3 text-[13px] text-[#9CA3AF]">
+                  <span className="flex items-center gap-1.5">
+                    <span className="inline-block h-2.5 w-2.5 rounded-sm bg-[#FF008A]/70" />
+                    Свободно
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="inline-block h-2.5 w-2.5 rounded-sm bg-[#22C55E]/70" />
+                    Ваши места
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="inline-block h-2.5 w-2.5 rounded-sm bg-white/20" />
+                    Занято
+                  </span>
+                </div>
               </div>
             </div>
           </div>
-        ) : null}
-      </section>
 
-      {isSimulationOpen ? (
-        <SimulationModal boostsCount={boostsCount} onClose={() => setIsSimulationOpen(false)} playersCount={playersCount} room={room} winners={winners} />
-      ) : null}
-      {isJournalOpen ? <JournalModal onClose={() => setIsJournalOpen(false)} rounds={rounds} winners={winners} /> : null}
+          <div className="flex w-full flex-col gap-4 md:w-[320px] xl:w-[360px]">
+            <div className="rounded-[16px] border border-white/5 bg-[#1A1B22]/90 p-5 backdrop-blur-sm">
+              <p className="mb-1 text-[11px] uppercase tracking-widest text-[#6B7280]">Банк комнаты</p>
+              <p className="text-[32px] font-black leading-none text-[#FFD700]">
+                {jackpot.toLocaleString('ru-RU')}
+                <span className="ml-2 text-[16px] font-medium text-[#9CA3AF]">STL</span>
+              </p>
+              <div className="mt-3 flex items-center justify-between text-[13px] text-[#9CA3AF]">
+                <span>Вход: <strong className="text-[#F2F3F5]">{entryCost.toLocaleString('ru-RU')} STL</strong></span>
+                <span>Бустов: <strong className="text-[#F2F3F5]">{boostsCount}</strong></span>
+              </div>
+            </div>
 
-      {insufficientFunds ? (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
-          <div className="w-full max-w-[460px] rounded-[14px] border border-[#6A3F3F] bg-[#24181B] p-4 text-[#F8E8E8]">
-            <h3 className="text-[22px] font-bold">Недостаточно баллов</h3>
-            <p className="mt-2 text-[14px] text-[#F1D0D0]">{insufficientFunds.message}</p>
-            <div className="mt-3 space-y-1 rounded-[10px] border border-[#5A3232] bg-[#2C1B1B] px-3 py-2 text-[14px]">
-              <p>Нужно: {insufficientFunds.required.toLocaleString('ru-RU')}</p>
-              <p>Доступно: {insufficientFunds.currentBalance.toLocaleString('ru-RU')}</p>
-              <p>Не хватает: {insufficientFunds.shortfall.toLocaleString('ru-RU')}</p>
+            <div className="flex-1 overflow-hidden rounded-[16px] border border-white/5 bg-[#1A1B22]/90 backdrop-blur-sm">
+              <div className="flex items-center justify-between border-b border-white/5 px-4 py-3">
+                <p className="text-[13px] font-semibold text-[#F2F3F5]">Игроки</p>
+                <span className="text-[13px] text-[#6B7280]">{playersJoined} / {playersNeeded} мест</span>
+              </div>
+              <div className="max-h-[220px] overflow-y-auto px-4 py-3">
+                {isLoadingLobby && players.length === 0 ? (
+                  <p className="text-[13px] text-[#6B7280]">Загрузка...</p>
+                ) : players.length === 0 ? (
+                  <p className="text-[13px] text-[#6B7280]">Пока никого нет. Будьте первым!</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {players.map((player) => {
+                      const isMe = player.user_id === apiUserId
+                      return (
+                        <li key={player.user_id} className={`flex items-center justify-between rounded-[8px] px-3 py-2 ${isMe ? 'bg-[#22C55E]/10 border border-[#22C55E]/20' : 'bg-white/3'}`}>
+                          <div className="flex items-center gap-2">
+                            <div className={`flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold ${isMe ? 'bg-[#22C55E] text-black' : 'bg-white/10 text-[#9CA3AF]'}`}>
+                              {isMe ? 'Я' : player.user_id.toString().slice(-2)}
+                            </div>
+                            <span className={`text-[13px] font-medium ${isMe ? 'text-[#22C55E]' : 'text-[#D1D5DB]'}`}>
+                              {isMe ? user.name : `Игрок ${player.user_id}`}
+                            </span>
+                          </div>
+                          <span className="text-[12px] text-[#6B7280]">{player.places} {player.places === 1 ? 'место' : 'места'}</span>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                )}
+              </div>
             </div>
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                className="h-9 rounded-[8px] border border-[#3D5876] bg-[#1E344A] px-3 text-[13px] font-semibold text-white hover:bg-[#24415C]"
-                onClick={() => {
-                  window.localStorage.setItem(JOIN_PREFILL_AFFORDABLE_KEY, '1')
-                  closeInsufficientFunds()
-                  onPlayAgain()
-                }}
-                type="button"
-              >
-                Найти дешевле
-              </button>
-              <button
-                className="h-9 rounded-[8px] border border-[#8A5252] bg-[#4B2A2A] px-3 text-[13px] font-semibold text-white hover:bg-[#5A3131]"
-                onClick={closeInsufficientFunds}
-                type="button"
-              >
-                Понятно
-              </button>
-            </div>
+
+            {!hasPurchasedSeats && myPlaces === 0 && (roomStatus === 'new' || roomStatus === 'starting_soon') && freeSeats > 0 && (
+              <div className="rounded-[16px] border border-[#FF008A]/20 bg-[#1A1B22]/90 p-5 backdrop-blur-sm">
+                <p className="mb-3 text-[13px] font-semibold text-[#F2F3F5]">Купить места</p>
+
+                <div className="mb-4 flex items-center gap-3">
+                  <button
+                    className="flex h-9 w-9 items-center justify-center rounded-[8px] border border-white/10 bg-white/5 text-[18px] font-bold text-white transition hover:bg-white/10 disabled:opacity-40"
+                    disabled={placesToBuy <= 1}
+                    onClick={() => setPlacesToBuy(Math.max(1, placesToBuy - 1))}
+                    type="button"
+                  >
+                    −
+                  </button>
+                  <div className="flex-1 text-center">
+                    <span className="text-[24px] font-black text-white">{placesToBuy}</span>
+                    <span className="ml-1 text-[13px] text-[#6B7280]">{placesToBuy === 1 ? 'место' : 'места'}</span>
+                  </div>
+                  <button
+                    className="flex h-9 w-9 items-center justify-center rounded-[8px] border border-white/10 bg-white/5 text-[18px] font-bold text-white transition hover:bg-white/10 disabled:opacity-40"
+                    disabled={placesToBuy >= maxPlacesToBuy}
+                    onClick={() => setPlacesToBuy(Math.min(maxPlacesToBuy, placesToBuy + 1))}
+                    type="button"
+                  >
+                    +
+                  </button>
+                </div>
+
+                <div className="mb-3 rounded-[10px] bg-white/3 px-3 py-2">
+                  <div className="flex justify-between text-[13px]">
+                    <span className="text-[#6B7280]">Цена за место</span>
+                    <span className="text-[#F2F3F5]">{entryCost.toLocaleString('ru-RU')} STL</span>
+                  </div>
+                  <div className="mt-1 flex justify-between text-[14px] font-bold">
+                    <span className="text-[#6B7280]">Итого</span>
+                    <span className="text-[#FFD700]">{totalCost.toLocaleString('ru-RU')} STL</span>
+                  </div>
+                </div>
+
+                {seatError && (
+                  <p className="mb-2 rounded-[8px] bg-red-500/10 px-3 py-2 text-[12px] text-red-400">{seatError}</p>
+                )}
+
+                <button
+                  className="w-full rounded-[12px] bg-[#FF008A] px-4 py-3 text-[15px] font-bold text-white shadow-[0_0_20px_rgba(255,0,138,0.3)] transition hover:bg-[#E0007A] hover:shadow-[0_0_28px_rgba(255,0,138,0.5)] disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={isBuyingSeats || maxPlacesToBuy === 0}
+                  onClick={() => { void handleBuySeats() }}
+                  type="button"
+                >
+                  {isBuyingSeats ? 'Покупаем...' : `Занять ${placesToBuy === 1 ? 'место' : 'места'}`}
+                </button>
+              </div>
+            )}
+
+            {(hasPurchasedSeats || myPlaces > 0) && (roomStatus === 'new' || roomStatus === 'starting_soon') && (
+              <div className="rounded-[16px] border border-[#22C55E]/20 bg-[#22C55E]/5 p-4">
+                <div className="flex items-center gap-2">
+                  <svg className="h-5 w-5 text-[#22C55E]" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                    <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  <p className="text-[13px] font-semibold text-[#22C55E]">
+                    Вы заняли {myPlaces > 0 ? myPlaces : placesToBuy} {(myPlaces > 0 ? myPlaces : placesToBuy) === 1 ? 'место' : 'места'}
+                  </p>
+                </div>
+                <p className="mt-1 text-[12px] text-[#6B7280]">Ожидаем начала игры...</p>
+              </div>
+            )}
+
+            {freeSeats === 0 && roomStatus !== 'playing' && roomStatus !== 'finished' && (
+              <div className="rounded-[16px] border border-yellow-500/20 bg-yellow-500/5 p-4">
+                <p className="text-[13px] font-semibold text-yellow-400">Все места заняты</p>
+                <p className="mt-1 text-[12px] text-[#6B7280]">Скоро начнётся игра</p>
+              </div>
+            )}
+
+            {lobbyError && (
+              <p className="rounded-[10px] bg-red-500/10 px-3 py-2 text-[13px] text-red-400">{lobbyError}</p>
+            )}
+
+            <button
+              className="mt-auto flex h-11 items-center justify-center gap-2 rounded-[12px] border border-[#B24B4B]/50 bg-[#5A2323]/40 text-[14px] font-bold text-[#FF9999] transition hover:bg-[#6D2B2B]/60 disabled:opacity-50"
+              disabled={isLeavingLobby}
+              onClick={() => {
+                if (window.confirm('Покинуть лобби? Ваши занятые места освободятся.')) {
+                  void handleLeaveRoomAndExit(onBackToGames)
+                }
+              }}
+              type="button"
+            >
+              {isLeavingLobby ? 'Выходим...' : '← Покинуть лобби'}
+            </button>
           </div>
         </div>
-      ) : null}
+      </section>
     </main>
+  )
+}
+
+function SeatPlate({ seat }: { seat: SeatInfo }) {
+  let bgColor = 'rgba(255, 0, 138, 0.12)'
+  let borderColor = 'rgba(255, 0, 138, 0.4)'
+  let textColor = 'rgba(255, 255, 255, 0.85)'
+
+  if (seat.isMe) {
+    bgColor = 'rgba(34, 197, 94, 0.2)'
+    borderColor = 'rgba(34, 197, 94, 0.6)'
+    textColor = '#22C55E'
+  } else if (seat.userId !== null) {
+    bgColor = 'rgba(255, 255, 255, 0.06)'
+    borderColor = 'rgba(255, 255, 255, 0.15)'
+    textColor = 'rgba(255, 255, 255, 0.4)'
+  }
+
+  return (
+    <div
+      style={{
+        background: bgColor,
+        border: `1.5px solid ${borderColor}`,
+        borderRadius: 8,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: 13,
+        fontWeight: 700,
+        color: textColor,
+        backdropFilter: 'blur(4px)',
+        transition: 'all 0.2s',
+        minHeight: 32,
+        cursor: seat.userId === null ? 'default' : 'default',
+      }}
+    >
+      {seat.seatNumber}
+    </div>
   )
 }

@@ -1,1 +1,1 @@
-export { useFridgeGame, formatMoney, type UseFridgeGameOptions } from './use-fridge-game'
+export { useFridgeGame, type UseFridgeGameOptions } from './use-fridge-game'

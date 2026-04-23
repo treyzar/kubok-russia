@@ -5,7 +5,7 @@ export type LobbyPageProps = {
   roomId: number
   onBackToGames: () => void
   onPlayAgain: () => void
-  onStartGame: () => void
+  onStartGame: (roomId: number) => void
   onLogout: () => void
   onUserBalanceChange: (balance: number) => void
 }
@@ -22,4 +22,10 @@ export type SidePlayer = {
 export type PlayerAvatarProps = {
   face: PlayerFace
   size: string
+}
+
+export type SeatInfo = {
+  seatNumber: number
+  userId: number | null
+  isMe: boolean
 }

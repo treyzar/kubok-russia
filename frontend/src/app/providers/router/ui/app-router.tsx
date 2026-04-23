@@ -28,10 +28,6 @@ export function AppRouter() {
     navigate(routePaths.root, { replace: true })
   }
 
-  function handleGoToCreateGame(): void {
-    navigate(routePaths.gamesCreate)
-  }
-
   function handleGoToJoinGame(): void {
     navigate(routePaths.gamesJoin)
   }
@@ -44,8 +40,8 @@ export function AppRouter() {
     navigate(gamesLobbyPath(roomId))
   }
 
-  function handleStartGame(): void {
-    navigate(routePaths.fridgeGame)
+  function handleStartGame(roomId: number): void {
+    navigate(routePaths.fridgeGame, { state: { roomId } })
   }
 
   function handleUserBalanceChange(balance: number): void {
@@ -54,7 +50,6 @@ export function AppRouter() {
 
   return (
     <Routes>
-      {/* Per ТЗ: root is the login form; the public landing has been removed. */}
       <Route
         path={routePaths.root}
         element={
@@ -63,7 +58,6 @@ export function AppRouter() {
           </PublicOnlyRoute>
         }
       />
-      {/* Legacy /auth path keeps existing bookmarks alive — redirect to root. */}
       <Route path={routePaths.auth} element={<Navigate replace to={routePaths.root} />} />
 
       <Route
@@ -82,7 +76,6 @@ export function AppRouter() {
           </PrivateRoute>
         }
       />
-      {/* Per ТЗ: создание комнат — только из админки, поэтому маршрут защищён ролью. */}
       <Route
         path={routePaths.gamesCreate}
         element={
@@ -143,6 +136,8 @@ export function AppRouter() {
             {(authorizedUser) => (
               <FridgeGameRoute
                 user={authorizedUser}
+                onBackToGames={handleBackToGames}
+                onPlayAgain={handleGoToJoinGame}
                 onUserBalanceChange={handleUserBalanceChange}
               />
             )}
@@ -150,7 +145,6 @@ export function AppRouter() {
         }
       />
 
-      {/* Admin panel — gated by role. */}
       <Route
         path={routePaths.admin}
         element={
@@ -193,7 +187,7 @@ type LobbyRouteProps = {
   user: AuthUser
   onBackToGames: () => void
   onPlayAgain: () => void
-  onStartGame: () => void
+  onStartGame: (roomId: number) => void
   onLogout: () => void
   onUserBalanceChange: (balance: number) => void
 }
@@ -221,12 +215,19 @@ function LobbyRoute({ user, onBackToGames, onPlayAgain, onStartGame, onLogout, o
 
 type FridgeGameRouteProps = {
   user: AuthUser
+  onBackToGames: () => void
+  onPlayAgain: () => void
   onUserBalanceChange: (balance: number) => void
 }
 
-function FridgeGameRoute({ user, onUserBalanceChange }: FridgeGameRouteProps) {
+function FridgeGameRoute({ user, onBackToGames, onPlayAgain, onUserBalanceChange }: FridgeGameRouteProps) {
   const location = useLocation()
-  const roomId: number = (location.state as { roomId?: number } | null)?.roomId ?? 1
+  const roomId: number = (location.state as { roomId?: number } | null)?.roomId ?? 0
+
+  if (!roomId) {
+    return <Navigate replace to={routePaths.games} />
+  }
+
   return (
     <FridgeGamePage
       roomId={roomId}
@@ -234,6 +235,8 @@ function FridgeGameRoute({ user, onUserBalanceChange }: FridgeGameRouteProps) {
       userName={user.name}
       userBalance={user.balance}
       onUserBalanceChange={onUserBalanceChange}
+      onBackToGames={onBackToGames}
+      onPlayAgain={onPlayAgain}
     />
   )
 }
