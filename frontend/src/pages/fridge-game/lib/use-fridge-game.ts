@@ -26,7 +26,7 @@ export type UseFridgeGameOptions = {
 }
 
 export function formatMoney(val: number): string {
-  return val.toLocaleString('ru-RU') + ' ₽'
+  return val.toLocaleString('ru-RU') + ' STL'
 }
 
 export function useFridgeGame({ roomId, userId, userName, userBalance, onUserBalanceChange }: UseFridgeGameOptions) {

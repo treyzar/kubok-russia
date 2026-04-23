@@ -9,22 +9,22 @@ export function LastGamesSection() {
       <div className="flex items-center justify-between">
         <h2 className="inline-flex items-center gap-2 text-[20px] font-black text-[#111]">
           <Trophy className="size-5 text-[#FFC400]" />
-          Последние игры
+          Журнал раундов
         </h2>
         <button
           type="button"
           className="inline-flex items-center gap-1 text-[13px] font-semibold text-[#7B7B7B] hover:text-[#111]"
         >
-          Все игры
+          Все раунды
           <ArrowRight className="size-3.5" />
         </button>
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
         {isLoading && <p className="col-span-full text-[#7B7B7B]">Загрузка...</p>}
-        {isError && <p className="col-span-full text-[#E73B3B]">Не удалось загрузить последние игры</p>}
+        {isError && <p className="col-span-full text-[#E73B3B]">Не удалось загрузить журнал</p>}
         {!isLoading && !isError && rounds.length === 0 && (
-          <p className="col-span-full text-[#7B7B7B]">Игр пока нет</p>
+          <p className="col-span-full text-[#7B7B7B]">Раундов пока нет</p>
         )}
         {!isLoading &&
           !isError &&
@@ -36,10 +36,10 @@ export function LastGamesSection() {
               <p className="text-[11px] font-semibold uppercase tracking-wider text-[#7B7B7B]">
                 Комната #{round.room_id}
               </p>
-              <p className="mt-1 text-[18px] font-black text-[#111]">{round.jackpot} ₽</p>
+              <p className="mt-1 text-[18px] font-black text-[#111]">{round.jackpot} STL</p>
               <div className="mt-2 flex items-center justify-between text-[12px]">
                 <span className="text-[#7B7B7B]">Взнос</span>
-                <span className="font-semibold text-[#111]">{round.entry_cost} ₽</span>
+                <span className="font-semibold text-[#111]">{round.entry_cost} STL</span>
               </div>
               <p className="mt-2 text-[11px] text-[#7B7B7B]">
                 {new Date(round.start_time).toLocaleDateString('ru-RU')}

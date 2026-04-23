@@ -190,5 +190,5 @@ export function getMockPassword(username: string): string | null {
 }
 
 export function formatUserBalance(balance: number): string {
-  return BALANCE_FORMATTER.format(balance)
+  return `${BALANCE_FORMATTER.format(balance)} STL`
 }
