@@ -4,8 +4,9 @@ export type JoinGamePageProps = {
   user: AuthUser
   onBackToGames: () => void
   onCreateGame: () => void
-  onOpenLobby: () => void
+  onOpenLobby: (roomId: number) => void
   onLogout: () => void
+  onUserBalanceChange: (balance: number) => void
 }
 
 export type Lobby = {

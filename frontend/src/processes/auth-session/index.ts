@@ -1,1 +1,1 @@
-export { useAuthSession } from './model/use-auth-session'
+export { useAuthSession, resolveApiUserId } from './model/use-auth-session'

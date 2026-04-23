@@ -9,7 +9,8 @@ export function parseLobbyCost(value: string): number {
 }
 
 export function parseLobbySeats(value: string): number {
-  return Number(value.split('/')[0]?.trim() ?? 0)
+  const [, total] = value.split('/')
+  return Number(total?.trim() ?? 0)
 }
 
 export function matchesPriceFilter(cost: number, filter: LobbyPriceFilter): boolean {

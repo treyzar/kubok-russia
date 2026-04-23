@@ -7,4 +7,5 @@ export {
   getStoredUser,
   loginWithMock,
   logoutMock,
+  setStoredUser,
 } from './model/auth'
