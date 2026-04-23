@@ -1,19 +1,21 @@
 import { useMemo, useState } from 'react'
 import {
   ArrowRight,
-  Clock,
   Coins,
   Filter,
   Flame,
   Loader2,
   Lock,
+  Play,
   Sparkles,
+  UserPlus,
   Users,
   Wallet,
 } from 'lucide-react'
 
 import { resolveApiUserId } from '@processes/auth-session'
 import { ApiClientError, joinRoom } from '@shared/api'
+import type { RoomStatus } from '@shared/types'
 import { Button } from '@shared/ui'
 import { AppHeader } from '@widgets/header'
 
@@ -47,6 +49,8 @@ const SORT_OPTIONS: ReadonlyArray<{ id: RoomsSortKey; label: string }> = [
   { id: 'players_asc', label: 'Меньше мест' },
 ]
 
+const TRANSITION_MS = 700
+
 function priceCapValue(cap: PriceCap): number | undefined {
   return cap === 'any' ? undefined : cap
 }
@@ -60,6 +64,52 @@ function seatsMatches(bucket: SeatsBucket, players: number): boolean {
 
 function formatStl(value: number): string {
   return `${value.toLocaleString('ru-RU')} STL`
+}
+
+type StatusVisuals = {
+  label: string
+  textClass: string
+  bgClass: string
+  dotClass: string
+  Icon: typeof UserPlus
+  joinable: boolean
+  joinLabel: string
+}
+
+function statusVisuals(status: RoomStatus): StatusVisuals {
+  switch (status) {
+    case 'playing':
+      return {
+        label: 'Идёт игра',
+        textClass: 'text-[#7A37F0]',
+        bgClass: 'bg-[#F1E8FF]',
+        dotClass: 'bg-[#7A37F0]',
+        Icon: Play,
+        joinable: false,
+        joinLabel: 'В игре',
+      }
+    case 'starting_soon':
+      return {
+        label: 'Стартует',
+        textClass: 'text-[#D77A00]',
+        bgClass: 'bg-[#FFF1D6]',
+        dotClass: 'bg-[#D77A00]',
+        Icon: Flame,
+        joinable: true,
+        joinLabel: 'Войти',
+      }
+    case 'new':
+    default:
+      return {
+        label: 'Набор',
+        textClass: 'text-[#1AB75A]',
+        bgClass: 'bg-[#E6F8EE]',
+        dotClass: 'bg-[#1AB75A]',
+        Icon: UserPlus,
+        joinable: true,
+        joinLabel: 'Войти',
+      }
+  }
 }
 
 export function HomePage({ onBrandClick, onJoinGame, onJoinLobby, user, onLogout }: HomePageProps) {
@@ -92,7 +142,6 @@ export function HomePage({ onBrandClick, onJoinGame, onJoinLobby, user, onLogout
   }, [baseRooms, seats, onlyAffordable, user.balance])
 
   const liveCounts = useMemo<Record<string, number>>(() => {
-    // Today only «Ночной жор» is live; other mechanics show «нет активных».
     return { fridge: totalCount, wheel: 0, duel: 0 }
   }, [totalCount])
 
@@ -134,12 +183,22 @@ export function HomePage({ onBrandClick, onJoinGame, onJoinLobby, user, onLogout
   }
 
   return (
-    <main
-      className="min-h-svh text-[#111] transition-[background-image] duration-700 ease-out"
-      style={{
-        backgroundImage: `linear-gradient(180deg, ${selected.bgFrom} 0%, ${selected.bgTo} 38%, #F7F8FA 100%)`,
-      }}
-    >
+    <main className="relative min-h-svh text-[#111]">
+      {/* Layered backgrounds — one per mechanic, cross-fade via opacity. */}
+      <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 bg-[#F7F8FA]" />
+      {MECHANICS.map((m) => (
+        <div
+          key={m.id}
+          aria-hidden
+          className="pointer-events-none fixed inset-0 -z-10 ease-out"
+          style={{
+            opacity: m.id === selected.id ? 1 : 0,
+            backgroundImage: `linear-gradient(180deg, ${m.bgFrom} 0%, ${m.bgTo} 38%, #F7F8FA 100%)`,
+            transition: `opacity ${TRANSITION_MS}ms cubic-bezier(0.32, 0.72, 0.16, 1)`,
+          }}
+        />
+      ))}
+
       {/* Top live strip */}
       <div className="border-b border-black/5 bg-white/70 backdrop-blur">
         <div className="mx-auto flex max-w-[1280px] items-center gap-4 overflow-x-auto px-4 py-2 text-[13px] sm:px-6 lg:px-8">
@@ -182,7 +241,7 @@ export function HomePage({ onBrandClick, onJoinGame, onJoinLobby, user, onLogout
 
       <div className="mx-auto w-full max-w-[1280px] px-4 py-6 sm:px-6 lg:px-8">
         <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
-          {/* Sidebar — список механик */}
+          {/* Sidebar */}
           <aside className="space-y-4">
             <MechanicSidebar
               mechanics={MECHANICS}
@@ -221,13 +280,22 @@ export function HomePage({ onBrandClick, onJoinGame, onJoinLobby, user, onLogout
             </div>
           </aside>
 
-          {/* Main content — динамика по выбранной механике */}
+          {/* Main content */}
           <section className="space-y-6">
-            {/* Hero выбранной механики */}
-            <div
-              className="relative overflow-hidden rounded-3xl px-6 py-8 text-white shadow-[0_18px_48px_rgba(16,24,40,0.18)] transition-[background-image] duration-700 sm:px-10 sm:py-10"
-              style={{ background: `linear-gradient(135deg, ${selected.heroFrom}, ${selected.heroTo})` }}
-            >
+            {/* Hero — layered cross-fade gradients per mechanic. */}
+            <div className="relative overflow-hidden rounded-3xl px-6 py-8 text-white shadow-[0_18px_48px_rgba(16,24,40,0.18)] sm:px-10 sm:py-10">
+              {MECHANICS.map((m) => (
+                <div
+                  key={m.id}
+                  aria-hidden
+                  className="absolute inset-0 ease-out"
+                  style={{
+                    opacity: m.id === selected.id ? 1 : 0,
+                    backgroundImage: `linear-gradient(135deg, ${m.heroFrom}, ${m.heroTo})`,
+                    transition: `opacity ${TRANSITION_MS}ms cubic-bezier(0.32, 0.72, 0.16, 1)`,
+                  }}
+                />
+              ))}
               <div className="relative z-10 max-w-[640px]">
                 <div className="inline-flex items-center gap-2">
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-3 py-1 text-[11px] font-bold uppercase tracking-wider backdrop-blur">
@@ -274,10 +342,9 @@ export function HomePage({ onBrandClick, onJoinGame, onJoinLobby, user, onLogout
               <div className="pointer-events-none absolute bottom-[-3rem] right-32 h-56 w-56 rounded-full bg-white/10 blur-2xl" />
             </div>
 
-            {/* Контент в зависимости от наличия механики */}
             {selected.available ? (
               <>
-                {/* Фильтры */}
+                {/* Filters */}
                 <div className="rounded-2xl border border-white/60 bg-white/85 p-4 shadow-[0_8px_24px_rgba(16,24,40,0.06)] backdrop-blur">
                   <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
                     <div className="inline-flex items-center gap-2 text-[13px] font-bold text-[#111]">
@@ -356,7 +423,7 @@ export function HomePage({ onBrandClick, onJoinGame, onJoinLobby, user, onLogout
                   )}
                 </div>
 
-                {/* Сетка комнат */}
+                {/* Room grid */}
                 <div>
                   <div className="mb-3 flex items-end justify-between">
                     <h2 className="text-[20px] font-black text-[#111]">Доступные комнаты</h2>
@@ -387,51 +454,107 @@ export function HomePage({ onBrandClick, onJoinGame, onJoinLobby, user, onLogout
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                       {rooms.map((room) => {
                         const fund = room.jackpot || room.entry_cost * room.players_needed
+                        const winnerPrize = Math.round((fund * room.winner_pct) / 100)
+                        const current = Math.min(room.current_players, room.players_needed)
+                        const fillRatio = room.players_needed > 0 ? current / room.players_needed : 0
+                        const status = statusVisuals(room.status)
                         const isJoining = joiningRoomId === room.room_id
                         const cantAfford = user.balance < room.entry_cost
+                        const StatusIcon = status.Icon
                         return (
                           <article
                             key={room.room_id}
-                            className="group flex flex-col gap-3 rounded-2xl border border-[#ECECEC] bg-white p-4 transition hover:-translate-y-0.5 hover:border-[#FFD400] hover:shadow-[0_12px_28px_rgba(16,24,40,0.08)]"
+                            className="group relative flex flex-col gap-3 overflow-hidden rounded-2xl border border-[#ECECEC] bg-white p-4 transition hover:-translate-y-0.5 hover:border-[#FFD400] hover:shadow-[0_12px_28px_rgba(16,24,40,0.08)]"
                           >
-                            <div className="flex items-start justify-between">
-                              <div>
-                                <p className="text-[11px] font-bold uppercase tracking-wider text-[#7B7B7B]">
-                                  Комната #{room.room_id}
-                                </p>
+                            {/* Header with status badge */}
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <p className="text-[11px] font-bold uppercase tracking-wider text-[#7B7B7B]">
+                                    Комната #{room.room_id}
+                                  </p>
+                                  <span
+                                    className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${status.bgClass} ${status.textClass}`}
+                                  >
+                                    <span
+                                      className={`size-1.5 rounded-full ${status.dotClass} ${
+                                        room.status === 'starting_soon' ? 'animate-pulse' : ''
+                                      }`}
+                                    />
+                                    <StatusIcon className="size-2.5" />
+                                    {status.label}
+                                  </span>
+                                </div>
                                 <p className="mt-1 text-[22px] font-black leading-tight text-[#111]">
-                                  {formatStl(fund)}
+                                  {formatStl(winnerPrize)}
                                 </p>
-                                <p className="text-[11px] text-[#7B7B7B]">Призовой фонд</p>
+                                <p className="text-[11px] text-[#7B7B7B]">
+                                  Приз победителю · {room.winner_pct}% от {formatStl(fund)}
+                                </p>
                               </div>
                               <span
-                                className="grid size-10 place-items-center rounded-xl text-white"
-                                style={{ background: `linear-gradient(135deg, ${selected.heroFrom}, ${selected.heroTo})` }}
+                                className="grid size-10 shrink-0 place-items-center rounded-xl text-white"
+                                style={{
+                                  background: `linear-gradient(135deg, ${selected.heroFrom}, ${selected.heroTo})`,
+                                }}
                               >
                                 <selected.Icon className="size-5" />
                               </span>
                             </div>
-                            <div className="grid grid-cols-3 gap-2 rounded-xl bg-[#FAFBFC] p-2.5 text-center">
-                              <Stat icon={<Coins className="size-3.5" />} label="Вход" value={`${room.entry_cost} STL`} />
-                              <Stat icon={<Users className="size-3.5" />} label="Мест" value={`${room.players_needed}`} />
-                              <Stat
-                                icon={<Clock className="size-3.5" />}
-                                label="Раунд"
-                                value={`${room.round_duration_seconds}с`}
-                              />
+
+                            {/* Players + entry row */}
+                            <div className="grid grid-cols-2 gap-2 rounded-xl bg-[#FAFBFC] p-2.5">
+                              <div>
+                                <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-[#7B7B7B]">
+                                  <Users className="size-3.5" />
+                                  Игроки
+                                </span>
+                                <p className="mt-0.5 text-[14px] font-bold text-[#111]">
+                                  <span className="text-[#111]">{current}</span>
+                                  <span className="text-[#9A9A9A]">/{room.players_needed}</span>
+                                </p>
+                                <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-[#ECECEC]">
+                                  <div
+                                    className="h-full rounded-full bg-[#1AB75A] transition-all duration-500"
+                                    style={{ width: `${Math.min(100, fillRatio * 100)}%` }}
+                                  />
+                                </div>
+                              </div>
+                              <div>
+                                <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-[#7B7B7B]">
+                                  <Coins className="size-3.5" />
+                                  Вход
+                                </span>
+                                <p className="mt-0.5 text-[14px] font-bold text-[#111]">{room.entry_cost} STL</p>
+                                {cantAfford && (
+                                  <p className="mt-1 text-[10px] font-semibold text-[#C42929]">
+                                    Не хватает {room.entry_cost - user.balance} STL
+                                  </p>
+                                )}
+                              </div>
                             </div>
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#1AB75A]">
-                                <Flame className="size-3" />
-                                Приз победителю: {room.winner_pct}%
-                              </span>
+
+                            {/* Action */}
+                            <div className="flex items-center justify-end">
                               <Button
                                 type="button"
-                                disabled={isJoining || cantAfford}
+                                disabled={isJoining || cantAfford || !status.joinable}
                                 onClick={() => handleJoinRoom(room.room_id, room.entry_cost)}
-                                className="h-9 gap-1 rounded-full bg-[#FFD400] px-4 text-[13px] font-bold text-[#111] shadow-none hover:bg-[#FFE040] disabled:bg-[#F5F6F7] disabled:text-[#9A9A9A]"
+                                className={[
+                                  'h-9 gap-1 rounded-full px-4 text-[13px] font-bold shadow-none disabled:bg-[#F5F6F7] disabled:text-[#9A9A9A]',
+                                  status.joinable
+                                    ? 'bg-[#FFD400] text-[#111] hover:bg-[#FFE040]'
+                                    : 'bg-[#F1E8FF] text-[#7A37F0]',
+                                ].join(' ')}
                               >
-                                {isJoining ? <Loader2 className="size-3.5 animate-spin" /> : 'Войти'}
+                                {isJoining ? (
+                                  <Loader2 className="size-3.5 animate-spin" />
+                                ) : (
+                                  <>
+                                    {!status.joinable && <Play className="size-3" />}
+                                    {status.joinLabel}
+                                  </>
+                                )}
                               </Button>
                             </div>
                           </article>
@@ -441,7 +564,6 @@ export function HomePage({ onBrandClick, onJoinGame, onJoinLobby, user, onLogout
                   )}
                 </div>
 
-                {/* Журнал */}
                 <div className="rounded-3xl border border-white/60 bg-white/85 p-6 shadow-[0_8px_24px_rgba(16,24,40,0.06)] backdrop-blur">
                   <LastGamesSection />
                 </div>
@@ -474,18 +596,6 @@ export function HomePage({ onBrandClick, onJoinGame, onJoinLobby, user, onLogout
         </div>
       </footer>
     </main>
-  )
-}
-
-function Stat({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
-  return (
-    <div>
-      <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-[#7B7B7B]">
-        {icon}
-        {label}
-      </span>
-      <p className="mt-0.5 text-[13px] font-bold text-[#111]">{value}</p>
-    </div>
   )
 }
 

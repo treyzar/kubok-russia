@@ -10,6 +10,8 @@ type MechanicSidebarProps = {
   liveCountByMechanic?: Record<string, number>
 }
 
+const TRANSITION_MS = 600
+
 export function MechanicSidebar({
   mechanics,
   selectedId,
@@ -37,59 +39,81 @@ export function MechanicSidebar({
                 onClick={() => onSelect(m.id)}
                 aria-pressed={isActive}
                 className={[
-                  'group relative flex w-full items-stretch gap-3 overflow-hidden rounded-xl px-2.5 py-2.5 text-left transition-all duration-300',
-                  isActive
-                    ? 'bg-gradient-to-br shadow-[0_10px_28px_rgba(16,24,40,0.16)] -translate-y-[1px] text-white'
-                    : 'text-[#111] hover:bg-[#F5F6F7] hover:-translate-y-[1px]',
+                  'group relative flex w-full items-stretch gap-3 overflow-hidden rounded-xl px-2.5 py-2.5 text-left',
+                  'transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0.16,1)]',
+                  isActive ? '-translate-y-[1px]' : 'hover:-translate-y-[1px]',
                 ].join(' ')}
-                style={
-                  isActive
-                    ? ({
-                        // Tailwind doesn't support arbitrary --from/--to vars in safelist — inline gradient.
-                        backgroundImage: `linear-gradient(135deg, ${m.heroFrom}, ${m.heroTo})`,
-                      } as React.CSSProperties)
-                    : undefined
-                }
+                style={{ transitionDuration: `${TRANSITION_MS}ms` }}
               >
-                {/* Active vertical accent bar (slides into view) */}
+                {/* Layer 1 (back): inactive hover background. Sits behind the gradient layer. */}
                 <span
                   aria-hidden
                   className={[
-                    'absolute inset-y-2 left-0 w-[3px] rounded-r-full bg-white/85 transition-all duration-300',
-                    isActive ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-2',
+                    'absolute inset-0 rounded-xl bg-[#F5F6F7] transition-opacity ease-out',
+                    isActive ? 'opacity-0' : 'opacity-0 group-hover:opacity-100',
                   ].join(' ')}
+                  style={{ transitionDuration: `${TRANSITION_MS}ms` }}
                 />
 
-                {/* Icon tile — ALWAYS gradient with mechanic colors */}
+                {/* Layer 2 (active gradient): cross-fades in/out smoothly. */}
                 <span
+                  aria-hidden
+                  className="absolute inset-0 rounded-xl shadow-[0_10px_28px_rgba(16,24,40,0.16)] transition-opacity ease-out"
+                  style={{
+                    backgroundImage: `linear-gradient(135deg, ${m.heroFrom}, ${m.heroTo})`,
+                    opacity: isActive ? 1 : 0,
+                    transitionDuration: `${TRANSITION_MS}ms`,
+                  }}
+                />
+
+                {/* Active vertical accent bar */}
+                <span
+                  aria-hidden
+                  className="absolute inset-y-2 left-0 w-[3px] rounded-r-full bg-white/85 transition-all ease-out"
+                  style={{
+                    opacity: isActive ? 1 : 0,
+                    transform: isActive ? 'translateX(0)' : 'translateX(-8px)',
+                    transitionDuration: `${TRANSITION_MS}ms`,
+                  }}
+                />
+
+                {/* Icon tile — gradient with mechanic colors */}
+                <span
+                  aria-hidden
                   className={[
-                    'relative grid size-11 shrink-0 place-items-center rounded-xl text-white transition-transform duration-300',
+                    'relative z-[1] grid size-11 shrink-0 place-items-center rounded-xl text-white',
+                    'transition-transform ease-out',
                     isActive ? 'scale-105 ring-2 ring-white/80' : 'group-hover:scale-105',
                   ].join(' ')}
-                  style={{ background: `linear-gradient(135deg, ${m.heroFrom}, ${m.heroTo})` }}
+                  style={{
+                    background: `linear-gradient(135deg, ${m.heroFrom}, ${m.heroTo})`,
+                    transitionDuration: `${TRANSITION_MS}ms`,
+                  }}
                 >
                   <m.Icon className="size-5" />
-                  {/* Glossy highlight */}
                   <span className="pointer-events-none absolute inset-x-1 top-1 h-1/2 rounded-md bg-white/25 blur-[2px]" />
                 </span>
 
                 {/* Title + meta */}
-                <span className="flex min-w-0 flex-1 flex-col justify-center">
+                <span className="relative z-[1] flex min-w-0 flex-1 flex-col justify-center">
                   <span className="flex items-center gap-1.5">
                     <span
-                      className={[
-                        'truncate text-[14px] font-bold leading-tight',
-                        isActive ? 'text-white' : 'text-[#111]',
-                      ].join(' ')}
+                      className="truncate text-[14px] font-bold leading-tight transition-colors ease-out"
+                      style={{
+                        color: isActive ? '#fff' : '#111',
+                        transitionDuration: `${TRANSITION_MS}ms`,
+                      }}
                     >
                       {m.name}
                     </span>
                     {!m.available && (
                       <span
-                        className={[
-                          'inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider',
-                          isActive ? 'bg-white/25 text-white' : 'bg-[#F5F6F7] text-[#7B7B7B]',
-                        ].join(' ')}
+                        className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider transition-colors ease-out"
+                        style={{
+                          backgroundColor: isActive ? 'rgba(255,255,255,0.25)' : '#F5F6F7',
+                          color: isActive ? '#fff' : '#7B7B7B',
+                          transitionDuration: `${TRANSITION_MS}ms`,
+                        }}
                       >
                         <Lock className="size-2.5" />
                         скоро
@@ -97,40 +121,40 @@ export function MechanicSidebar({
                     )}
                   </span>
                   <span
-                    className={[
-                      'mt-0.5 truncate text-[11.5px] leading-tight',
-                      isActive ? 'text-white/85' : 'text-[#7B7B7B]',
-                    ].join(' ')}
+                    className="mt-0.5 truncate text-[11.5px] leading-tight transition-colors ease-out"
+                    style={{
+                      color: isActive ? 'rgba(255,255,255,0.85)' : '#7B7B7B',
+                      transitionDuration: `${TRANSITION_MS}ms`,
+                    }}
                   >
                     {m.short}
                   </span>
                   {m.available && typeof live === 'number' && (
                     <span
-                      className={[
-                        'mt-1 inline-flex items-center gap-1 text-[10.5px] font-semibold',
-                        isActive ? 'text-white/95' : 'text-[#1AB75A]',
-                      ].join(' ')}
+                      className="mt-1 inline-flex items-center gap-1 text-[10.5px] font-semibold transition-colors ease-out"
+                      style={{
+                        color: isActive ? 'rgba(255,255,255,0.95)' : '#1AB75A',
+                        transitionDuration: `${TRANSITION_MS}ms`,
+                      }}
                     >
                       <span
-                        className={[
-                          'size-1.5 rounded-full',
-                          isActive ? 'bg-white' : 'bg-[#1AB75A]',
-                          'animate-pulse',
-                        ].join(' ')}
+                        className={['size-1.5 rounded-full animate-pulse'].join(' ')}
+                        style={{ backgroundColor: isActive ? '#fff' : '#1AB75A' }}
                       />
                       {live > 0 ? `live: ${live}` : 'нет активных'}
                     </span>
                   )}
                 </span>
 
-                {/* Chevron — only visible on hover/active */}
+                {/* Chevron */}
                 <ChevronRight
-                  className={[
-                    'mt-0.5 size-4 self-center transition-all duration-300',
-                    isActive
-                      ? 'translate-x-0 text-white opacity-100'
-                      : 'translate-x-[-6px] text-[#9A9A9A] opacity-0 group-hover:translate-x-0 group-hover:opacity-100',
-                  ].join(' ')}
+                  className="relative z-[1] mt-0.5 size-4 self-center transition-all ease-out"
+                  style={{
+                    color: isActive ? '#fff' : '#9A9A9A',
+                    opacity: isActive ? 1 : 0,
+                    transform: isActive ? 'translateX(0)' : 'translateX(-6px)',
+                    transitionDuration: `${TRANSITION_MS}ms`,
+                  }}
                 />
               </button>
             </li>

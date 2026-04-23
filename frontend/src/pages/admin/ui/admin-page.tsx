@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { LayoutGrid, LineChart } from 'lucide-react'
 import { useState } from 'react'
 
 import { type AuthUser } from '@entities/user'
@@ -8,7 +9,7 @@ import { AppHeader } from '@widgets/header'
 import { StatsTab } from './stats-tab'
 import { TemplatesTab } from './templates-tab'
 
-type AdminTab = 'templates' | 'stats'
+type AdminTab = 'stats' | 'templates'
 
 type Props = {
   user: AuthUser
@@ -17,46 +18,58 @@ type Props = {
 }
 
 export function AdminPage({ user, onLogout, onBrandClick }: Props) {
-  const [tab, setTab] = useState<AdminTab>('templates')
+  const [tab, setTab] = useState<AdminTab>('stats')
 
-  // Pre-warm the weekly-averages cache so template-form hints feel instant.
-  const { data: weekly } = useQuery({
+  // Pre-warm so template-form hints feel instant.
+  useQuery({
     queryKey: ['admin', 'metrics', 'historical'],
     queryFn: () => getHistoricalMetrics(),
     staleTime: 60_000,
   })
 
   return (
-    <main className="fixed inset-0 overflow-y-auto bg-[#0F1014] text-[#F2F3F5]">
+    <main className="relative min-h-svh text-[#111]">
+      {/* Soft layered background to match the main site */}
+      <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 bg-[#F7F8FA]" />
+      <div
+        aria-hidden
+        className="pointer-events-none fixed inset-0 -z-10"
+        style={{
+          backgroundImage:
+            'linear-gradient(180deg, #FFF7CF 0%, #FFE680 38%, #F7F8FA 100%)',
+          opacity: 0.55,
+        }}
+      />
+
       <AppHeader onBrandClick={onBrandClick} onLogout={onLogout} user={user} />
 
-      <div className="mx-auto max-w-[1248px] px-4 py-6 lg:px-8">
+      <div className="mx-auto w-full max-w-[1280px] px-4 py-6 sm:px-6 lg:px-8">
+        {/* Page header */}
         <header className="mb-5 flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h1 className="text-[1.8rem] font-semibold tracking-tight">Админ-панель</h1>
-            <p className="mt-1 text-[13px] text-[#9098A8]">
-              Управление шаблонами игр и аналитика по проведённым комнатам.
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/80 px-3 py-1 text-[10.5px] font-bold uppercase tracking-wider text-[#7A37F0] shadow-[0_2px_8px_rgba(16,24,40,0.06)] backdrop-blur">
+              Админ-центр
+            </span>
+            <h1 className="mt-2 text-[clamp(1.75rem,3vw,2.2rem)] font-black leading-tight text-[#111]">
+              Панель управления
+            </h1>
+            <p className="mt-1 text-[14px] text-[#7B7B7B]">
+              Аналитика по проведённым комнатам и шаблонам игр.
             </p>
           </div>
-          {weekly ? (
-            <div className="rounded-md border border-[#2B2C30] bg-[#181920] px-4 py-2 text-[12px] text-[#9098A8]">
-              Среднее за неделю: <span className="text-[#A8E45E]">{weekly.avg_real_players_per_room.toFixed(1)} игроков</span>
-              {' / взнос '}
-              <span className="text-[#A8E45E]">{weekly.avg_entry_cost.toLocaleString('ru-RU')}</span>
-            </div>
-          ) : null}
         </header>
 
-        <nav className="mb-4 flex gap-1 border-b border-[#2B2C30]">
-          <TabButton active={tab === 'templates'} onClick={() => setTab('templates')}>
-            Шаблоны
+        {/* Tab pills */}
+        <nav className="mb-5 inline-flex rounded-full border border-white/70 bg-white/85 p-1 shadow-[0_2px_12px_rgba(16,24,40,0.06)] backdrop-blur">
+          <TabButton active={tab === 'stats'} onClick={() => setTab('stats')} Icon={LineChart}>
+            Аналитика
           </TabButton>
-          <TabButton active={tab === 'stats'} onClick={() => setTab('stats')}>
-            Статистика
+          <TabButton active={tab === 'templates'} onClick={() => setTab('templates')} Icon={LayoutGrid}>
+            Шаблоны
           </TabButton>
         </nav>
 
-        {tab === 'templates' ? <TemplatesTab /> : <StatsTab />}
+        {tab === 'stats' ? <StatsTab /> : <TemplatesTab />}
       </div>
     </main>
   )
@@ -66,21 +79,25 @@ function TabButton({
   active,
   onClick,
   children,
+  Icon,
 }: {
   active: boolean
   onClick: () => void
   children: React.ReactNode
+  Icon: React.ComponentType<{ className?: string }>
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`-mb-px border-b-2 px-4 py-2.5 text-[14px] font-medium transition ${
+      className={[
+        'inline-flex items-center gap-2 rounded-full px-4 py-2 text-[13px] font-bold transition-all duration-300',
         active
-          ? 'border-[#A8E45E] text-[#F2F3F5]'
-          : 'border-transparent text-[#9098A8] hover:text-[#F2F3F5]'
-      }`}
+          ? 'bg-[#111] text-white shadow-[0_4px_12px_rgba(16,24,40,0.18)]'
+          : 'text-[#7B7B7B] hover:text-[#111]',
+      ].join(' ')}
     >
+      <Icon className="size-4" />
       {children}
     </button>
   )
