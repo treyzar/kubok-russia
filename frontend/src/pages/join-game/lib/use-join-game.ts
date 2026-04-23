@@ -1,8 +1,7 @@
 import { useMemo, useState } from 'react'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 
-import { resolveApiUserId } from '@processes/auth-session'
-import { ApiClientError, getUser, joinRoom, listRooms } from '@shared/api'
+import { ApiClientError, listRooms } from '@shared/api'
 import type { Room } from '@shared/types'
 
 import { LOBBIES } from '../model/constants'
@@ -19,7 +18,7 @@ type UseJoinGameOptions = {
 
 const JOIN_PREFILL_AFFORDABLE_KEY = 'kubok26.join.prefill.affordable'
 
-export function useJoinGame({ userId, userName, userBalance, onUserBalanceChange }: UseJoinGameOptions) {
+export function useJoinGame({ userBalance }: UseJoinGameOptions) {
   const [prefillAffordable] = useState<boolean>(() => consumeJoinPrefillAffordable())
   const [isAffordablePrefillBannerVisible, setIsAffordablePrefillBannerVisible] = useState(prefillAffordable)
   const [searchTerm, setSearchTerm] = useState('')
@@ -35,6 +34,7 @@ export function useJoinGame({ userId, userName, userBalance, onUserBalanceChange
       const response = await listRooms({ status: 'new' })
       return response.rooms
     },
+    refetchInterval: 5000,
   })
 
   const apiLobbies = useMemo(() => roomsQuery.data?.map(mapRoomToLobby) ?? null, [roomsQuery.data])
@@ -52,15 +52,6 @@ export function useJoinGame({ userId, userName, userBalance, onUserBalanceChange
 
     return 'Не удалось загрузить комнаты из API. Показаны демо-данные.'
   }, [roomsQuery.error])
-
-  const joinRoomMutation = useMutation({
-    mutationFn: async ({ roomId, apiUserId }: { roomId: number; apiUserId: number }) => {
-      return joinRoom(roomId, {
-        user_id: apiUserId,
-        places: 1,
-      })
-    },
-  })
 
   const matchedLobbies = useMemo(() => {
     const filtered = sourceLobbies.filter((lobby) => {
@@ -111,16 +102,9 @@ export function useJoinGame({ userId, userName, userBalance, onUserBalanceChange
     setIsAffordablePrefillBannerVisible(false)
   }
 
-  async function handleJoinLobby(lobbyId: number, onSuccess: (roomId: number) => void): Promise<void> {
-    try {
-      setJoinError('')
-      const apiUserId = await resolveApiUserId(userId, userName, userBalance)
-      const room = await joinRoomMutation.mutateAsync({ roomId: lobbyId, apiUserId })
-      await refreshUserBalance(apiUserId, onUserBalanceChange)
-      onSuccess(room.room_id)
-    } catch (error: unknown) {
-      setJoinError(mapJoinError(error))
-    }
+  function handleJoinLobby(lobbyId: number, onSuccess: (roomId: number) => void): void {
+    setJoinError('')
+    onSuccess(lobbyId)
   }
 
   const priceFilterLabel: Record<LobbyPriceFilter, string> = {
@@ -163,7 +147,7 @@ export function useJoinGame({ userId, userName, userBalance, onUserBalanceChange
     isLoading: roomsQuery.isLoading,
     loadError,
     isAffordablePrefillBannerVisible,
-    isJoining: joinRoomMutation.isPending,
+    isJoining: false,
     joinError,
     handlePickAffordable,
     hideAffordablePrefillBanner,
@@ -195,57 +179,10 @@ function pickLobbyType(entryCost: number): Lobby['type'] {
   return 'purple'
 }
 
-function mapJoinError(error: unknown): string {
-  if (!(error instanceof ApiClientError)) {
-    return 'Не удалось войти в комнату. Проверьте соединение и попробуйте ещё раз.'
-  }
-
-  if (error.status === 402) {
-    const details = error.details as {
-      errors?: {
-        required?: number
-        current_balance?: number
-        shortfall?: number
-      }
-      detail?: string
-    }
-
-    const required = details.errors?.required
-    const currentBalance = details.errors?.current_balance
-    const shortfall = details.errors?.shortfall
-    if (typeof required === 'number' && typeof currentBalance === 'number' && typeof shortfall === 'number') {
-      return `Недостаточно баллов. Нужно: ${required.toLocaleString('ru-RU')}, доступно: ${currentBalance.toLocaleString('ru-RU')}, не хватает: ${shortfall.toLocaleString('ru-RU')}.`
-    }
-    return details.detail ?? 'Недостаточно баллов для входа в комнату.'
-  }
-
-  if (error.status === 409) {
-    const details = error.details as { detail?: string }
-    if (details.detail === 'room is full') {
-      return 'Комната уже заполнена. Обновите список и выберите другую.'
-    }
-    if (details.detail === 'user already in room') {
-      return 'Вы уже участвуете в этой комнате.'
-    }
-    return details.detail ?? 'Конфликт при входе в комнату. Попробуйте снова.'
-  }
-
-  return error.message || 'Не удалось войти в комнату. Попробуйте снова.'
-}
-
 function consumeJoinPrefillAffordable(): boolean {
   const shouldPrefillAffordable = window.localStorage.getItem(JOIN_PREFILL_AFFORDABLE_KEY) === '1'
   if (shouldPrefillAffordable) {
     window.localStorage.removeItem(JOIN_PREFILL_AFFORDABLE_KEY)
   }
   return shouldPrefillAffordable
-}
-
-async function refreshUserBalance(apiUserId: number, onUserBalanceChange: (balance: number) => void): Promise<void> {
-  try {
-    const apiUser = await getUser(apiUserId)
-    onUserBalanceChange(apiUser.balance)
-  } catch {
-    // Do not fail the happy-path action if balance refresh is temporarily unavailable.
-  }
 }

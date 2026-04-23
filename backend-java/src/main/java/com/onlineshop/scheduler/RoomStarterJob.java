@@ -46,6 +46,7 @@ public class RoomStarterJob {
     private final UserService users;
     private final EventPublisher events;
 
+
     @Autowired @Lazy
     private RoomStarterJob self;
 
@@ -83,8 +84,8 @@ public class RoomStarterJob {
                 .orElseThrow();
         if (room.getStatus() != RoomStatus.STARTING_SOON) return;
 
-        int currentPlayers = (int) playerRepo.countByRoomId(roomId);
-        int botsNeeded = room.getPlayersNeeded() - currentPlayers;
+        int occupiedPlaces = (int) placeRepo.countByRoomId(roomId);
+        int botsNeeded = room.getPlayersNeeded() - occupiedPlaces;
         if (botsNeeded < 0) botsNeeded = 0;
 
         if (botsNeeded > 0) {

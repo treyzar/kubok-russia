@@ -118,7 +118,8 @@ public class RoomService {
             throw new RoomNotAcceptingException();
         if (playerRepo.existsByRoomIdAndUserId(roomId, userId)) throw new DuplicatePlayerException();
         long count = playerRepo.countByRoomId(roomId);
-        if (count >= room.getPlayersNeeded()) throw new RoomFullException();
+        long occupiedPlaces = placeRepo.countByRoomId(roomId);
+        if (occupiedPlaces + places > room.getPlayersNeeded()) throw new RoomFullException();
 
         int totalCost = room.getEntryCost() * places;
 

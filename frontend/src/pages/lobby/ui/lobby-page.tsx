@@ -74,9 +74,16 @@ export function LobbyPage({
     playersWithProbabilities,
     myProbability,
     hasPurchasedBoost,
+    boostMode,
+    setBoostMode,
     boostAmount,
     setBoostAmount,
+    boostProbInput,
+    setBoostProbInput,
     boostPreviewProbability,
+    boostRequiredAmount,
+    boostCalcProbLoading,
+    boostCalcAmountLoading,
     buyBoostMutation,
     boostError,
     handleVideoEnded,
@@ -402,27 +409,71 @@ export function LobbyPage({
             {/* BOOST: Buy boost panel — only for joined players */}
             {isBoostPhase && hasJoined && !hasPurchasedBoost && (
               <div className="rounded-[16px] border border-[#A78BFA]/20 bg-[#1A1B22]/90 p-4 backdrop-blur-sm">
-                <p className="mb-2 text-[13px] font-semibold text-[#F2F3F5]">⚡ Купить буст</p>
+                <p className="mb-3 text-[13px] font-semibold text-[#F2F3F5]">⚡ Купить буст</p>
 
-                <div className="mb-3">
-                  <label className="mb-1 block text-[11px] text-[#6B7280]">Сумма буста (STL)</label>
-                  <input
-                    className="w-full rounded-[8px] border border-white/10 bg-white/5 px-3 py-2 text-[14px] text-white placeholder-[#4B5563] outline-none focus:border-[#A78BFA]/50"
-                    min={1}
-                    onChange={(e) => setBoostAmount(e.target.value)}
-                    placeholder="Введите сумму..."
-                    type="number"
-                    value={boostAmount}
-                  />
-                  {boostPreviewProbability !== null && (
-                    <p className="mt-1 text-[11px] text-[#A78BFA]">
-                      → Шанс с бустом: <strong>{boostPreviewProbability.toFixed(1)}%</strong>
-                      {myProbability !== null && (
-                        <span className="ml-1 text-[#22C55E]">(+{Math.max(0, boostPreviewProbability - myProbability).toFixed(1)}%)</span>
-                      )}
-                    </p>
-                  )}
+                {/* Mode toggle */}
+                <div className="mb-3 flex rounded-[8px] overflow-hidden border border-white/10">
+                  <button
+                    className={`flex-1 py-1.5 text-[11px] font-semibold transition ${boostMode === 'amount' ? 'bg-[#7C3AED] text-white' : 'bg-white/5 text-[#6B7280] hover:text-white'}`}
+                    onClick={() => setBoostMode('amount')}
+                    type="button"
+                  >
+                    По сумме
+                  </button>
+                  <button
+                    className={`flex-1 py-1.5 text-[11px] font-semibold transition ${boostMode === 'probability' ? 'bg-[#7C3AED] text-white' : 'bg-white/5 text-[#6B7280] hover:text-white'}`}
+                    onClick={() => setBoostMode('probability')}
+                    type="button"
+                  >
+                    По вероятности
+                  </button>
                 </div>
+
+                {boostMode === 'amount' ? (
+                  <div className="mb-3">
+                    <label className="mb-1 block text-[11px] text-[#6B7280]">Сумма буста (STL)</label>
+                    <input
+                      className="w-full rounded-[8px] border border-white/10 bg-white/5 px-3 py-2 text-[14px] text-white placeholder-[#4B5563] outline-none focus:border-[#A78BFA]/50"
+                      min={1}
+                      onChange={(e) => setBoostAmount(e.target.value)}
+                      placeholder="Введите сумму..."
+                      type="number"
+                      value={boostAmount}
+                    />
+                    {boostCalcProbLoading && (
+                      <p className="mt-1 text-[11px] text-[#6B7280]">Вычисляем шанс...</p>
+                    )}
+                    {!boostCalcProbLoading && boostPreviewProbability !== null && (
+                      <p className="mt-1 text-[11px] text-[#A78BFA]">
+                        → Шанс с бустом: <strong>{boostPreviewProbability.toFixed(1)}%</strong>
+                        {myProbability !== null && (
+                          <span className="ml-1 text-[#22C55E]">(+{Math.max(0, boostPreviewProbability - myProbability).toFixed(1)}%)</span>
+                        )}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="mb-3">
+                    <label className="mb-1 block text-[11px] text-[#6B7280]">Желаемый шанс победы (%)</label>
+                    <input
+                      className="w-full rounded-[8px] border border-white/10 bg-white/5 px-3 py-2 text-[14px] text-white placeholder-[#4B5563] outline-none focus:border-[#A78BFA]/50"
+                      max={99}
+                      min={1}
+                      onChange={(e) => setBoostProbInput(e.target.value)}
+                      placeholder="Например, 50"
+                      type="number"
+                      value={boostProbInput}
+                    />
+                    {boostCalcAmountLoading && (
+                      <p className="mt-1 text-[11px] text-[#6B7280]">Вычисляем сумму...</p>
+                    )}
+                    {!boostCalcAmountLoading && boostRequiredAmount !== null && (
+                      <p className="mt-1 text-[11px] text-[#A78BFA]">
+                        → Нужно буста: <strong>{Math.ceil(boostRequiredAmount).toLocaleString('ru-RU')} STL</strong>
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 {boostError && (
                   <p className="mb-2 rounded-[7px] bg-red-500/10 px-2.5 py-1.5 text-[11px] text-red-400">{boostError}</p>

@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ApiClientError,
   buyRoomBoost,
+  calcRoomBoostAmount,
+  calcRoomBoostProbability,
   connectRoomWS,
   getRoom,
   getUser,
@@ -58,8 +60,11 @@ export function useLobby({
   const [leaveError, setLeaveError] = useState('')
 
   // Boost state
+  const [boostMode, setBoostMode] = useState<'amount' | 'probability'>('amount')
   const [boostAmount, setBoostAmount] = useState('1000')
   const [debouncedBoostAmount, setDebouncedBoostAmount] = useState('1000')
+  const [boostProbInput, setBoostProbInput] = useState('50')
+  const [debouncedBoostProbInput, setDebouncedBoostProbInput] = useState('50')
   const [boostError, setBoostError] = useState('')
 
   // Game phase state
@@ -90,6 +95,22 @@ export function useLobby({
     refetchInterval: 3000,
   })
 
+  const parsedAmountForCalc = Number(debouncedBoostAmount)
+  const boostCalcProbQuery = useQuery({
+    queryKey: ['boost-calc-prob', roomId, apiUserId, debouncedBoostAmount],
+    queryFn: () => calcRoomBoostProbability(roomId, apiUserId!, parsedAmountForCalc),
+    enabled: boostMode === 'amount' && apiUserId !== null && Number.isFinite(parsedAmountForCalc) && parsedAmountForCalc > 0,
+    staleTime: 5000,
+  })
+
+  const parsedProbForCalc = Number(debouncedBoostProbInput)
+  const boostCalcAmountQuery = useQuery({
+    queryKey: ['boost-calc-amount', roomId, apiUserId, debouncedBoostProbInput],
+    queryFn: () => calcRoomBoostAmount(roomId, apiUserId!, parsedProbForCalc),
+    enabled: boostMode === 'probability' && apiUserId !== null && Number.isFinite(parsedProbForCalc) && parsedProbForCalc > 0 && parsedProbForCalc < 100,
+    staleTime: 5000,
+  })
+
   // Resolve API user id once
   useEffect(() => {
     let cancelled = false
@@ -110,6 +131,12 @@ export function useLobby({
     const id = window.setTimeout(() => setDebouncedBoostAmount(boostAmount), BOOST_DEBOUNCE_MS)
     return () => window.clearTimeout(id)
   }, [boostAmount])
+
+  // Boost probability input debounce
+  useEffect(() => {
+    const id = window.setTimeout(() => setDebouncedBoostProbInput(boostProbInput), BOOST_DEBOUNCE_MS)
+    return () => window.clearTimeout(id)
+  }, [boostProbInput])
 
   // Live WS room events: the backend broadcasts typed events (player_joined,
   // boost_applied, room_starting, game_started, game_finished) — NOT full
@@ -298,8 +325,15 @@ export function useLobby({
   const buyBoostMutation = useMutation({
     mutationFn: async () => {
       const resolvedId = await getOrResolveApiUserId(apiUserId, userId, userName, userBalance)
-      const amount = Number(boostAmount)
-      if (!Number.isInteger(amount) || amount <= 0) throw new Error('Введите корректную сумму')
+      let amount: number
+      if (boostMode === 'probability') {
+        const computed = boostCalcAmountQuery.data?.boost_amount
+        if (!computed || computed <= 0) throw new Error('Укажите желаемый шанс победы')
+        amount = Math.ceil(computed)
+      } else {
+        amount = Number(boostAmount)
+        if (!Number.isInteger(amount) || amount <= 0) throw new Error('Введите корректную сумму')
+      }
       await buyRoomBoost(roomId, { user_id: resolvedId, amount })
       return resolvedId
     },
@@ -356,26 +390,8 @@ export function useLobby({
   const hasPurchasedBoost =
     apiUserId !== null && boosts.some((b) => b.user_id === apiUserId)
 
-  const parsedBoostAmount = Number(debouncedBoostAmount)
-  const boostPreviewProbability = useMemo(() => {
-    if (!Number.isFinite(parsedBoostAmount) || parsedBoostAmount <= 0) return null
-    if (apiUserId === null) return null
-    const entryCost = room?.entry_cost ?? 0
-    const boostByUser = new Map(boosts.map((b) => [b.user_id, b.amount]))
-    const filledSeats = players.reduce((sum, p) => sum + p.places, 0)
-    const botSeats = Math.max(0, totalSeats - filledSeats)
-    const myPlayerPlaces = players.find((p) => p.user_id === apiUserId)?.places ?? 0
-    const myCurrentBoost = boostByUser.get(apiUserId) ?? 0
-    const myNewWeight = entryCost * myPlayerPlaces + myCurrentBoost + parsedBoostAmount
-
-    let playerWeightSum = 0
-    for (const p of players) {
-      if (p.user_id === apiUserId) playerWeightSum += myNewWeight
-      else playerWeightSum += entryCost * p.places + (boostByUser.get(p.user_id) ?? 0)
-    }
-    const denominator = playerWeightSum + botSeats * entryCost
-    return denominator > 0 ? (myNewWeight / denominator) * 100 : null
-  }, [parsedBoostAmount, apiUserId, players, boosts, room?.entry_cost, totalSeats])
+  const boostPreviewProbability = boostCalcProbQuery.data?.probability ?? null
+  const boostRequiredAmount = boostCalcAmountQuery.data?.boost_amount ?? null
 
   // --- Phase / timer logic ---------------------------------------------------
   const startTimeMs = room?.start_time ? new Date(room.start_time).getTime() : null
@@ -486,9 +502,16 @@ export function useLobby({
     playersWithProbabilities,
     myProbability,
     hasPurchasedBoost,
+    boostMode,
+    setBoostMode,
     boostAmount,
     setBoostAmount,
+    boostProbInput,
+    setBoostProbInput,
     boostPreviewProbability,
+    boostRequiredAmount,
+    boostCalcProbLoading: boostCalcProbQuery.isFetching,
+    boostCalcAmountLoading: boostCalcAmountQuery.isFetching,
     buyBoostMutation,
     boostError,
     handleVideoEnded,
