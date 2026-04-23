@@ -1,6 +1,29 @@
-import type { Room } from '@shared/types'
+/**
+ * Server room events broadcast via WebSocket. Mirrors the backend envelope
+ * produced by `EventPublisher` (channel `room:{roomId}`):
+ *
+ *   { type: "...", room_id: 1, timestamp: "...", data?: {...} }
+ *
+ * The backend never broadcasts a full `Room` snapshot — only typed events.
+ * The client refetches the canonical room/players state via the REST API in
+ * response to these notifications.
+ */
+export type RoomEventType =
+  | 'player_joined'
+  | 'boost_applied'
+  | 'room_starting'
+  | 'game_started'
+  | 'game_finished'
+  | string
 
-type RoomSnapshotListener = (room: Room) => void
+export type RoomEvent = {
+  type: RoomEventType
+  room_id: number | string
+  timestamp: string
+  data?: unknown
+}
+
+type RoomEventListener = (event: RoomEvent) => void
 
 function getWsBaseUrl(rawApiUrl: string): string {
   const normalized = rawApiUrl.replace(/\/+$/, '')
@@ -20,7 +43,7 @@ function getWsBaseUrl(rawApiUrl: string): string {
   return `ws://${withoutApiPrefix}`
 }
 
-export function connectRoomWS(roomId: number, onSnapshot: RoomSnapshotListener): () => void {
+export function connectRoomWS(roomId: number, onEvent: RoomEventListener): () => void {
   const wsBaseUrl = getWsBaseUrl(import.meta.env.VITE_API_URL ?? '')
   const wsUrl = `${wsBaseUrl}/api/v1/rooms/${roomId}/ws`
 
@@ -33,10 +56,12 @@ export function connectRoomWS(roomId: number, onSnapshot: RoomSnapshotListener):
 
     socket.onmessage = (event) => {
       try {
-        const payload = JSON.parse(event.data) as Room
-        onSnapshot(payload)
+        const payload = JSON.parse(event.data) as RoomEvent
+        if (payload && typeof payload.type === 'string') {
+          onEvent(payload)
+        }
       } catch {
-        // Ignore malformed WS payloads from external systems.
+        // Ignore malformed WS payloads.
       }
     }
 
@@ -61,4 +86,3 @@ export function connectRoomWS(roomId: number, onSnapshot: RoomSnapshotListener):
     }
   }
 }
-

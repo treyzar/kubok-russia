@@ -14,7 +14,7 @@ import {
   listRoomWinners,
 } from '@shared/api'
 import { resolveApiUserId } from '@processes/auth-session'
-import type { Room, RoomBoost, RoomPlayer, RoomWinner } from '@shared/types'
+import type { RoomBoost, RoomPlayer, RoomWinner } from '@shared/types'
 import {
   PRODUCTS,
   maxBuyablePlaces,
@@ -46,7 +46,6 @@ export function useLobby({
   userBalance,
 }: UseLobbyOptions) {
   const queryClient = useQueryClient()
-  const [liveRoom, setLiveRoom] = useState<Room | null>(null)
   const [nowTick, setNowTick] = useState(() => Date.now())
   const [apiUserId, setApiUserId] = useState<number | null>(null)
 
@@ -112,15 +111,34 @@ export function useLobby({
     return () => window.clearTimeout(id)
   }, [boostAmount])
 
-  // Live WS room snapshot
+  // Live WS room events: the backend broadcasts typed events (player_joined,
+  // boost_applied, room_starting, game_started, game_finished) — NOT full
+  // room snapshots. We treat any event as an invalidation signal and refetch
+  // the canonical state via REST.
   useEffect(() => {
-    return connectRoomWS(roomId, (snapshot) => {
-      setLiveRoom(snapshot)
-      queryClient.setQueryData(['room', roomId], snapshot)
+    return connectRoomWS(roomId, (event) => {
+      switch (event.type) {
+        case 'player_joined':
+          void queryClient.invalidateQueries({ queryKey: ['room-players', roomId] })
+          void queryClient.invalidateQueries({ queryKey: ['room', roomId] })
+          break
+        case 'boost_applied':
+          void queryClient.invalidateQueries({ queryKey: ['room-boosts', roomId] })
+          void queryClient.invalidateQueries({ queryKey: ['room', roomId] })
+          break
+        case 'room_starting':
+        case 'game_started':
+        case 'game_finished':
+          void queryClient.invalidateQueries({ queryKey: ['room', roomId] })
+          void queryClient.invalidateQueries({ queryKey: ['room-winners', roomId] })
+          break
+        default:
+          void queryClient.invalidateQueries({ queryKey: ['room', roomId] })
+      }
     })
   }, [queryClient, roomId])
 
-  const room = liveRoom ?? roomQuery.data ?? null
+  const room = roomQuery.data ?? null
   const roomStatus = room?.status ?? 'new'
   const players: RoomPlayer[] = playersQuery.data?.players ?? []
   const boosts: RoomBoost[] = boostsQuery.data?.boosts ?? []

@@ -44,6 +44,7 @@ public class RoomController {
     private final RoomService rooms;
     private final RoomRepository roomRepo;
     private final RoomPlayerRepository playerRepo;
+    private final RoomPlaceRepository placeRepo;
     private final RoomBoostRepository boostRepo;
     private final RoomWinnerRepository winnerRepo;
     private final EconomicValidator economic;
@@ -87,8 +88,23 @@ public class RoomController {
     }
 
     @GetMapping("/{roomId}/players")
-    public Map<String, List<RoomPlayer>> listPlayers(@PathVariable Integer roomId) {
-        return Map.of("players", playerRepo.findAllByRoomId(roomId));
+    public Map<String, List<Map<String, Object>>> listPlayers(@PathVariable Integer roomId) {
+        var places = placeRepo.findAllByRoomId(roomId);
+        java.util.Map<Integer, Long> placesByUser = new java.util.HashMap<>();
+        for (var pl : places) {
+            placesByUser.merge(pl.getUserId(), 1L, Long::sum);
+        }
+        var rows = new java.util.ArrayList<Map<String, Object>>();
+        for (RoomPlayer p : playerRepo.findAllByRoomId(roomId)) {
+            var row = new java.util.LinkedHashMap<String, Object>();
+            row.put("room_id", p.getRoomId());
+            row.put("user_id", p.getUserId());
+            row.put("place_id", p.getPlaceId());
+            row.put("places", placesByUser.getOrDefault(p.getUserId(), 1L).intValue());
+            row.put("joined_at", p.getJoinedAt());
+            rows.add(row);
+        }
+        return Map.of("players", rows);
     }
 
     // ----- winners -----
