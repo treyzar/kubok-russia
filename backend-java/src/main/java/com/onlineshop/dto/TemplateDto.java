@@ -6,8 +6,8 @@ import jakarta.validation.constraints.*;
 public record TemplateDto(
         @Size(max = 255) String name,
         Integer playersNeeded,
-        @NotNull @Min(1) Integer minPlayers,
-        @NotNull @Min(1) Integer maxPlayers,
+        @Min(1) Integer minPlayers,
+        @Min(1) Integer maxPlayers,
         @NotNull @Min(0) Integer entryCost,
         @NotNull @Min(1) @Max(99) Integer winnerPct,
         Integer roundDurationSeconds,
@@ -15,7 +15,9 @@ public record TemplateDto(
         GameType gameType
 ) {
     public Integer effectivePlayersNeeded() {
-        return playersNeeded != null ? playersNeeded : maxPlayers;
+        if (playersNeeded != null) return playersNeeded;
+        if (maxPlayers != null) return maxPlayers;
+        return 1;
     }
     public Integer effectiveRoundDurationSeconds() {
         return roundDurationSeconds != null ? roundDurationSeconds : 30;
@@ -27,9 +29,9 @@ public record TemplateDto(
         return gameType != null ? gameType : GameType.FRIDGE;
     }
     public String effectiveName() {
+        int players = effectivePlayersNeeded();
         return name != null && !name.isBlank()
                 ? name
-                : "Template " + maxPlayers + "p/" + entryCost + "c/" + winnerPct + "%";
+                : "Template " + players + "p/" + entryCost + "c/" + winnerPct + "%";
     }
 }
-

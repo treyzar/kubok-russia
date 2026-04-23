@@ -264,6 +264,23 @@ public class RoomService {
         room.setStatus(RoomStatus.FINISHED);
         roomRepo.save(room);
         events.publishGameFinished(roomId, winnerId, prize);
+
+        // Auto-spawn a fresh room for the same template so the lobby stays populated.
+        if (room.getTemplateId() != null) {
+            try {
+                templateRepo.findById(room.getTemplateId()).ifPresent(t -> {
+                    if (t.getDeletedAt() == null) {
+                        create(new CreateRoomRequest(
+                                room.getTemplateId(),
+                                null, null, null,
+                                null, null, null, null, null, null, null));
+                        log.info("Auto-spawned new room for template {}", room.getTemplateId());
+                    }
+                });
+            } catch (Exception e) {
+                log.warn("Auto-spawn room failed for template {}: {}", room.getTemplateId(), e.getMessage());
+            }
+        }
     }
 
     // ------- boost calculations (mirrors Go roomCalcData/CalcProbability/CalcBoost) -------

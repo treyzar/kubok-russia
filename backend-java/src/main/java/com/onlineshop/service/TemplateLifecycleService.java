@@ -97,11 +97,10 @@ public class TemplateLifecycleService {
 
     private void applyDto(RoomTemplate t, TemplateDto dto) {
         t.setName(dto.effectiveName());
-        // max_players is the canonical field; mirror it onto the legacy
-        // players_needed column so the room-creation pipeline keeps working.
-        t.setMaxPlayers(dto.maxPlayers());
-        t.setPlayersNeeded(dto.effectivePlayersNeeded());
-        t.setMinPlayers(dto.minPlayers());
+        int playersNeeded = dto.effectivePlayersNeeded();
+        t.setPlayersNeeded(playersNeeded);
+        t.setMaxPlayers(dto.maxPlayers() != null ? dto.maxPlayers() : playersNeeded);
+        t.setMinPlayers(dto.minPlayers() != null ? dto.minPlayers() : Math.min(2, playersNeeded));
         t.setEntryCost(dto.entryCost());
         t.setWinnerPct(dto.winnerPct());
         t.setRoundDurationSeconds(dto.effectiveRoundDurationSeconds());

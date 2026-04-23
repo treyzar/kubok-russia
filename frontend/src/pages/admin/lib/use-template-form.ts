@@ -15,10 +15,10 @@ export type TemplateFormValues = {
 }
 
 export const DEFAULT_TEMPLATE_FORM: TemplateFormValues = {
-  min_players: 1,
-  max_players: 1,
-  entry_cost: 0,
-  winner_pct: 100,
+  min_players: 2,
+  max_players: 10,
+  entry_cost: 500,
+  winner_pct: 80,
   game_type: 'fridge',
 }
 
