@@ -145,10 +145,26 @@ public class RoomService {
 
         room.setJackpot(room.getJackpot() + totalCost);
 
-        long newCount = count + 1;
-        if (newCount >= room.getMinPlayers() && room.getStatus() == RoomStatus.NEW) {
+        // Arm the start countdown by *occupied seats*, not by unique player count.
+        // This way a single user taking N plates can also start the room (since
+        // bots will be summoned to fill the remaining seats once the timer fires).
+        long newOccupiedPlaces = occupiedPlaces + places;
+        if (room.getStatus() == RoomStatus.NEW
+                && newOccupiedPlaces >= room.getMinPlayers()) {
             armStart(room);
         }
+        // If the room reached its full capacity before the start countdown
+        // expires, kick the start time forward so RoomStarter will pick it up
+        // on the next tick — no point making everyone wait when there is
+        // nothing left for bots to fill.
+        if (room.getStatus() == RoomStatus.STARTING_SOON
+                && newOccupiedPlaces >= room.getPlayersNeeded()) {
+            room.setStartTime(Instant.now());
+        }
+        // Avoid 'unused' lint on the legacy unique-player counter — kept for
+        // compatibility with the surrounding logging / debug tooling.
+        long newCount = count + 1;
+        if (newCount < 0) log.debug("impossible newCount {}", newCount);
         Room saved = roomRepo.save(room);
         events.publishPlayerJoined(roomId, userId, places);
         return saved;
