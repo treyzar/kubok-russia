@@ -7,7 +7,6 @@ import { AdminPage, AdminTemplateStatsDetailPage } from '@pages/admin'
 import { CreateGamePage } from '@pages/create-game'
 import { HomePage } from '@pages/home'
 import { JoinGamePage } from '@pages/join-game'
-import { LobbyPage } from '@pages/lobby'
 import { NotFoundPage } from '@pages/not-found'
 
 import { gamesLobbyPath, routePaths } from '../config/route-paths'
@@ -36,6 +35,7 @@ export function AppRouter() {
   }
 
   function handleGoToLobby(roomId: number): void {
+    // Lobby is hosted inline on /games via the ?room=<id> search param.
     navigate(gamesLobbyPath(roomId))
   }
 
@@ -65,6 +65,7 @@ export function AppRouter() {
                 onJoinGame={handleGoToJoinGame}
                 onJoinLobby={handleGoToLobby}
                 onLogout={handleLogout}
+                onUserBalanceChange={handleUserBalanceChange}
                 user={authorizedUser}
               />
             )}
@@ -109,25 +110,12 @@ export function AppRouter() {
       />
 
       {/*
-        Single URL hosts the entire room experience: plate selection, boost
-        phase, video, reveal, and results all happen on /games/lobby/:roomId.
+        The lobby is now embedded inline on /games via the ?room=<id> search
+        param so no URL change happens when entering a room. The legacy
+        /games/lobby/:roomId URL is kept for backwards compatibility and
+        simply redirects to /games?room=<id>.
        */}
-      <Route
-        path={routePaths.gamesLobby}
-        element={
-          <PrivateRoute user={user}>
-            {(authorizedUser) => (
-              <LobbyRoute
-                onBackToGames={handleBackToGames}
-                onLogout={handleLogout}
-                onPlayAgain={handleGoToJoinGame}
-                onUserBalanceChange={handleUserBalanceChange}
-                user={authorizedUser}
-              />
-            )}
-          </PrivateRoute>
-        }
-      />
+      <Route path={routePaths.gamesLobby} element={<LobbyLegacyRedirect />} />
 
       <Route
         path={routePaths.admin}
@@ -167,30 +155,12 @@ export function AppRouter() {
   )
 }
 
-type LobbyRouteProps = {
-  user: AuthUser
-  onBackToGames: () => void
-  onLogout: () => void
-  onPlayAgain: () => void
-  onUserBalanceChange: (balance: number) => void
-}
-
-function LobbyRoute({ user, onBackToGames, onLogout, onPlayAgain, onUserBalanceChange }: LobbyRouteProps) {
+function LobbyLegacyRedirect() {
   const params = useParams<{ roomId: string }>()
   const roomId = Number(params.roomId)
-
-  if (!Number.isInteger(roomId) || roomId <= 0) {
-    return <Navigate replace to={routePaths.games} />
-  }
-
-  return (
-    <LobbyPage
-      onBackToGames={onBackToGames}
-      onLogout={onLogout}
-      onPlayAgain={onPlayAgain}
-      onUserBalanceChange={onUserBalanceChange}
-      roomId={roomId}
-      user={user}
-    />
-  )
+  const target =
+    Number.isInteger(roomId) && roomId > 0
+      ? gamesLobbyPath(roomId)
+      : routePaths.games
+  return <Navigate replace to={target} />
 }

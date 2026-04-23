@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   ArrowRight,
   Coins,
@@ -18,6 +19,7 @@ import { ApiClientError, joinRoom } from '@shared/api'
 import type { RoomStatus } from '@shared/types'
 import { Button } from '@shared/ui'
 import { AppHeader } from '@widgets/header'
+import { LobbyPage } from '@pages/lobby'
 
 import { type HomePageProps } from '../model'
 import { MECHANICS } from '../model/mechanics'
@@ -112,7 +114,65 @@ function statusVisuals(status: RoomStatus): StatusVisuals {
   }
 }
 
-export function HomePage({ onBrandClick, onJoinGame, onJoinLobby, user, onLogout }: HomePageProps) {
+export function HomePage({
+  onBrandClick,
+  onJoinGame,
+  user,
+  onLogout,
+  onUserBalanceChange,
+}: HomePageProps) {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const roomParam = searchParams.get('room')
+  const activeRoomId = roomParam !== null && /^\d+$/.test(roomParam)
+    ? Number(roomParam)
+    : null
+
+  const openLobbyInline = useCallback(
+    (roomId: number) => {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev)
+        next.set('room', String(roomId))
+        return next
+      })
+    },
+    [setSearchParams],
+  )
+
+  const closeLobbyInline = useCallback(() => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.delete('room')
+      return next
+    })
+  }, [setSearchParams])
+
+  if (activeRoomId !== null) {
+    return (
+      <LobbyPage
+        onBackToGames={closeLobbyInline}
+        onLogout={onLogout}
+        onPlayAgain={closeLobbyInline}
+        onUserBalanceChange={onUserBalanceChange}
+        roomId={activeRoomId}
+        user={user}
+      />
+    )
+  }
+
+  return (
+    <HomeRoomsView
+      onBrandClick={onBrandClick}
+      onJoinGame={onJoinGame}
+      onJoinLobby={openLobbyInline}
+      onLogout={onLogout}
+      user={user}
+    />
+  )
+}
+
+type HomeRoomsViewProps = Omit<HomePageProps, 'onUserBalanceChange'>
+
+function HomeRoomsView({ onBrandClick, onJoinGame, onJoinLobby, user, onLogout }: HomeRoomsViewProps) {
   const [selectedId, setSelectedId] = useState<string>(MECHANICS[0].id)
   const [sort, setSort] = useState<RoomsSortKey>('jackpot_desc')
   const [priceCap, setPriceCap] = useState<PriceCap>('any')

@@ -79,12 +79,15 @@ export function Plate({
     width: '100%',
     aspectRatio: '1 / 1',
     borderRadius: 18,
+    border: 'none',
+    padding: 0,
     cursor: isClickable ? 'pointer' : 'default',
     transition: 'transform 180ms ease, box-shadow 220ms ease',
     transform: state === 'selected' ? 'translateY(-4px) scale(1.02)' : 'none',
     boxShadow: ring.glow,
     outline: 'none',
     background: 'transparent',
+    appearance: 'none',
   }
 
   return (

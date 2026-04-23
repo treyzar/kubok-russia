@@ -1,3 +1,5 @@
+import { useState } from 'react'
+
 import { useBodyScrollLock } from '@shared/lib'
 import { AppHeader } from '@widgets/header'
 
@@ -31,6 +33,7 @@ export function LobbyPage({
   user,
 }: LobbyPageProps) {
   useBodyScrollLock()
+  const [showExitConfirm, setShowExitConfirm] = useState(false)
 
   const game = useLobby({
     roomId,
@@ -136,13 +139,19 @@ export function LobbyPage({
                 <span className="text-[12px] text-[#6B7280]">Комната #{roomId}</span>
               </div>
 
-              {/* Lobby countdown */}
-              {isLobbyPhase && countdownLabel && roomStatus === 'starting_soon' && (
+              {/* Lobby timer / waiting indicator */}
+              {isLobbyPhase && (
                 <div className="flex items-center gap-2 rounded-[10px] border border-orange-400/30 bg-orange-400/10 px-3 py-1.5">
                   <svg className="h-4 w-4 text-orange-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                     <circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" />
                   </svg>
-                  <span className="text-[14px] font-bold text-orange-300">До начала: {countdownLabel}</span>
+                  {countdownLabel && roomStatus === 'starting_soon' ? (
+                    <span className="text-[14px] font-bold text-orange-300">До начала: {countdownLabel}</span>
+                  ) : (
+                    <span className="text-[14px] font-bold text-orange-300">
+                      Ждём игроков · {playersJoined}/{totalSeats || '?'}
+                    </span>
+                  )}
                 </div>
               )}
 
@@ -461,10 +470,9 @@ export function LobbyPage({
               className="mt-auto flex h-11 items-center justify-center gap-2 rounded-[12px] border border-[#B24B4B]/50 bg-[#5A2323]/40 text-[13px] font-bold text-[#FF9999] transition hover:bg-[#6D2B2B]/60 disabled:opacity-50"
               disabled={isLeavingRoom}
               onClick={() => {
-                const confirmMsg = hasJoined && isLobbyPhase
-                  ? 'Покинуть лобби? Ваши занятые тарелки освободятся.'
-                  : 'Покинуть комнату?'
-                if (window.confirm(confirmMsg)) {
+                if (hasJoined && isLobbyPhase) {
+                  setShowExitConfirm(true)
+                } else {
                   void handleLeaveRoomAndExit(onBackToGames)
                 }
               }}
@@ -483,6 +491,18 @@ export function LobbyPage({
             prize={winner?.prize ?? 0}
             onPlayAgain={onPlayAgain}
             onBackToGames={onBackToGames}
+          />
+        )}
+
+        {/* Exit confirmation modal */}
+        {showExitConfirm && (
+          <ExitConfirmModal
+            isLeaving={isLeavingRoom}
+            onCancel={() => setShowExitConfirm(false)}
+            onConfirm={() => {
+              setShowExitConfirm(false)
+              void handleLeaveRoomAndExit(onBackToGames)
+            }}
           />
         )}
       </section>
@@ -577,6 +597,52 @@ function ResultsOverlay({
             type="button"
           >
             Все комнаты
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ExitConfirmModal({
+  isLeaving,
+  onCancel,
+  onConfirm,
+}: {
+  isLeaving: boolean
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  return (
+    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm">
+      <div className="w-[min(92vw,400px)] overflow-hidden rounded-[20px] border border-white/10 bg-[#1A1B22] p-6 shadow-2xl">
+        <div className="mb-4 flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#5A2323]/40">
+            <svg className="h-5 w-5 text-[#FF9999]" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path d="M12 9v3m0 3h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4a2 2 0 00-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
+          <h3 className="text-[16px] font-bold text-white">Покинуть лобби?</h3>
+        </div>
+        <p className="mb-6 text-[13px] leading-relaxed text-[#9CA3AF]">
+          Ваши занятые тарелки освободятся, а потраченные баллы вернутся на баланс.
+        </p>
+        <div className="flex gap-2">
+          <button
+            className="flex-1 rounded-[10px] border border-white/10 bg-white/5 py-2.5 text-[13px] font-semibold text-[#D1D5DB] transition hover:bg-white/10"
+            onClick={onCancel}
+            type="button"
+            disabled={isLeaving}
+          >
+            Остаться
+          </button>
+          <button
+            className="flex-1 rounded-[10px] bg-[#5A2323] py-2.5 text-[13px] font-bold text-[#FF9999] transition hover:bg-[#6D2B2B] disabled:opacity-50"
+            onClick={onConfirm}
+            type="button"
+            disabled={isLeaving}
+          >
+            {isLeaving ? 'Выходим...' : 'Покинуть'}
           </button>
         </div>
       </div>

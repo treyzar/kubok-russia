@@ -16,5 +16,5 @@ export function adminStatsTemplatePath(templateId: number): string {
 }
 
 export function gamesLobbyPath(roomId: number): string {
-  return `/games/lobby/${roomId}`
+  return `/games?room=${roomId}`
 }
