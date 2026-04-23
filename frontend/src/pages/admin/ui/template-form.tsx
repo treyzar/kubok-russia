@@ -1,4 +1,5 @@
 import { type FormEvent, useState } from 'react'
+import { AlertTriangle, Coins, Gamepad2, Hash, Percent, Trophy, Users } from 'lucide-react'
 
 import { type AdminTemplateListItem, type AdminTemplatePayload } from '@shared/api'
 import { Button } from '@shared/ui'
@@ -17,8 +18,8 @@ type TemplateFormProps = {
   onSubmit: (payload: AdminTemplatePayload) => Promise<void>
 }
 
-const NUMERIC_INPUT_CLASS =
-  'h-10 w-full rounded-md border border-[#3A3B45] bg-[#15161C] px-3 text-[15px] text-[#F2F3F5] outline-none focus:border-[#A8E45E]'
+const INPUT_CLASS =
+  'h-11 w-full rounded-xl border border-[#E2E5EA] bg-white px-3.5 text-[15px] font-semibold text-[#111] outline-none transition-colors placeholder:text-[#B0B5BD] focus:border-[#FFC400] focus:ring-2 focus:ring-[#FFE680]'
 
 export function TemplateForm({ initialTemplate, submitLabel, onCancel, onSubmit }: TemplateFormProps) {
   const [values, setValues] = useState<TemplateFormValues>(
@@ -39,8 +40,6 @@ export function TemplateForm({ initialTemplate, submitLabel, onCancel, onSubmit 
   }
 
   const isDuplicate = validation?.is_duplicate ?? false
-  // For edit, an unchanged template would falsely trip the duplicate check —
-  // suppress that case.
   const duplicateBlocks =
     isDuplicate &&
     !(initialTemplate &&
@@ -57,6 +56,8 @@ export function TemplateForm({ initialTemplate, submitLabel, onCancel, onSubmit 
     values.min_players > values.max_players ||
     values.winner_pct < 1 ||
     values.winner_pct > 99
+
+  const winnerPrize = Math.round((jackpot * values.winner_pct) / 100)
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -78,51 +79,82 @@ export function TemplateForm({ initialTemplate, submitLabel, onCancel, onSubmit 
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Тип игры">
-          <select
-            className={NUMERIC_INPUT_CLASS}
-            value={values.game_type}
-            onChange={(e) => patch('game_type', e.target.value as TemplateFormValues['game_type'])}
-          >
-            <option value="fridge">Ночной жор</option>
-          </select>
-        </Field>
+    <form onSubmit={handleSubmit} className="space-y-6">
+      {/* Live preview band: jackpot + winner prize */}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="rounded-2xl border border-[#FFE08A] bg-gradient-to-br from-[#FFF7CF] via-[#FFEEA8] to-[#FFE680] px-5 py-4 shadow-[inset_0_0_0_1px_rgba(255,196,0,0.35)]">
+          <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.12em] text-[#7A5A00]">
+            <Coins className="size-3.5" />
+            Джекпот при полной комнате
+            {isLoading ? <span className="ml-auto text-[10px] font-semibold text-[#A07700]">обновление…</span> : null}
+          </div>
+          <p className="mt-1 text-[28px] font-black leading-none text-[#1A1100] tabular-nums">
+            {jackpot.toLocaleString('ru-RU')} <span className="text-[15px] font-bold text-[#7A5A00]">STL</span>
+          </p>
+        </div>
+        <div className="rounded-2xl border border-[#E6F8EE] bg-gradient-to-br from-[#E6F8EE] to-[#C8F0D7] px-5 py-4 shadow-[inset_0_0_0_1px_rgba(26,183,90,0.25)]">
+          <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.12em] text-[#0F7A3A]">
+            <Trophy className="size-3.5" />
+            Приз победителю
+          </div>
+          <p className="mt-1 text-[28px] font-black leading-none text-[#0B4F26] tabular-nums">
+            {winnerPrize.toLocaleString('ru-RU')} <span className="text-[15px] font-bold text-[#0F7A3A]">STL</span>
+          </p>
+          <p className="mt-1 text-[11.5px] text-[#0F7A3A]">
+            {values.winner_pct}% от джекпота
+          </p>
+        </div>
+      </div>
 
-        <Field label="Минимум игроков">
-          <input
-            className={NUMERIC_INPUT_CLASS}
-            type="number"
-            min={1}
-            value={values.min_players}
-            onChange={(e) => patchInt('min_players', e.target.value)}
-          />
-        </Field>
+      {/* Section: основные параметры */}
+      <div>
+        <SectionHeader title="Основные параметры" subtitle="Тип игры и количество мест в комнате." />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field icon={Gamepad2} label="Тип игры">
+            <select
+              className={INPUT_CLASS}
+              value={values.game_type}
+              onChange={(e) => patch('game_type', e.target.value as TemplateFormValues['game_type'])}
+            >
+              <option value="fridge">Ночной жор</option>
+            </select>
+          </Field>
+          <Field icon={Hash} label="Стартовый взнос (STL)">
+            <input
+              className={INPUT_CLASS}
+              type="number"
+              min={0}
+              value={values.entry_cost}
+              onChange={(e) => patchInt('entry_cost', e.target.value)}
+            />
+          </Field>
+          <Field icon={Users} label="Минимум игроков">
+            <input
+              className={INPUT_CLASS}
+              type="number"
+              min={1}
+              value={values.min_players}
+              onChange={(e) => patchInt('min_players', e.target.value)}
+            />
+          </Field>
+          <Field icon={Users} label="Максимум игроков">
+            <input
+              className={INPUT_CLASS}
+              type="number"
+              min={1}
+              value={values.max_players}
+              onChange={(e) => patchInt('max_players', e.target.value)}
+            />
+          </Field>
+        </div>
+      </div>
 
-        <Field label="Максимум игроков">
+      {/* Section: распределение */}
+      <div>
+        <SectionHeader title="Распределение фонда" subtitle="Какая доля джекпота уходит победителю." />
+        <Field icon={Percent} label="Процент куша победителю (%)">
           <input
-            className={NUMERIC_INPUT_CLASS}
-            type="number"
-            min={1}
-            value={values.max_players}
-            onChange={(e) => patchInt('max_players', e.target.value)}
-          />
-        </Field>
-
-        <Field label="Стартовый взнос">
-          <input
-            className={NUMERIC_INPUT_CLASS}
-            type="number"
-            min={0}
-            value={values.entry_cost}
-            onChange={(e) => patchInt('entry_cost', e.target.value)}
-          />
-        </Field>
-
-        <Field label="Процент куша (%)">
-          <input
-            className={NUMERIC_INPUT_CLASS}
+            className={INPUT_CLASS}
             type="number"
             min={1}
             max={99}
@@ -130,47 +162,41 @@ export function TemplateForm({ initialTemplate, submitLabel, onCancel, onSubmit 
             onChange={(e) => patchInt('winner_pct', e.target.value)}
           />
         </Field>
-
-        <Field label="Сумма джекпота">
-          <div className="flex h-10 items-center justify-between rounded-md border border-[#3A3B45] bg-[#15161C] px-3 text-[15px] text-[#A8E45E]">
-            <span className="font-semibold">{jackpot.toLocaleString('ru-RU')}</span>
-            {isLoading ? <span className="text-xs text-[#9098A8]">обновление…</span> : null}
-          </div>
-        </Field>
       </div>
 
       {/* Validation hints */}
-      <div className="space-y-1.5">
-        {duplicateBlocks ? (
-          <p className="rounded-md border border-[#FF4D4D]/50 bg-[#3A1A1A] px-3 py-2 text-[13px] text-[#FFB4B4]">
-            Шаблон с такими параметрами уже существует — создание заблокировано.
-          </p>
-        ) : null}
-        {(validation?.warnings ?? [])
-          .filter((w) => w.severity === 'warning')
-          .map((w, i) => (
-            <p
-              key={`${w.field}-${i}`}
-              className="rounded-md border border-[#E0AB3A]/50 bg-[#3A2C12] px-3 py-2 text-[13px] text-[#F4D58A]"
-            >
-              {translateWarning(w.field, w.message)}
-            </p>
-          ))}
-      </div>
-
-      {submitError ? (
-        <p className="rounded-md border border-[#FF4D4D]/50 bg-[#3A1A1A] px-3 py-2 text-[13px] text-[#FFB4B4]">
-          {submitError}
-        </p>
+      {(duplicateBlocks || (validation?.warnings ?? []).length > 0) ? (
+        <div className="space-y-2">
+          {duplicateBlocks ? (
+            <Notice tone="error">
+              Шаблон с такими параметрами уже существует — создание заблокировано.
+            </Notice>
+          ) : null}
+          {(validation?.warnings ?? [])
+            .filter((w) => w.severity === 'warning')
+            .map((w, i) => (
+              <Notice key={`${w.field}-${i}`} tone="warning">
+                {translateWarning(w.field, w.message)}
+              </Notice>
+            ))}
+        </div>
       ) : null}
 
-      <div className="flex items-center justify-end gap-2">
-        <Button type="button" variant="outline" onClick={onCancel} disabled={submitting}>
+      {submitError ? <Notice tone="error">{submitError}</Notice> : null}
+
+      <div className="flex items-center justify-end gap-2 border-t border-[#F2F3F5] pt-4">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onCancel}
+          disabled={submitting}
+          className="border-[#E2E5EA] bg-white text-[#7B7B7B] hover:bg-[#FAFBFC] hover:text-[#111]"
+        >
           Отмена
         </Button>
         <Button
           type="submit"
-          className="bg-[#A8E45E] text-[#101114] hover:bg-[#B9ED76] disabled:opacity-60"
+          className="h-10 gap-2 rounded-full bg-[#FFD400] px-5 text-[13.5px] font-bold text-[#111] shadow-[0_8px_20px_rgba(255,212,0,0.35)] hover:bg-[#FFE040] disabled:opacity-50 disabled:shadow-none"
           disabled={submitDisabled}
         >
           {submitting ? 'Сохранение…' : submitLabel}
@@ -180,12 +206,45 @@ export function TemplateForm({ initialTemplate, submitLabel, onCancel, onSubmit 
   )
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function SectionHeader({ title, subtitle }: { title: string; subtitle?: string }) {
+  return (
+    <div className="mb-3">
+      <h3 className="text-[13px] font-black uppercase tracking-wider text-[#111]">{title}</h3>
+      {subtitle ? <p className="text-[12px] text-[#7B7B7B]">{subtitle}</p> : null}
+    </div>
+  )
+}
+
+function Field({
+  icon: Icon,
+  label,
+  children,
+}: {
+  icon?: React.ComponentType<{ className?: string }>
+  label: string
+  children: React.ReactNode
+}) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-[12px] font-medium uppercase tracking-wide text-[#9098A8]">{label}</span>
+      <span className="mb-1.5 inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-[#7B7B7B]">
+        {Icon ? <Icon className="size-3.5" /> : null}
+        {label}
+      </span>
       {children}
     </label>
+  )
+}
+
+function Notice({ tone, children }: { tone: 'error' | 'warning'; children: React.ReactNode }) {
+  const palette =
+    tone === 'error'
+      ? 'border-[#FFD0D0] bg-[#FFEDED] text-[#9A1F1F]'
+      : 'border-[#FFE08A] bg-[#FFF7CF] text-[#7A5A00]'
+  return (
+    <div className={`flex items-start gap-2 rounded-xl border px-3 py-2.5 text-[13px] ${palette}`}>
+      <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+      <span>{children}</span>
+    </div>
   )
 }
 

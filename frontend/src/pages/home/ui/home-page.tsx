@@ -466,31 +466,23 @@ export function HomePage({ onBrandClick, onJoinGame, onJoinLobby, user, onLogout
                             key={room.room_id}
                             className="group relative flex flex-col gap-3 overflow-hidden rounded-2xl border border-[#ECECEC] bg-white p-4 transition hover:-translate-y-0.5 hover:border-[#FFD400] hover:shadow-[0_12px_28px_rgba(16,24,40,0.08)]"
                           >
-                            {/* Header with status badge */}
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <p className="text-[11px] font-bold uppercase tracking-wider text-[#7B7B7B]">
-                                    Комната #{room.room_id}
-                                  </p>
+                            {/* Header: room id + status badge + game-type icon */}
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <p className="text-[11px] font-bold uppercase tracking-wider text-[#7B7B7B] truncate">
+                                  Комната #{room.room_id}
+                                </p>
+                                <span
+                                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${status.bgClass} ${status.textClass}`}
+                                >
                                   <span
-                                    className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${status.bgClass} ${status.textClass}`}
-                                  >
-                                    <span
-                                      className={`size-1.5 rounded-full ${status.dotClass} ${
-                                        room.status === 'starting_soon' ? 'animate-pulse' : ''
-                                      }`}
-                                    />
-                                    <StatusIcon className="size-2.5" />
-                                    {status.label}
-                                  </span>
-                                </div>
-                                <p className="mt-1 text-[22px] font-black leading-tight text-[#111]">
-                                  {formatStl(winnerPrize)}
-                                </p>
-                                <p className="text-[11px] text-[#7B7B7B]">
-                                  Приз победителю · {room.winner_pct}% от {formatStl(fund)}
-                                </p>
+                                    className={`size-1.5 rounded-full ${status.dotClass} ${
+                                      room.status === 'starting_soon' ? 'animate-pulse' : ''
+                                    }`}
+                                  />
+                                  <StatusIcon className="size-2.5" />
+                                  {status.label}
+                                </span>
                               </div>
                               <span
                                 className="grid size-10 shrink-0 place-items-center rounded-xl text-white"
@@ -500,6 +492,16 @@ export function HomePage({ onBrandClick, onJoinGame, onJoinLobby, user, onLogout
                               >
                                 <selected.Icon className="size-5" />
                               </span>
+                            </div>
+
+                            {/* Jackpot — large, central */}
+                            <div className="rounded-2xl bg-gradient-to-br from-[#FFF7CF] via-[#FFEEA8] to-[#FFE680] px-4 py-3 text-center shadow-[inset_0_0_0_1px_rgba(255,196,0,0.35)]">
+                              <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#7A5A00]">
+                                Джекпот
+                              </p>
+                              <p className="mt-0.5 text-[clamp(28px,3vw,34px)] font-black leading-none text-[#1A1100] tabular-nums tracking-tight">
+                                {formatStl(fund)}
+                              </p>
                             </div>
 
                             {/* Players + entry row */}
