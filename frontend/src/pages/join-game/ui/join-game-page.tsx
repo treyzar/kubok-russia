@@ -9,7 +9,7 @@ import { type JoinGamePageProps } from '../model'
 import { LobbyFilters } from './lobby-filters'
 import { LobbyTable } from './lobby-table'
 
-export function JoinGamePage({ onBackToGames, onCreateGame, onOpenLobby, onLogout, onUserBalanceChange, user }: JoinGamePageProps) {
+export function JoinGamePage({ onBackToGames, onOpenLobby, onLogout, onUserBalanceChange, user }: JoinGamePageProps) {
   useBodyScrollLock()
 
   const {
@@ -37,7 +37,7 @@ export function JoinGamePage({ onBackToGames, onCreateGame, onOpenLobby, onLogou
 
   return (
     <main className="flex min-h-dvh flex-col overflow-hidden bg-[#ACE35F] text-[#F6F7FA]">
-      <AppHeader onBrandClick={onBackToGames} onCreateGame={onCreateGame} onLogout={onLogout} user={user} />
+      <AppHeader onBrandClick={onBackToGames} onLogout={onLogout} user={user} />
 
       <section className="mx-auto grid w-full max-w-[1168px] flex-1 grid-cols-1 gap-4 overflow-y-auto px-3 pb-4 pt-4 sm:px-4 lg:grid-cols-[minmax(270px,438px)_1fr] lg:gap-7 lg:px-5 xl:px-0">
         <aside className="relative min-h-[340px] overflow-hidden rounded-[12px] border border-[#2D2E33] bg-[#1A1B21] sm:min-h-[420px] lg:min-h-0">
@@ -49,13 +49,6 @@ export function JoinGamePage({ onBackToGames, onCreateGame, onOpenLobby, onLogou
               type="button"
             >
               БЫСТРАЯ ИГРА
-            </Button>
-            <Button
-              className="h-[56px] rounded-[9px] border-0 bg-[#FF1493] text-[16px] font-bold text-white hover:bg-[#FF2BA1] sm:h-[64px] sm:text-[18px]"
-              onClick={onCreateGame}
-              type="button"
-            >
-              СОЗДАТЬ ИГРУ
             </Button>
           </div>
         </aside>

@@ -24,6 +24,7 @@
 /home/runner/workspace/backend-java/src/main/java/com/onlineshop/domain/enums/GameType.java
 /home/runner/workspace/backend-java/src/main/java/com/onlineshop/domain/enums/RiskLevel.java
 /home/runner/workspace/backend-java/src/main/java/com/onlineshop/domain/enums/RoomStatus.java
+/home/runner/workspace/backend-java/src/main/java/com/onlineshop/domain/enums/UserRole.java
 /home/runner/workspace/backend-java/src/main/java/com/onlineshop/dto/AdminDtos.java
 /home/runner/workspace/backend-java/src/main/java/com/onlineshop/dto/CreateFairRoomRequest.java
 /home/runner/workspace/backend-java/src/main/java/com/onlineshop/dto/EconomicValidationResult.java

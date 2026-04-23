@@ -2,6 +2,7 @@ export type User = {
   id: number
   name: string
   balance: number
+  role: 'USER' | 'ADMIN'
   created_at: string
 }
 

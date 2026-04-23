@@ -4,7 +4,6 @@ export type LobbyPageProps = {
   user: AuthUser
   roomId: number
   onBackToGames: () => void
-  onCreateGame: () => void
   onPlayAgain: () => void
   onStartGame: () => void
   onLogout: () => void

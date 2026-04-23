@@ -9,3 +9,21 @@ export { listRoomWinners } from './room-winners'
 export { getRound, getRoundDetails, listRounds } from './rounds'
 export { createRoomTemplate, getRoomTemplate, listRoomTemplates } from './templates'
 export { connectRoomWS } from './websocket'
+export {
+  type AdminTemplateListItem,
+  type AdminTemplatePayload,
+  type AdminTemplateStats,
+  type AdminTemplatesListParams,
+  type AdminTimePeriod,
+  type HistoricalMetrics,
+  type ValidateTemplatePayload,
+  type ValidateTemplateResponse,
+  type ValidateTemplateWarning,
+  createAdminTemplate,
+  deleteAdminTemplate,
+  getAdminTemplateStats,
+  getHistoricalMetrics,
+  listAdminTemplates,
+  updateAdminTemplate,
+  validateAdminTemplate,
+} from './admin'

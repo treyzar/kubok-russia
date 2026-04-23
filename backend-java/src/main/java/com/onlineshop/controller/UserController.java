@@ -21,7 +21,10 @@ public class UserController {
     public User create(@RequestBody Map<String, Object> body) {
         String name = (String) body.get("name");
         Object bal = body.getOrDefault("balance", 0);
-        return users.create(name, ((Number) bal).intValue(), false);
+        Object roleRaw = body.get("role");
+        com.onlineshop.domain.enums.UserRole role =
+                com.onlineshop.domain.enums.UserRole.fromValue(roleRaw == null ? null : roleRaw.toString());
+        return users.create(name, ((Number) bal).intValue(), false, role);
     }
 
     @GetMapping

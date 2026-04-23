@@ -1,19 +1,53 @@
-import { Bell, ChevronDown, CircleDollarSign, LogOut, Plus, Send } from 'lucide-react'
+import { Bell, ChevronDown, CircleDollarSign, LogOut, Send, ShieldCheck } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 
 import { formatUserBalance } from '@entities/user'
 import { cn } from '@shared/lib'
-import { Avatar, AvatarFallback, AvatarImage, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@shared/ui'
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+  Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@shared/ui'
 
 import { type AppHeaderProps } from '../model/types'
 
 const defaultContentClassName =
   'mx-auto grid w-full max-w-[1248px] grid-cols-1 items-center gap-3 px-3 py-3 sm:px-4 md:grid-cols-[1fr_auto_1fr] md:px-5 xl:px-0'
 
-export function AppHeader({ user, onCreateGame, onBrandClick, onLogout, className, contentClassName }: AppHeaderProps) {
+export function AppHeader({
+  user,
+  onBrandClick,
+  onLogout,
+  onOpenAdmin,
+  className,
+  contentClassName,
+}: AppHeaderProps) {
+  const navigate = useNavigate()
+  const isAdmin = user.role === 'ADMIN'
+
+  function handleOpenAdmin() {
+    if (onOpenAdmin) {
+      onOpenAdmin()
+    } else {
+      navigate('/admin')
+    }
+  }
+
   const brand = (
     <>
-      <img alt="Ночной жор" className="h-[44px] w-[44px] rounded-full object-cover md:h-[46px] md:w-[46px]" src="/dev-assets/images/logo.svg" />
-      <span className="text-[26px] leading-none font-bold tracking-[0.01em] sm:text-[30px] lg:text-[34px]">НОЧНОЙ ЖОР</span>
+      <img
+        alt="Ночной жор"
+        className="h-[44px] w-[44px] rounded-full object-cover md:h-[46px] md:w-[46px]"
+        src="/dev-assets/images/logo.svg"
+      />
+      <span className="text-[26px] leading-none font-bold tracking-[0.01em] sm:text-[30px] lg:text-[34px]">
+        НОЧНОЙ ЖОР
+      </span>
     </>
   )
 
@@ -43,13 +77,6 @@ export function AppHeader({ user, onCreateGame, onBrandClick, onLogout, classNam
             {formatUserBalance(user.balance)}
             <ChevronDown className="size-4" />
           </Button>
-          <Button
-            className="h-[46px] w-[46px] rounded-[8px] border border-[#FF1894] bg-[#FF1894] p-0 text-white hover:bg-[#FF2BA1] md:h-[52px] md:w-[52px]"
-            onClick={onCreateGame}
-            type="button"
-          >
-            <Plus className="size-6 md:size-7" />
-          </Button>
         </div>
 
         <div className="flex items-center justify-center gap-2 md:justify-end">
@@ -70,9 +97,22 @@ export function AppHeader({ user, onCreateGame, onBrandClick, onLogout, classNam
             </DropdownMenuTrigger>
             <DropdownMenuContent
               align="end"
-              className="w-[236px] rounded-[10px] border-[#40345B] bg-[#1E1B2A] p-1.5 text-[#F5F2FF] shadow-[0_12px_24px_rgba(9,7,14,0.42)]"
+              className="w-[260px] rounded-[10px] border-[#40345B] bg-[#1E1B2A] p-1.5 text-[#F5F2FF] shadow-[0_12px_24px_rgba(9,7,14,0.42)]"
               sideOffset={8}
             >
+              <div className="px-3 pt-2 pb-1.5">
+                <p className="text-[13px] font-semibold leading-tight">{user.name}</p>
+                <p className="mt-0.5 text-[11px] uppercase tracking-wide text-[#A8A1C3]">{user.displayRole}</p>
+              </div>
+              {isAdmin ? (
+                <DropdownMenuItem
+                  className="cursor-pointer gap-2 rounded-[8px] px-3 py-2 text-[14px] font-medium text-[#A8E45E] transition-colors hover:bg-[#2C2640] focus:bg-[#2C2640] focus:text-[#A8E45E]"
+                  onClick={handleOpenAdmin}
+                >
+                  <ShieldCheck className="size-4" />
+                  Админ-панель
+                </DropdownMenuItem>
+              ) : null}
               <DropdownMenuItem
                 className="cursor-pointer gap-2 rounded-[8px] px-3 py-2 text-[14px] font-medium transition-colors hover:bg-[#2C2640] focus:bg-[#2C2640] focus:text-[#F5F2FF]"
                 onClick={onLogout}

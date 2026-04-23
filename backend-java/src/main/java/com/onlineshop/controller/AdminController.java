@@ -70,7 +70,8 @@ public class AdminController {
             @RequestParam(name = "sort_order", defaultValue = "asc") String sortOrder
     ) {
         TimeFilter filter = new TimeFilter(period, startTime, endTime);
-        List<RoomTemplate> all = lifecycle.list();
+        // Admin sees soft-deleted templates too (with a deletedAt marker).
+        List<RoomTemplate> all = lifecycle.listAll();
         List<TemplateStatisticsListItem> items = new ArrayList<>(all.size());
         for (RoomTemplate t : all) {
             TemplateStats s = stats.getTemplateStatistics(t.getTemplateId(), filter);
@@ -79,6 +80,7 @@ public class AdminController {
                     t.getName(),
                     t.getPlayersNeeded(),
                     t.getMinPlayers(),
+                    t.getMaxPlayers(),
                     t.getEntryCost(),
                     t.getWinnerPct(),
                     t.getRoundDurationSeconds(),
@@ -86,6 +88,7 @@ public class AdminController {
                     t.getGameType(),
                     t.getCreatedAt(),
                     t.getUpdatedAt(),
+                    t.getDeletedAt(),
                     s.completedRooms()
             ));
         }
@@ -126,20 +129,21 @@ public class AdminController {
         return lifecycle.update(id, dto);
     }
 
+    /**
+     * Soft-delete: mark the template as deleted. Existing rooms keep playing
+     * until they finish naturally; new rooms can no longer be created from
+     * this template.
+     */
     @DeleteMapping("/templates/{id}")
     public ResponseEntity<?> delete(@PathVariable Integer id) {
         TemplateStatus s = lifecycle.getStatus(id);
-        if (!s.canDelete()) {
-            return ResponseEntity.status(409).body(Map.of(
-                    "message", String.format("Cannot delete template: %d active rooms and %d waiting rooms exist",
-                            s.activeRooms(), s.waitingRooms()),
-                    "template_id", s.templateId(),
-                    "active_rooms", s.activeRooms(),
-                    "waiting_rooms", s.waitingRooms()
-            ));
-        }
         lifecycle.delete(id);
-        return ResponseEntity.ok(Map.of("message", "Template deleted successfully"));
+        return ResponseEntity.ok(Map.of(
+                "message", "Template marked as deleted; existing rooms will live to natural end",
+                "template_id", s.templateId(),
+                "active_rooms", s.activeRooms(),
+                "waiting_rooms", s.waitingRooms()
+        ));
     }
 
     @GetMapping("/metrics/historical")

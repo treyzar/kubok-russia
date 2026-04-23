@@ -1,5 +1,6 @@
 package com.onlineshop.domain.entity;
 
+import com.onlineshop.domain.enums.UserRole;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -30,10 +31,16 @@ public class User {
     @lombok.Builder.Default
     private Instant createdAt = Instant.now();
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "role", nullable = false, length = 16)
+    @lombok.Builder.Default
+    private UserRole role = UserRole.USER;
+
     @PrePersist
     void prePersist() {
         if (createdAt == null) createdAt = Instant.now();
         if (balance == null) balance = 0;
         if (bot == null) bot = Boolean.FALSE;
+        if (role == null) role = UserRole.USER;
     }
 }

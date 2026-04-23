@@ -2,7 +2,8 @@ import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from 're
 
 import { useAuthSession } from '@processes/auth-session'
 import { type AuthUser } from '@entities/user'
-import { AuthLandingHero, AuthLoginForm } from '@pages/auth'
+import { AuthLoginForm } from '@pages/auth'
+import { AdminPage, AdminTemplateStatsDetailPage } from '@pages/admin'
 import { CreateGamePage } from '@pages/create-game'
 import { HomePage } from '@pages/home'
 import { JoinGamePage } from '@pages/join-game'
@@ -53,22 +54,18 @@ export function AppRouter() {
 
   return (
     <Routes>
+      {/* Per ТЗ: root is the login form; the public landing has been removed. */}
       <Route
         path={routePaths.root}
-        element={
-          <PublicOnlyRoute user={user}>
-            <AuthLandingHero onEnterLogin={() => navigate(routePaths.auth)} />
-          </PublicOnlyRoute>
-        }
-      />
-      <Route
-        path={routePaths.auth}
         element={
           <PublicOnlyRoute user={user}>
             <AuthLoginForm onAuthSuccess={handleAuthSuccess} />
           </PublicOnlyRoute>
         }
       />
+      {/* Legacy /auth path keeps existing bookmarks alive — redirect to root. */}
+      <Route path={routePaths.auth} element={<Navigate replace to={routePaths.root} />} />
+
       <Route
         path={routePaths.games}
         element={
@@ -76,7 +73,6 @@ export function AppRouter() {
             {(authorizedUser) => (
               <HomePage
                 onBrandClick={handleBackToGames}
-                onCreateGame={handleGoToCreateGame}
                 onJoinGame={handleGoToJoinGame}
                 onJoinLobby={handleGoToLobby}
                 onLogout={handleLogout}
@@ -86,19 +82,24 @@ export function AppRouter() {
           </PrivateRoute>
         }
       />
+      {/* Per ТЗ: создание комнат — только из админки, поэтому маршрут защищён ролью. */}
       <Route
         path={routePaths.gamesCreate}
         element={
           <PrivateRoute user={user}>
-            {(authorizedUser) => (
-              <CreateGamePage
-                onBackToGames={handleBackToGames}
-                onJoinGame={handleGoToJoinGame}
-                onOpenLobby={handleGoToLobby}
-                onLogout={handleLogout}
-                user={authorizedUser}
-              />
-            )}
+            {(authorizedUser) =>
+              authorizedUser.role === 'ADMIN' ? (
+                <CreateGamePage
+                  onBackToGames={handleBackToGames}
+                  onJoinGame={handleGoToJoinGame}
+                  onOpenLobby={handleGoToLobby}
+                  onLogout={handleLogout}
+                  user={authorizedUser}
+                />
+              ) : (
+                <Navigate replace to={routePaths.games} />
+              )
+            }
           </PrivateRoute>
         }
       />
@@ -109,7 +110,6 @@ export function AppRouter() {
             {(authorizedUser) => (
               <JoinGamePage
                 onBackToGames={handleBackToGames}
-                onCreateGame={handleGoToCreateGame}
                 onOpenLobby={handleGoToLobby}
                 onLogout={handleLogout}
                 onUserBalanceChange={handleUserBalanceChange}
@@ -126,7 +126,6 @@ export function AppRouter() {
             {(authorizedUser) => (
               <LobbyRoute
                 onBackToGames={handleBackToGames}
-                onCreateGame={handleGoToCreateGame}
                 onLogout={handleLogout}
                 onPlayAgain={handleGoToJoinGame}
                 onStartGame={handleStartGame}
@@ -150,6 +149,41 @@ export function AppRouter() {
           </PrivateRoute>
         }
       />
+
+      {/* Admin panel — gated by role. */}
+      <Route
+        path={routePaths.admin}
+        element={
+          <PrivateRoute user={user}>
+            {(authorizedUser) =>
+              authorizedUser.role === 'ADMIN' ? (
+                <AdminPage user={authorizedUser} onLogout={handleLogout} onBrandClick={handleBackToGames} />
+              ) : (
+                <Navigate replace to={routePaths.games} />
+              )
+            }
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path={routePaths.adminStatsTemplate}
+        element={
+          <PrivateRoute user={user}>
+            {(authorizedUser) =>
+              authorizedUser.role === 'ADMIN' ? (
+                <AdminTemplateStatsDetailPage
+                  user={authorizedUser}
+                  onLogout={handleLogout}
+                  onBrandClick={handleBackToGames}
+                />
+              ) : (
+                <Navigate replace to={routePaths.games} />
+              )
+            }
+          </PrivateRoute>
+        }
+      />
+
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
   )
@@ -158,14 +192,13 @@ export function AppRouter() {
 type LobbyRouteProps = {
   user: AuthUser
   onBackToGames: () => void
-  onCreateGame: () => void
   onPlayAgain: () => void
   onStartGame: () => void
   onLogout: () => void
   onUserBalanceChange: (balance: number) => void
 }
 
-function LobbyRoute({ user, onBackToGames, onCreateGame, onPlayAgain, onStartGame, onLogout, onUserBalanceChange }: LobbyRouteProps) {
+function LobbyRoute({ user, onBackToGames, onPlayAgain, onStartGame, onLogout, onUserBalanceChange }: LobbyRouteProps) {
   const params = useParams<{ roomId: string }>()
   const roomId = Number(params.roomId)
 
@@ -176,7 +209,6 @@ function LobbyRoute({ user, onBackToGames, onCreateGame, onPlayAgain, onStartGam
   return (
     <LobbyPage
       onBackToGames={onBackToGames}
-      onCreateGame={onCreateGame}
       onLogout={onLogout}
       onPlayAgain={onPlayAgain}
       onStartGame={onStartGame}
@@ -195,7 +227,6 @@ type FridgeGameRouteProps = {
 function FridgeGameRoute({ user, onUserBalanceChange }: FridgeGameRouteProps) {
   const location = useLocation()
   const roomId: number = (location.state as { roomId?: number } | null)?.roomId ?? 1
-
   return (
     <FridgeGamePage
       roomId={roomId}

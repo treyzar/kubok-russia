@@ -48,6 +48,7 @@ com/onlineshop/repository/RoomBoostRepository.class
 com/onlineshop/dto/EconomicValidationResult.class
 com/onlineshop/scheduler/BotManagerJob.class
 com/onlineshop/domain/entity/RoomTemplate.class
+com/onlineshop/domain/enums/UserRole.class
 com/onlineshop/exception/DomainExceptions$TemplateInUseException.class
 com/onlineshop/controller/AdminController.class
 com/onlineshop/dto/AdminDtos$TemplateStatisticsListItem.class

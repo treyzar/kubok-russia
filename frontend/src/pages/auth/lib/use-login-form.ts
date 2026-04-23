@@ -39,7 +39,7 @@ export function useLoginForm({ onSuccess }: UseLoginFormOptions) {
 
     setIsApiLoading(true)
     try {
-      const apiUserId = await resolveApiUserId(authUser.id, authUser.name, authUser.balance)
+      const apiUserId = await resolveApiUserId(authUser.id, authUser.name, authUser.balance, authUser.role)
       const apiUser = await getUser(apiUserId)
       onSuccess({ ...authUser, balance: apiUser.balance })
     } catch {

@@ -45,7 +45,12 @@ export function useAuthSession(): UseAuthSessionResult {
   }
 }
 
-export async function resolveApiUserId(userId: string, userName: string, userBalance: number): Promise<number> {
+export async function resolveApiUserId(
+  userId: string,
+  userName: string,
+  userBalance: number,
+  role: 'USER' | 'ADMIN' = 'USER',
+): Promise<number> {
   const numericId = Number(userId)
   if (Number.isInteger(numericId) && numericId > 0) {
     return numericId
@@ -60,6 +65,7 @@ export async function resolveApiUserId(userId: string, userName: string, userBal
   const createdUser = await createUser({
     name: userName,
     balance: userBalance,
+    role,
   })
   window.localStorage.setItem(storageKey, String(createdUser.id))
   return createdUser.id

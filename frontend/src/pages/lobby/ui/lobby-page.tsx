@@ -11,7 +11,7 @@ import { SimulationModal } from './simulation-modal'
 
 const JOIN_PREFILL_AFFORDABLE_KEY = 'kubok26.join.prefill.affordable'
 
-export function LobbyPage({ roomId, onBackToGames, onCreateGame, onPlayAgain, onStartGame, onLogout, onUserBalanceChange, user }: LobbyPageProps) {
+export function LobbyPage({ roomId, onBackToGames, onPlayAgain, onStartGame, onLogout, onUserBalanceChange, user }: LobbyPageProps) {
   useBodyScrollLock()
 
   const {
@@ -53,7 +53,7 @@ export function LobbyPage({ roomId, onBackToGames, onCreateGame, onPlayAgain, on
 
   return (
     <main className="fixed inset-0 flex min-h-dvh flex-col overflow-hidden bg-[#15161C] text-[#F2F3F5]">
-      <AppHeader onBrandClick={onBackToGames} onCreateGame={onCreateGame} onLogout={onLogout} user={user} />
+      <AppHeader onBrandClick={onBackToGames} onLogout={onLogout} user={user} />
 
       <section className="relative flex-1 overflow-hidden bg-[#D5D8DA]">
         <img

@@ -1,6 +1,7 @@
 package com.onlineshop.service;
 
 import com.onlineshop.domain.entity.User;
+import com.onlineshop.domain.enums.UserRole;
 import com.onlineshop.exception.DomainExceptions.InsufficientBalanceException;
 import com.onlineshop.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -22,10 +23,16 @@ public class UserService {
 
     @Transactional
     public User create(String name, int initialBalance, boolean bot) {
+        return create(name, initialBalance, bot, UserRole.USER);
+    }
+
+    @Transactional
+    public User create(String name, int initialBalance, boolean bot, UserRole role) {
         User u = User.builder()
                 .name(name)
                 .balance(initialBalance)
                 .bot(bot)
+                .role(role != null ? role : UserRole.USER)
                 .build();
         return userRepo.save(u);
     }

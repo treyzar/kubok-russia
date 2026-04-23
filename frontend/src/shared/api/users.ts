@@ -5,6 +5,7 @@ import { apiRequest } from './client'
 type CreateUserBody = {
   name: string
   balance: number
+  role?: 'USER' | 'ADMIN'
 }
 
 export function createUser(body: CreateUserBody): Promise<User> {

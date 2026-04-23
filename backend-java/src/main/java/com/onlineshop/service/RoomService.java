@@ -53,6 +53,9 @@ public class RoomService {
         if (templateId != null) {
             RoomTemplate t = templateRepo.findById(templateId)
                     .orElseThrow(() -> new NoSuchElementException("template not found"));
+            if (t.getDeletedAt() != null) {
+                throw new IllegalArgumentException("template has been deleted");
+            }
             playersNeeded = req.playersNeeded() != null ? req.playersNeeded() : t.getPlayersNeeded();
             entryCost = req.entryCost() != null ? req.entryCost() : t.getEntryCost();
             minPlayers = t.getMinPlayers();

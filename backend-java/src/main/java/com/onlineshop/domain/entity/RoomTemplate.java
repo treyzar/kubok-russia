@@ -25,6 +25,12 @@ public class RoomTemplate {
     @Column(name = "min_players", nullable = false)
     private Integer minPlayers = 1;
 
+    @Column(name = "max_players", nullable = false)
+    private Integer maxPlayers = 1;
+
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
+
     @Column(name = "entry_cost", nullable = false)
     private Integer entryCost = 100;
 

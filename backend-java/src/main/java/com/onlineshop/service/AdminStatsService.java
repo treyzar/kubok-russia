@@ -92,8 +92,8 @@ public class AdminStatsService {
     @Transactional(readOnly = true)
     public boolean checkDuplicate(TemplateDto dto) {
         return templateRepo.existsDuplicate(
-                dto.playersNeeded(), dto.minPlayers(), dto.entryCost(), dto.winnerPct(),
-                dto.gameType());
+                dto.maxPlayers(), dto.minPlayers(), dto.entryCost(), dto.winnerPct(),
+                dto.effectiveGameType());
     }
 
     /**
@@ -125,7 +125,7 @@ public class AdminStatsService {
     @Transactional(readOnly = true)
     public boolean checkDuplicateAdmin(AdminValidateTemplateRequest dto) {
         com.onlineshop.domain.enums.GameType gt = dto.gameType() == null || dto.gameType().isBlank()
-                ? com.onlineshop.domain.enums.GameType.TRAIN
+                ? com.onlineshop.domain.enums.GameType.FRIDGE
                 : com.onlineshop.domain.enums.GameType.fromValue(dto.gameType());
         return templateRepo.existsDuplicate(
                 dto.playersNeeded(), dto.minPlayers(), dto.entryCost(), dto.winnerPct(), gt);

@@ -1,17 +1,15 @@
 package com.onlineshop.service;
 
 import com.onlineshop.domain.entity.RoomTemplate;
-import com.onlineshop.domain.enums.RoomStatus;
 import com.onlineshop.dto.AdminDtos.TemplateStatus;
 import com.onlineshop.dto.TemplateDto;
-import com.onlineshop.exception.DomainExceptions.TemplateInUseException;
 import com.onlineshop.repository.RoomRepository;
 import com.onlineshop.repository.RoomTemplateRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.EnumSet;
+import java.time.Instant;
 import java.util.List;
 import java.util.NoSuchElementException;
 
@@ -24,7 +22,10 @@ public class TemplateLifecycleService {
     private final RoomRepository roomRepo;
 
     @Transactional(readOnly = true)
-    public List<RoomTemplate> list() { return templateRepo.findAll(); }
+    public List<RoomTemplate> list() { return templateRepo.findActive(); }
+
+    @Transactional(readOnly = true)
+    public List<RoomTemplate> listAll() { return templateRepo.findAll(); }
 
     @Transactional(readOnly = true)
     public RoomTemplate get(Integer id) {
@@ -41,25 +42,22 @@ public class TemplateLifecycleService {
         return new TemplateStatus(templateId, active, waiting, active == 0 && waiting == 0);
     }
 
+    /**
+     * Soft-delete: existing rooms continue to live until they finish naturally.
+     * New rooms cannot be created from a soft-deleted template (the admin UI
+     * filters them out and {@link #list()} excludes them).
+     */
     @Transactional
     public void delete(Integer templateId) {
-        TemplateStatus s = getStatus(templateId);
-        if (!s.canDelete()) throw new TemplateInUseException(
-                "cannot delete template: %d active rooms and %d waiting rooms exist"
-                        .formatted(s.activeRooms(), s.waitingRooms()));
-        // Mirror Go DeleteTemplateWithRooms: remove finished/new dependent rooms first
-        // to avoid FK violations. Active/waiting rooms are already excluded by canDelete().
-        roomRepo.deleteByTemplateIdAndStatusIn(templateId,
-                EnumSet.of(RoomStatus.FINISHED, RoomStatus.NEW));
-        templateRepo.deleteById(templateId);
+        RoomTemplate t = get(templateId);
+        if (t.getDeletedAt() == null) {
+            t.setDeletedAt(Instant.now());
+            templateRepo.save(t);
+        }
     }
 
     @Transactional
     public RoomTemplate update(Integer templateId, TemplateDto dto) {
-        TemplateStatus s = getStatus(templateId);
-        if (!s.canDelete()) throw new TemplateInUseException(
-                "cannot update template: %d active rooms and %d waiting rooms exist"
-                        .formatted(s.activeRooms(), s.waitingRooms()));
         validateCrossField(dto);
         RoomTemplate t = get(templateId);
         applyDto(t, dto);
@@ -74,22 +72,25 @@ public class TemplateLifecycleService {
         return templateRepo.save(t);
     }
 
-    /** Mirrors Go template_handler.go cross-field check. */
+    /** Cross-field check on min/max. */
     static void validateCrossField(TemplateDto dto) {
-        if (dto.minPlayers() != null && dto.playersNeeded() != null
-                && dto.minPlayers() > dto.playersNeeded()) {
-            throw new IllegalArgumentException("min_players cannot be greater than players_needed");
+        if (dto.minPlayers() != null && dto.maxPlayers() != null
+                && dto.minPlayers() > dto.maxPlayers()) {
+            throw new IllegalArgumentException("min_players cannot be greater than max_players");
         }
     }
 
     private void applyDto(RoomTemplate t, TemplateDto dto) {
-        t.setName(dto.name());
-        t.setPlayersNeeded(dto.playersNeeded());
+        t.setName(dto.effectiveName());
+        // max_players is the canonical field; mirror it onto the legacy
+        // players_needed column so the room-creation pipeline keeps working.
+        t.setMaxPlayers(dto.maxPlayers());
+        t.setPlayersNeeded(dto.effectivePlayersNeeded());
         t.setMinPlayers(dto.minPlayers());
         t.setEntryCost(dto.entryCost());
         t.setWinnerPct(dto.winnerPct());
-        t.setRoundDurationSeconds(dto.roundDurationSeconds());
-        t.setStartDelaySeconds(dto.startDelaySeconds());
-        t.setGameType(dto.gameType());
+        t.setRoundDurationSeconds(dto.effectiveRoundDurationSeconds());
+        t.setStartDelaySeconds(dto.effectiveStartDelaySeconds());
+        t.setGameType(dto.effectiveGameType());
     }
 }

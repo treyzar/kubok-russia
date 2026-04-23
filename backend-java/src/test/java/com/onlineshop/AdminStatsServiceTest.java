@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class AdminStatsServiceTest {
 
     private static TemplateDto tpl(int playersNeeded, int minPlayers, int entryCost, int winnerPct) {
-        return new TemplateDto("t", playersNeeded, minPlayers, entryCost, winnerPct, 60, 10, GameType.TRAIN);
+        return new TemplateDto("t", playersNeeded, minPlayers, playersNeeded, entryCost, winnerPct, 60, 10, GameType.TRAIN);
     }
 
     private static HistoricalMetrics standardMetrics() {

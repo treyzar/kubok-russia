@@ -1,4 +1,4 @@
-import { LogOut, Newspaper } from 'lucide-react'
+import { Newspaper, Refrigerator } from 'lucide-react'
 
 import { useBodyScrollLock } from '@shared/lib'
 import { Button } from '@shared/ui'
@@ -9,7 +9,23 @@ import { useQuickGame } from '../lib'
 import { LastGamesSection } from './last-games-section'
 import { NewsSlider } from './news-slider'
 
-export function HomePage({ onBrandClick, onCreateGame, onJoinGame, onJoinLobby, user, onLogout }: HomePageProps) {
+type AvailableGame = {
+  id: string
+  title: string
+  description: string
+  Icon: typeof Refrigerator
+}
+
+const AVAILABLE_GAMES: AvailableGame[] = [
+  {
+    id: 'fridge',
+    title: 'Ночной жор',
+    description: 'Соберите блоки в холодильнике и сорвите джекпот',
+    Icon: Refrigerator,
+  },
+]
+
+export function HomePage({ onBrandClick, onJoinGame, onJoinLobby, user, onLogout }: HomePageProps) {
   useBodyScrollLock()
 
   const { handleQuickGame, isLoading: isQuickGameLoading, error: quickGameError } = useQuickGame({
@@ -22,51 +38,10 @@ export function HomePage({ onBrandClick, onCreateGame, onJoinGame, onJoinLobby, 
   return (
     <main className="fixed inset-0 overflow-hidden overscroll-none bg-[#0F1014] text-[#F2F3F5]">
       <section className="flex h-full w-full flex-col overflow-hidden border border-[#2A2B31] bg-[#15161C]">
-        <AppHeader onBrandClick={onBrandClick} onCreateGame={onCreateGame} onLogout={onLogout} user={user} />
+        <AppHeader onBrandClick={onBrandClick} onLogout={onLogout} user={user} />
 
-        <div className="grid min-h-0 flex-1 gap-5 overflow-hidden px-4 py-5 lg:grid-cols-[420px_1fr] lg:px-8 lg:py-6">
-          {/* Sidebar with action buttons */}
-          <aside className="relative min-h-[360px] overflow-hidden rounded-[10px] border border-[#2B2C30] bg-[#14151A] sm:min-h-[430px] lg:h-full lg:min-h-0">
-            <img
-              alt="Игровой холодильник"
-              className="absolute inset-0 h-full w-full object-cover object-center opacity-90"
-              src="/dev-assets/images/fridge_with_blocks.svg"
-            />
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-[#111217]/40" />
-            <div className="absolute inset-0 z-10 flex items-center justify-center px-4 sm:px-5">
-              <div className="w-full max-w-[360px] space-y-3 sm:max-w-[380px]">
-                <div className="space-y-1">
-                  <Button
-                    className="h-12 w-full rounded-[9px] bg-[#6B22F5] text-[clamp(1.1rem,2.25vw,2rem)] font-semibold text-white hover:bg-[#7A36F7] disabled:opacity-60 sm:h-14 lg:h-16"
-                    disabled={isQuickGameLoading}
-                    onClick={handleQuickGame}
-                    type="button"
-                  >
-                    {isQuickGameLoading ? 'Поиск...' : 'Быстрая игра'}
-                  </Button>
-                  {quickGameError && (
-                    <p className="text-center text-sm text-red-400">{quickGameError}</p>
-                  )}
-                </div>
-                <Button
-                  className="h-12 w-full rounded-[9px] bg-[#FF1493] text-[clamp(1.1rem,2.25vw,2rem)] font-semibold text-white hover:bg-[#FF2CA0] sm:h-14 lg:h-16"
-                  onClick={onCreateGame}
-                  type="button"
-                >
-                  Создать игру
-                </Button>
-                <Button
-                  className="h-12 w-full rounded-[9px] bg-[#A8E45E] text-[clamp(1.1rem,2.15vw,1.85rem)] font-semibold text-[#101114] hover:bg-[#B9ED76] sm:h-14 lg:h-16"
-                  onClick={onJoinGame}
-                  type="button"
-                >
-                  Присоединиться к игре
-                </Button>
-              </div>
-            </div>
-          </aside>
-
-          {/* Main content */}
+        <div className="grid min-h-0 flex-1 gap-5 overflow-hidden px-4 py-5 lg:grid-cols-[1fr_360px] lg:px-8 lg:py-6">
+          {/* Main content: news + last games */}
           <section className="min-h-0 min-w-0 overflow-hidden">
             <h2 className="inline-flex items-center gap-2 text-[2rem] font-semibold text-[#A8E45E]">
               <Newspaper className="size-6" />
@@ -76,6 +51,47 @@ export function HomePage({ onBrandClick, onCreateGame, onJoinGame, onJoinLobby, 
             <NewsSlider />
             <LastGamesSection />
           </section>
+
+          {/* Right sidebar — list of available games */}
+          <aside className="min-h-0 overflow-y-auto rounded-[10px] border border-[#2B2C30] bg-[#181920] p-5">
+            <header className="mb-5">
+              <h2 className="text-[1.4rem] font-semibold text-[#F2F3F5]">Игры</h2>
+              <p className="mt-1 text-[0.85rem] text-[#9098A8]">Выберите игру, чтобы перейти к комнатам.</p>
+            </header>
+
+            <div className="space-y-3">
+              {AVAILABLE_GAMES.map(({ id, title, description, Icon }) => (
+                <button
+                  key={id}
+                  onClick={onJoinGame}
+                  type="button"
+                  className="group flex w-full items-center gap-4 rounded-[10px] border border-[#2D2E36] bg-[#1F2029] px-4 py-4 text-left transition hover:-translate-y-0.5 hover:border-[#A8E45E] hover:bg-[#23252F] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#A8E45E]"
+                >
+                  <span className="grid size-12 place-items-center rounded-[10px] bg-[#2D3F1B] text-[#A8E45E] transition group-hover:bg-[#3A521F]">
+                    <Icon className="size-7" />
+                  </span>
+                  <span className="flex-1">
+                    <span className="block text-[1.05rem] font-semibold text-[#F2F3F5]">{title}</span>
+                    <span className="mt-0.5 block text-[0.82rem] leading-snug text-[#9098A8]">{description}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-6 space-y-2 border-t border-[#2A2B31] pt-5">
+              <Button
+                className="h-12 w-full rounded-[9px] bg-[#6B22F5] text-base font-semibold text-white hover:bg-[#7A36F7] disabled:opacity-60"
+                disabled={isQuickGameLoading}
+                onClick={handleQuickGame}
+                type="button"
+              >
+                {isQuickGameLoading ? 'Поиск...' : 'Быстрая игра'}
+              </Button>
+              {quickGameError && (
+                <p className="text-center text-sm text-red-400">{quickGameError}</p>
+              )}
+            </div>
+          </aside>
         </div>
 
         <footer className="shrink-0 border-t border-[#2A2B31] bg-[#121319]">
@@ -85,11 +101,6 @@ export function HomePage({ onBrandClick, onCreateGame, onJoinGame, onJoinLobby, 
           </div>
         </footer>
       </section>
-
-      <Button className="sr-only" onClick={onLogout} type="button" variant="ghost">
-        <LogOut className="size-4" />
-        Выйти
-      </Button>
     </main>
   )
 }

@@ -3,7 +3,6 @@ import { type AuthUser } from '@entities/user'
 export type JoinGamePageProps = {
   user: AuthUser
   onBackToGames: () => void
-  onCreateGame: () => void
   onOpenLobby: (roomId: number) => void
   onLogout: () => void
   onUserBalanceChange: (balance: number) => void

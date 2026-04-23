@@ -25,13 +25,13 @@ class TemplateLifecycleServiceTest {
 
     @Test
     void updateParams_validation() {
-        TemplateDto t = new TemplateDto("Test", 5, 3, 100, 70, 60, 10, GameType.TRAIN);
+        TemplateDto t = new TemplateDto("Test", 5, 3, 5, 100, 70, 60, 10, GameType.TRAIN);
         assertFalse(t.name().isBlank());
-        assertTrue(t.playersNeeded() > 0);
+        assertTrue(t.maxPlayers() > 0);
         assertTrue(t.entryCost() >= 0);
         assertTrue(t.winnerPct() > 0 && t.winnerPct() <= 99);
         assertTrue(t.minPlayers() > 0);
-        assertTrue(t.minPlayers() <= t.playersNeeded());
+        assertTrue(t.minPlayers() <= t.maxPlayers());
     }
 
     @Test

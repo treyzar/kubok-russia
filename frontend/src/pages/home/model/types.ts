@@ -3,7 +3,6 @@ import { type AuthUser } from '@entities/user'
 export type HomePageProps = {
   user: AuthUser
   onLogout: () => void
-  onCreateGame: () => void
   onJoinGame: () => void
   onBrandClick: () => void
   onJoinLobby: (roomId: number) => void

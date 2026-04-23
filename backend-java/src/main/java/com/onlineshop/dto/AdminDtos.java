@@ -49,12 +49,13 @@ public class AdminDtos {
             double avgPlacesPerPlayer
     ) {}
 
-    /** One row of GET /admin/statistics/templates — matches Go templateStatisticsListItem. */
+    /** One row of GET /admin/statistics/templates. */
     public record TemplateStatisticsListItem(
             int templateId,
             String name,
             int playersNeeded,
             int minPlayers,
+            int maxPlayers,
             int entryCost,
             int winnerPct,
             int roundDurationSeconds,
@@ -62,6 +63,7 @@ public class AdminDtos {
             GameType gameType,
             Instant createdAt,
             Instant updatedAt,
+            Instant deletedAt,
             int completedRooms
     ) {}
 }
