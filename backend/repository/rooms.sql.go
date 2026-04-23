@@ -25,7 +25,7 @@ balance_update AS (
 UPDATE rooms
 SET jackpot = jackpot + $2, updated_at = CURRENT_TIMESTAMP
 WHERE room_id = $1 AND EXISTS (SELECT 1 FROM balance_update)
-RETURNING room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost, winner_pct, round_duration_seconds, start_delay_seconds, game_type, min_players
+RETURNING room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost, winner_pct, round_duration_seconds, start_delay_seconds, game_type, min_players, template_id
 `
 
 type AddMoneyToJackpotParams struct {
@@ -51,6 +51,7 @@ func (q *Queries) AddMoneyToJackpot(ctx context.Context, arg AddMoneyToJackpotPa
 		&i.StartDelaySeconds,
 		&i.GameType,
 		&i.MinPlayers,
+		&i.TemplateID,
 	)
 	return i, err
 }
@@ -83,7 +84,7 @@ jackpot_update AS (
     UPDATE rooms
     SET jackpot = jackpot + (SELECT entry_cost FROM room_info), updated_at = CURRENT_TIMESTAMP
     WHERE rooms.room_id = $1 AND EXISTS (SELECT 1 FROM can_join)
-    RETURNING room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost, winner_pct, round_duration_seconds, start_delay_seconds, game_type, min_players
+    RETURNING room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost, winner_pct, round_duration_seconds, start_delay_seconds, game_type, min_players, template_id
 )
 SELECT EXISTS (SELECT 1 FROM can_join) AS joined
 `
@@ -410,7 +411,7 @@ func (q *Queries) GetPlayersWithStakes(ctx context.Context, arg GetPlayersWithSt
 }
 
 const getRoom = `-- name: GetRoom :one
-SELECT room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost, winner_pct, round_duration_seconds, start_delay_seconds, game_type, min_players FROM rooms WHERE room_id = $1
+SELECT room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost, winner_pct, round_duration_seconds, start_delay_seconds, game_type, min_players, template_id FROM rooms WHERE room_id = $1
 `
 
 type GetRoomParams struct {
@@ -434,6 +435,7 @@ func (q *Queries) GetRoom(ctx context.Context, arg GetRoomParams) (Room, error) 
 		&i.StartDelaySeconds,
 		&i.GameType,
 		&i.MinPlayers,
+		&i.TemplateID,
 	)
 	return i, err
 }
@@ -460,9 +462,9 @@ func (q *Queries) GetRoomWinner(ctx context.Context, arg GetRoomWinnerParams) (R
 }
 
 const insertRoom = `-- name: InsertRoom :one
-INSERT INTO rooms (jackpot, start_time, status, players_needed, entry_cost, winner_pct, round_duration_seconds, start_delay_seconds, game_type, min_players)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-RETURNING room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost, winner_pct, round_duration_seconds, start_delay_seconds, game_type, min_players
+INSERT INTO rooms (jackpot, start_time, status, players_needed, entry_cost, winner_pct, round_duration_seconds, start_delay_seconds, game_type, min_players, template_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+RETURNING room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost, winner_pct, round_duration_seconds, start_delay_seconds, game_type, min_players, template_id
 `
 
 type InsertRoomParams struct {
@@ -476,6 +478,7 @@ type InsertRoomParams struct {
 	StartDelaySeconds    int32              `json:"start_delay_seconds"`
 	GameType             string             `json:"game_type"`
 	MinPlayers           int32              `json:"min_players"`
+	TemplateID           *int32             `json:"template_id"`
 }
 
 func (q *Queries) InsertRoom(ctx context.Context, arg InsertRoomParams) (Room, error) {
@@ -490,6 +493,7 @@ func (q *Queries) InsertRoom(ctx context.Context, arg InsertRoomParams) (Room, e
 		arg.StartDelaySeconds,
 		arg.GameType,
 		arg.MinPlayers,
+		arg.TemplateID,
 	)
 	var i Room
 	err := row.Scan(
@@ -506,6 +510,7 @@ func (q *Queries) InsertRoom(ctx context.Context, arg InsertRoomParams) (Room, e
 		&i.StartDelaySeconds,
 		&i.GameType,
 		&i.MinPlayers,
+		&i.TemplateID,
 	)
 	return i, err
 }
@@ -535,7 +540,7 @@ jackpot_update AS (
     UPDATE rooms
     SET jackpot = jackpot + $3, updated_at = CURRENT_TIMESTAMP
     WHERE rooms.room_id = $1 AND EXISTS (SELECT 1 FROM inserted)
-    RETURNING room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost, winner_pct, round_duration_seconds, start_delay_seconds, game_type, min_players
+    RETURNING room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost, winner_pct, round_duration_seconds, start_delay_seconds, game_type, min_players, template_id
 )
 SELECT room_id, user_id, amount, boosted_at FROM inserted
 `
@@ -710,7 +715,7 @@ func (q *Queries) JoinRoom(ctx context.Context) (bool, error) {
 }
 
 const joinRoomAndUpdateStatus = `-- name: JoinRoomAndUpdateStatus :one
-SELECT room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost, winner_pct, round_duration_seconds, start_delay_seconds, game_type, min_players FROM rooms WHERE room_id = $1
+SELECT room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost, winner_pct, round_duration_seconds, start_delay_seconds, game_type, min_players, template_id FROM rooms WHERE room_id = $1
 `
 
 type JoinRoomAndUpdateStatusParams struct {
@@ -789,6 +794,7 @@ func (q *Queries) JoinRoomAndUpdateStatus(ctx context.Context, arg JoinRoomAndUp
 		&i.StartDelaySeconds,
 		&i.GameType,
 		&i.MinPlayers,
+		&i.TemplateID,
 	)
 	return i, err
 }
@@ -817,7 +823,7 @@ jackpot_update AS (
     UPDATE rooms
     SET jackpot = GREATEST(jackpot - (SELECT entry_cost FROM room_info) * (SELECT place_count FROM player_places), 0), updated_at = CURRENT_TIMESTAMP
     WHERE rooms.room_id = $1 AND EXISTS (SELECT 1 FROM deleted)
-    RETURNING room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost, winner_pct, round_duration_seconds, start_delay_seconds, game_type, min_players
+    RETURNING room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost, winner_pct, round_duration_seconds, start_delay_seconds, game_type, min_players, template_id
 )
 SELECT room_id, user_id, joined_at FROM deleted
 `
@@ -880,7 +886,7 @@ jackpot = CASE
 END,
 updated_at = CURRENT_TIMESTAMP
 WHERE rooms.room_id = $1
-RETURNING room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost, winner_pct, round_duration_seconds, start_delay_seconds, game_type, min_players
+RETURNING room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost, winner_pct, round_duration_seconds, start_delay_seconds, game_type, min_players, template_id
 `
 
 type LeaveRoomAndUpdateStatusParams struct {
@@ -905,12 +911,13 @@ func (q *Queries) LeaveRoomAndUpdateStatus(ctx context.Context, arg LeaveRoomAnd
 		&i.StartDelaySeconds,
 		&i.GameType,
 		&i.MinPlayers,
+		&i.TemplateID,
 	)
 	return i, err
 }
 
 const listPlayingRoomsReadyToFinish = `-- name: ListPlayingRoomsReadyToFinish :many
-SELECT room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost, winner_pct, round_duration_seconds, start_delay_seconds, game_type, min_players FROM rooms
+SELECT room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost, winner_pct, round_duration_seconds, start_delay_seconds, game_type, min_players, template_id FROM rooms
 WHERE status = 'playing'
   AND start_time IS NOT NULL
   AND start_time + (round_duration_seconds * INTERVAL '1 second') <= CURRENT_TIMESTAMP
@@ -939,6 +946,7 @@ func (q *Queries) ListPlayingRoomsReadyToFinish(ctx context.Context) ([]Room, er
 			&i.StartDelaySeconds,
 			&i.GameType,
 			&i.MinPlayers,
+			&i.TemplateID,
 		); err != nil {
 			return nil, err
 		}
@@ -1105,7 +1113,7 @@ func (q *Queries) ListRoomWins(ctx context.Context, arg ListRoomWinsParams) ([]R
 }
 
 const listRooms = `-- name: ListRooms :many
-SELECT room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost, winner_pct, round_duration_seconds, start_delay_seconds, game_type, min_players FROM rooms
+SELECT room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost, winner_pct, round_duration_seconds, start_delay_seconds, game_type, min_players, template_id FROM rooms
 ORDER BY created_at DESC
 `
 
@@ -1132,6 +1140,7 @@ func (q *Queries) ListRooms(ctx context.Context) ([]Room, error) {
 			&i.StartDelaySeconds,
 			&i.GameType,
 			&i.MinPlayers,
+			&i.TemplateID,
 		); err != nil {
 			return nil, err
 		}
@@ -1144,7 +1153,7 @@ func (q *Queries) ListRooms(ctx context.Context) ([]Room, error) {
 }
 
 const listRoomsFiltered = `-- name: ListRoomsFiltered :many
-SELECT room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost, winner_pct, round_duration_seconds, start_delay_seconds, game_type, min_players FROM rooms
+SELECT room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost, winner_pct, round_duration_seconds, start_delay_seconds, game_type, min_players, template_id FROM rooms
 WHERE ($1::varchar = '' OR status = $1)
   AND ($2::integer = 0 OR entry_cost = $2)
   AND ($3::integer = 0 OR players_needed = $3)
@@ -1195,6 +1204,7 @@ func (q *Queries) ListRoomsFiltered(ctx context.Context, arg ListRoomsFilteredPa
 			&i.StartDelaySeconds,
 			&i.GameType,
 			&i.MinPlayers,
+			&i.TemplateID,
 		); err != nil {
 			return nil, err
 		}
@@ -1210,7 +1220,7 @@ const setRoomStatus = `-- name: SetRoomStatus :one
 UPDATE rooms
 SET status = $2, updated_at = CURRENT_TIMESTAMP
 WHERE room_id = $1
-RETURNING room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost, winner_pct, round_duration_seconds, start_delay_seconds, game_type, min_players
+RETURNING room_id, jackpot, start_time, status, players_needed, created_at, updated_at, entry_cost, winner_pct, round_duration_seconds, start_delay_seconds, game_type, min_players, template_id
 `
 
 type SetRoomStatusParams struct {
@@ -1235,6 +1245,7 @@ func (q *Queries) SetRoomStatus(ctx context.Context, arg SetRoomStatusParams) (R
 		&i.StartDelaySeconds,
 		&i.GameType,
 		&i.MinPlayers,
+		&i.TemplateID,
 	)
 	return i, err
 }

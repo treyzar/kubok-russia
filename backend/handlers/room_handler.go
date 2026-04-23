@@ -67,6 +67,7 @@ type RoomResponse struct {
 		RoundDurationSeconds int32      `json:"round_duration_seconds"`
 		StartDelaySeconds    int32      `json:"start_delay_seconds"`
 		GameType             string     `json:"game_type"`
+		TemplateID           *int32     `json:"template_id,omitempty"`
 		CreatedAt            time.Time  `json:"created_at"`
 		UpdatedAt            time.Time  `json:"updated_at"`
 	}
@@ -134,6 +135,7 @@ type roomItem struct {
 	RoundDurationSeconds int32      `json:"round_duration_seconds"`
 	StartDelaySeconds    int32      `json:"start_delay_seconds"`
 	GameType             string     `json:"game_type"`
+	TemplateID           *int32     `json:"template_id,omitempty"`
 	CreatedAt            time.Time  `json:"created_at"`
 	UpdatedAt            time.Time  `json:"updated_at"`
 }
@@ -154,6 +156,7 @@ func roomToItem(r repository.Room) roomItem {
 		RoundDurationSeconds: r.RoundDurationSeconds,
 		StartDelaySeconds:    r.StartDelaySeconds,
 		GameType:             r.GameType,
+		TemplateID:           r.TemplateID,
 		CreatedAt:            r.CreatedAt,
 		UpdatedAt:            r.UpdatedAt,
 	}
@@ -176,6 +179,7 @@ func roomItemToResponse(item roomItem) *RoomResponse {
 	resp.Body.RoundDurationSeconds = item.RoundDurationSeconds
 	resp.Body.StartDelaySeconds = item.StartDelaySeconds
 	resp.Body.GameType = item.GameType
+	resp.Body.TemplateID = item.TemplateID
 	resp.Body.CreatedAt = item.CreatedAt
 	resp.Body.UpdatedAt = item.UpdatedAt
 	return resp
@@ -248,6 +252,7 @@ func (h *RoomHandler) Create(ctx context.Context, req *CreateRoomRequest) (*Room
 		StartDelaySeconds:    startDelaySeconds,
 		GameType:             gameType,
 		MinPlayers:           minPlayers,
+		TemplateID:           req.Body.TemplateID,
 	})
 	if err != nil {
 		return nil, err

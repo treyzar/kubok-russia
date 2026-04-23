@@ -1,6 +1,6 @@
 -- name: InsertRoom :one
-INSERT INTO rooms (jackpot, start_time, status, players_needed, entry_cost, winner_pct, round_duration_seconds, start_delay_seconds, game_type, min_players)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+INSERT INTO rooms (jackpot, start_time, status, players_needed, entry_cost, winner_pct, round_duration_seconds, start_delay_seconds, game_type, min_players, template_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 RETURNING *;
 
 -- name: DeleteRoom :exec

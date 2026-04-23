@@ -135,6 +135,7 @@ type Room struct {
 	StartDelaySeconds    int32              `json:"start_delay_seconds"`
 	GameType             string             `json:"game_type"`
 	MinPlayers           int32              `json:"min_players"`
+	TemplateID           *int32             `json:"template_id"`
 }
 
 type RoomBoost struct {
